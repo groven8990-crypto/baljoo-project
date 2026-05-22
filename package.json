@@ -1,7 +1,7 @@
 {
   "name": "baljoo-automation",
   "productName": "발주 자동화",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "발주 자동화 데스크톱 앱",
   "main": "src/main.js",
   "author": "baljoo-project",
@@ -15,6 +15,9 @@
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux"
   },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "devDependencies": {
     "cross-env": "^7.0.3",
     "electron": "^33.0.0",
@@ -27,6 +30,13 @@
       "buildResources": "build",
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "groven8990-crypto",
+        "repo": "baljoo-project"
+      }
+    ],
     "files": [
       "src/**/*",
       "package.json"
