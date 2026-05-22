@@ -5791,6 +5791,71 @@ function rptDownloadExcel() {
   const dateEl = document.getElementById('rptDate');
   if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0,10);
 })();
+
+// ══════════════════════════════════════════════════════════
+// 클라우드 동기화 (Google Apps Script)
+// ══════════════════════════════════════════════════════════
+async function manualSync() {
+  const status = document.getElementById('syncStatus');
+  const btn = document.getElementById('syncBtn');
+  if (btn) btn.disabled = true;
+  if (status) { status.textContent = '⏳ 동기화 중...'; status.style.color = 'var(--text3)'; }
+
+  try {
+    const [cloudCodes, cloudOptMap] = await Promise.all([
+      loadFromCloud('codes'),
+      loadFromCloud('optmap'),
+    ]);
+
+    let codeCnt = 0, omCnt = 0, updated = false;
+
+    if (Array.isArray(cloudCodes) && cloudCodes.length > 0) {
+      const localRaw = localStorage.getItem(LS_CODES);
+      const localArr = localRaw ? (function(){ try{return JSON.parse(localRaw);}catch{return [];} })() : [];
+      // 클라우드에 더 많거나 같으면 클라우드를 신뢰 (다른 PC에서 등록한 내용 받아오기)
+      if (cloudCodes.length >= localArr.length) {
+        localStorage.setItem(LS_CODES, JSON.stringify(cloudCodes));
+        updated = true;
+      }
+      codeCnt = cloudCodes.length;
+    }
+
+    if (Array.isArray(cloudOptMap)) {
+      const localRaw = localStorage.getItem(LS_OPTMAP);
+      const localArr = localRaw ? (function(){ try{return JSON.parse(localRaw);}catch{return [];} })() : [];
+      if (cloudOptMap.length >= localArr.length) {
+        localStorage.setItem(LS_OPTMAP, JSON.stringify(cloudOptMap));
+        updated = true;
+      }
+      omCnt = cloudOptMap.length;
+    }
+
+    if (status) {
+      const time = new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'});
+      status.textContent = `✅ ${time} 동기화 (코드 ${codeCnt}개)`;
+      status.style.color = 'var(--success)';
+    }
+
+    if (updated) {
+      try { renderCodeList && renderCodeList(); } catch(e){}
+      try { renderCodeMappingList && renderCodeMappingList(); } catch(e){}
+      try { renderOptMapList && renderOptMapList(); } catch(e){}
+      try { renderUnmatchedHints && renderUnmatchedHints(); } catch(e){}
+      try { renderOmPreview && renderOmPreview(); } catch(e){}
+    }
+  } catch (e) {
+    if (status) {
+      status.textContent = '⚠ 동기화 실패 (오프라인)';
+      status.style.color = 'var(--warn)';
+    }
+    console.error('동기화 실패:', e);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// 시작 시 자동 1회 동기화
+window.addEventListener('load', () => { setTimeout(manualSync, 200); });
 </script>
 
 </body>

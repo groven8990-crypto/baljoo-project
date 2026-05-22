@@ -1,7 +1,7 @@
 {
   "name": "baljoo-automation",
   "productName": "발주 자동화",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "발주 자동화 데스크톱 앱",
   "main": "src/main.js",
   "author": "baljoo-project",
@@ -32,6 +32,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         { "target": "nsis", "arch": ["x64"] },
         { "target": "portable", "arch": ["x64"] }
