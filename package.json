@@ -1,0 +1,72 @@
+{
+  "name": "baljoo-automation",
+  "productName": "발주 자동화",
+  "version": "2.3.0",
+  "description": "발주 자동화 데스크톱 앱",
+  "main": "src/main.js",
+  "author": "baljoo-project",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "cross-env ELECTRON_DEBUG=1 electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.baljoo.automation",
+    "productName": "발주 자동화",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "groven8990-crypto",
+        "repo": "baljoo-project"
+      }
+    ],
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "발주 자동화"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.business"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Office"
+    }
+  }
+}
