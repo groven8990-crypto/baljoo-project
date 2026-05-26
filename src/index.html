@@ -228,6 +228,13 @@
       </div>
       <!-- 변경할 상품코드 입력 -->
       <input type="hidden" id="newOriginalCode">
+      <div style="margin-bottom:10px">
+        <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">발주처(공급처) <span style="color:var(--danger)">★</span></label>
+        <div style="display:flex;gap:8px">
+          <select class="inp" id="newVendor" onchange="onVendorSelectChange()" style="flex:1;min-width:0"></select>
+          <input class="inp" id="newVendorCustom" placeholder="발주처 직접 입력" style="flex:1;min-width:0;display:none">
+        </div>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end">
         <div>
           <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">변경할 상품코드 <span style="color:var(--danger)">★</span></label>
@@ -1210,6 +1217,7 @@ document.getElementById('fileInput').addEventListener('change',e=>handleFile(e.t
 document.addEventListener('DOMContentLoaded',()=>{
   const fa=document.getElementById('fileInputAdd');
   if(fa) fa.addEventListener('change',e=>{handleFileAdd(e.target.files[0]);fa.value='';});
+  try{ populateVendorSelect(); }catch(e){}
 });
 
 function setSt(msg,err){const el=document.getElementById('status');el.textContent=msg;el.className=err?'error':'';}
@@ -1571,6 +1579,7 @@ function editCode(i){
   _editingCodeIdx=i;
   document.getElementById('newOriginalCode').value=cc.originalCode||cc.code;
   document.getElementById('newCode').value=cc.code;
+  setVendorSelect(cc.vendor||'');
   const okwEl=document.getElementById('newOptKw'); if(okwEl) okwEl.value=cc.optKw||'';
   // 주문 원본 정보 표시 (있으면)
   let opText=cc.orderProduct||'', ooText=cc.orderOpt||'';
@@ -1608,6 +1617,7 @@ function cancelEditCode(){
   _editingCodeIdx=-1;
   document.getElementById('newOriginalCode').value='';
   document.getElementById('newCode').value='';
+  setVendorSelect('');
   const okw=document.getElementById('newOptKw'); if(okw) okw.value='';
   document.getElementById('addError').textContent='';
   document.getElementById('prefillInfo').style.display='none';
@@ -1653,14 +1663,60 @@ function autoDetectVendorProduct(code){
   }
   return {vendor, product};
 }
+// 발주처 선택 드롭다운 (등록된 발주처 목록 + 직접 입력)
+const VENDOR_CUSTOM_OPT='__custom__';
+function populateVendorSelect(){
+  const sel=document.getElementById('newVendor');
+  if(!sel)return;
+  const cur=sel.value;
+  const vendors=Object.keys(VENDOR_PREFIXES);
+  // 목록에 없지만 기존 등록 코드에서 쓰인 발주처도 선택지에 포함
+  const extra=[...new Set(loadCodes().map(c=>c.vendor).filter(v=>v&&!vendors.includes(v)))];
+  let html='<option value="">― 발주처 선택 ―</option>';
+  for(const v of vendors) html+=`<option value="${escHtml(v)}">${escHtml(v)}</option>`;
+  for(const v of extra) html+=`<option value="${escHtml(v)}">${escHtml(v)}</option>`;
+  html+=`<option value="${VENDOR_CUSTOM_OPT}">+ 직접 입력…</option>`;
+  sel.innerHTML=html;
+  if(cur&&[...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+function onVendorSelectChange(){
+  const sel=document.getElementById('newVendor');
+  const custom=document.getElementById('newVendorCustom');
+  if(!sel||!custom)return;
+  if(sel.value===VENDOR_CUSTOM_OPT){custom.style.display='';custom.focus();}
+  else{custom.style.display='none';}
+}
+function getSelectedVendor(){
+  const sel=document.getElementById('newVendor');
+  if(!sel)return '';
+  if(sel.value===VENDOR_CUSTOM_OPT) return (document.getElementById('newVendorCustom')?.value||'').trim();
+  return sel.value;
+}
+function setVendorSelect(vendor){
+  populateVendorSelect();
+  const sel=document.getElementById('newVendor');
+  const custom=document.getElementById('newVendorCustom');
+  if(!sel)return;
+  const v=(vendor||'').trim();
+  if(!v){sel.value='';if(custom){custom.style.display='none';custom.value='';}return;}
+  if([...sel.options].some(o=>o.value===v)){
+    sel.value=v;if(custom){custom.style.display='none';custom.value='';}
+  }else{
+    sel.value=VENDOR_CUSTOM_OPT;if(custom){custom.style.display='';custom.value=v;}
+  }
+}
 function addCode(){
   const originalCode=document.getElementById('newOriginalCode').value.trim();
   const code=document.getElementById('newCode').value.trim();
   const optKw=(document.getElementById('newOptKw')?.value||'').trim();
   const errEl=document.getElementById('addError');
   if(!code){errEl.textContent='변경할 상품코드를 입력해 주세요.';return;}
+  const vendor=getSelectedVendor();
+  if(!vendor){errEl.textContent='발주처(공급처)를 선택해 주세요.';return;}
   const codes=loadCodes();
-  const {vendor, product}=autoDetectVendorProduct(code);
+  const auto=autoDetectVendorProduct(code);
+  const orderProduct=document.getElementById('prefillProduct').textContent||'';
+  const product=auto.product || (orderProduct&&orderProduct!=='—'?orderProduct:'');
   // ── 수정 모드 ──
   if(_editingCodeIdx>=0){
     const existing=codes.findIndex((c,idx)=>c.code===code && idx!==_editingCodeIdx);
@@ -1671,12 +1727,12 @@ function addCode(){
     saveCodes(codes);
     cancelEditCode();
     renderCodeList();renderCodeMappingList();
+    if(allOrders.length>0){rematchAllOrders();renderStep2();renderUnmatchedHints();}
     return;
   }
   // ── 추가 모드 ──  (optKw 있으면 같은 code 중복 허용, 없으면 기존 로직)
   if(!optKw && codes.find(c=>c.code===code && !c.optKw)){errEl.textContent='이미 등록된 코드입니다.';return;}
   errEl.textContent='';
-  const orderProduct=document.getElementById('prefillProduct').textContent||'';
   const orderOpt=document.getElementById('prefillOpt').textContent||'';
   const entry={originalCode:originalCode||code, code, vendor, product};
   if(optKw) entry.optKw=optKw;
@@ -1687,7 +1743,9 @@ function addCode(){
   document.getElementById('newOriginalCode').value='';
   document.getElementById('newCode').value='';
   const okw=document.getElementById('newOptKw'); if(okw) okw.value='';
+  setVendorSelect('');
   renderCodeList();renderCodeMappingList();
+  if(allOrders.length>0){rematchAllOrders();renderStep2();renderUnmatchedHints();}
 }
 function removeCode(i){if(!confirm('삭제할까요?'))return;const codes=loadCodes();codes.splice(i,1);saveCodes(codes);renderCodeList();renderCodeMappingList();}
 
@@ -1783,6 +1841,7 @@ function prefill(code, product, selectOpt){
   switchTab('codes');switchSubTab('code');
   document.getElementById('newOriginalCode').value=code;
   document.getElementById('newCode').value='';
+  setVendorSelect(detectVendor(code)||'');
   // 같은 originalCode가 이미 등록된 코드가 있으면 옵션 키워드 자동 제안
   const okwEl=document.getElementById('newOptKw');
   if(okwEl){
