@@ -1730,8 +1730,7 @@ function addCode(){
     if(allOrders.length>0){rematchAllOrders();renderStep2();renderUnmatchedHints();}
     return;
   }
-  // ── 추가 모드 ──  (optKw 있으면 같은 code 중복 허용, 없으면 기존 로직)
-  if(!optKw && codes.find(c=>c.code===code && !c.optKw)){errEl.textContent='이미 등록된 코드입니다.';return;}
+  // ── 추가 모드 ── (중복 허용 — 같은 코드도 여러 번 등록 가능)
   errEl.textContent='';
   const orderOpt=document.getElementById('prefillOpt').textContent||'';
   const entry={originalCode:originalCode||code, code, vendor, product};
