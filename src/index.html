@@ -2141,7 +2141,9 @@ function invLoadTracks(files) {
         const isTrackCol   = c => /운송장|송장|배송번호|등기번호|추적번호/.test(norm(c));
         const isNameCol    = c => /받는분성명|수취인명|수령자|수취인|받는분이름|받는사람|수신자|수령인/.test(norm(c));
         const isCourierCol = c => /택배사|배송사|운송사|courier/.test(norm(c));
-        let trackIdx = -1, nameIdx = -1, courierIdx = -1, hdrRow = -1;
+        const isAddrCol     = c => { const n = norm(c); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); };
+        const isRecvAddrCol = c => { const n = norm(c); return /주소/.test(n) && /받는분|수취인|수령인|배송지|도착/.test(n); };
+        let trackIdx = -1, nameIdx = -1, courierIdx = -1, addrIdx = -1, hdrRow = -1;
         for (let ri = 0; ri < Math.min(20, rawRows.length); ri++) {
           const row = rawRows[ri];
           const ti = row.findIndex(isTrackCol);
@@ -2149,6 +2151,8 @@ function invLoadTracks(files) {
           if (ti >= 0 && ni >= 0) {
             trackIdx = ti; nameIdx = ni; hdrRow = ri;
             courierIdx = row.findIndex(isCourierCol);
+            addrIdx = row.findIndex(isRecvAddrCol);
+            if (addrIdx < 0) addrIdx = row.findIndex(isAddrCol);
             break;
           }
         }
@@ -2161,14 +2165,15 @@ function invLoadTracks(files) {
             ' (총 ' + (rawRows[0]||[]).length + '열, ' + rawRows.length + '행)');
           return;
         }
-        // map: 수령인 → {no: 운송장번호, courier: 택배사(있으면)}
+        // map: 수령인 → [{no, courier, addr}] (동명이인 대응: 같은 이름도 모두 배열로 보관)
         const map = {};
         rawRows.slice(hdrRow + 1).forEach(row => {
           const name = String(row[nameIdx]||'').trim();
           const no   = String(row[trackIdx]||'').trim();
           if (name && no) {
             const courier = courierIdx >= 0 ? String(row[courierIdx]||'').trim() : '';
-            map[name] = {no, courier};
+            const addr    = addrIdx    >= 0 ? String(row[addrIdx]||'').trim()    : '';
+            (map[name] || (map[name] = [])).push({no, courier, addr});
           }
         });
         const hasCourier   = courierIdx >= 0;
@@ -2260,11 +2265,24 @@ function invCheckReady() {
   if (btn) btn.disabled = !ready;
 }
 
+// 주소 정규화 (공백·기호 제거) 및 공통 접두 길이로 유사도 판정 — 동명이인 구분용
+function invAddrNorm(s) {
+  return String(s||'').replace(/\s+/g,'').replace(/[(),.\-_/]/g,'');
+}
+function invAddrScore(a, b) {
+  const x = invAddrNorm(a), y = invAddrNorm(b);
+  if (!x || !y) return 0;
+  let i = 0; const n = Math.min(x.length, y.length);
+  while (i < n && x[i] === y[i]) i++;
+  return i;
+}
+
 function invProcess() {
   try {
     if (!invOrderData || !invTrackFiles.length) return;
     const sample = invOrderData[0] || {};
     const nameCol    = ['수령자','받는분성명','수취인명','수령인'].find(c => c in sample) || '수령자';
+    const addrCol    = Object.keys(sample).find(k => { const n = k.replace(/\s/g,''); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); }) || '';
     const codeCol    = ['판매자상품코드','상품코드'].find(c => c in sample) || '판매자상품코드';
     const courierCol = ['택배사'].find(c => c in sample) || '택배사';
     const trackCol   = ['송장번호','운송장번호'].find(c => c in sample) || '송장번호';
@@ -2281,36 +2299,49 @@ function invProcess() {
       else if (code.includes('_') && !/^\d/.test(code)) vendor = code.split('_')[0].trim();
       // 거래처명으로 택배사 기본값 결정 (사용자 매핑 → 하드코딩 순)
       const vendorCourierDefault = vendor ? invLookupCourier(vendor).courier : null;
-      let found = false;
+      let found = false, ambiguous = false;
       for (const tf of invTrackFiles) {
-        const entry = tf.map[name];
-        if (name && entry) {
-          const trackNo = typeof entry === 'object' ? entry.no : entry;
-          // 우선순위: ① 운송장파일 택배사컬럼 ② 거래처명 매핑 ③ 파일명 기반 매핑
-          const trackCourier = typeof entry === 'object' && entry.courier ? entry.courier : '';
-          const courier = trackCourier || vendorCourierDefault || tf.courierName;
-          newRow[trackCol]   = trackNo;
-          newRow[courierCol] = courier;
-          matched++;
-          found = true;
-          preview.push({name, vendor, courier, track: trackNo, prod: String(row[prodCol]||'').slice(0,30), status:'match'});
-          break;
+        const entries = tf.map[name];
+        if (!name || !entries || !entries.length) continue;
+        let entry;
+        if (entries.length === 1) {
+          entry = entries[0];                       // 동일 이름 1건 → 모호하지 않음
+        } else {
+          // 동명이인: 수취인 주소가 가장 잘 맞는 항목 선택. 확실히 구분될 때만 채택.
+          const oAddr = addrCol ? String(row[addrCol]||'').trim() : '';
+          if (oAddr) {
+            const scored = entries.map(e => ({e, s: invAddrScore(e.addr, oAddr)})).sort((p,q) => q.s - p.s);
+            if (scored[0].s >= 8 && (scored.length < 2 || scored[0].s > scored[1].s)) entry = scored[0].e;
+          }
+          if (!entry) { ambiguous = true; continue; } // 주소로 못 가림 → 자동매칭 안 함(수동확인)
         }
+        const trackNo = entry.no;
+        // 우선순위: ① 운송장파일 택배사컬럼 ② 거래처명 매핑 ③ 파일명 기반 매핑
+        const trackCourier = entry.courier || '';
+        const courier = trackCourier || vendorCourierDefault || tf.courierName;
+        newRow[trackCol]   = trackNo;
+        newRow[courierCol] = courier;
+        matched++;
+        found = true;
+        preview.push({name, vendor, courier, track: trackNo, prod: String(row[prodCol]||'').slice(0,30), status:'match'});
+        break;
       }
       if (!found && name) {
         // 미매칭이어도 거래처명 매핑이 있으면 택배사 기입
         const fallbackCourier = vendorCourierDefault || '';
         if (fallbackCourier) newRow[courierCol] = fallbackCourier;
         unmatched++;
-        preview.push({name, vendor, courier: fallbackCourier, track:'', prod: String(row[prodCol]||'').slice(0,30), status:'unmatch'});
+        preview.push({name, vendor, courier: fallbackCourier, track:'', prod: String(row[prodCol]||'').slice(0,30), status: ambiguous ? 'dup' : 'unmatch'});
       }
       return newRow;
     });
+    const dupCount = preview.filter(p => p.status === 'dup').length;
     const summaryEl = document.getElementById('invSummary');
     if (summaryEl) summaryEl.innerHTML =
       '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
       '<span class="badge badge-green">✅ 매칭 ' + matched + '건</span>' +
-      '<span class="badge badge-warn">❌ 미매칭 ' + unmatched + '건</span>' +
+      '<span class="badge badge-warn">❌ 미매칭 ' + (unmatched - dupCount) + '건</span>' +
+      (dupCount > 0 ? '<span class="badge badge-warn">⚠ 동명이인 확인 ' + dupCount + '건</span>' : '') +
       '<span class="badge badge-blue">총 ' + invOrderData.length + '건</span>' +
       '</div>';
     const tbody = document.getElementById('invPreviewBody');
@@ -2321,7 +2352,7 @@ function invProcess() {
       '<td>' + escHtml(p.courier||'—') + '</td>' +
       '<td style="font-family:monospace;font-size:12px">' + escHtml(p.track||'—') + '</td>' +
       '<td style="color:var(--text3)">' + escHtml(p.prod) + '</td>' +
-      '<td>' + (p.status==='match' ? '<span class="badge badge-green">✅ 완료</span>' : '<span class="badge badge-warn">⚠ 미매칭</span>') + '</td>' +
+      '<td>' + (p.status==='match' ? '<span class="badge badge-green">✅ 완료</span>' : p.status==='dup' ? '<span class="badge badge-warn">⚠ 동명이인-주소확인</span>' : '<span class="badge badge-warn">⚠ 미매칭</span>') + '</td>' +
       '</tr>'
     ).join('');
     const previewCard = document.getElementById('invPreviewCard');
