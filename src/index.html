@@ -1749,6 +1749,49 @@ function addCode(){
 }
 function removeCode(i){if(!confirm('삭제할까요?'))return;const codes=loadCodes();codes.splice(i,1);saveCodes(codes);renderCodeList();renderCodeMappingList();}
 
+// ── 전체 데이터 내보내기 / 가져오기 (다른 주소·컴퓨터로 코드 이전용) ──
+function exportData(){
+  try{
+    const data={};
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);data[k]=localStorage.getItem(k);}
+    let codeCnt=0; try{codeCnt=JSON.parse(data[LS_CODES]||'[]').length;}catch(_){}
+    const payload={_type:'baljoo-backup',_version:1,_exportedAt:new Date().toISOString(),codeCount:codeCnt,data};
+    const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download='발주백업_'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'.json';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){alert('내보내기 실패: '+e.message);}
+}
+function importData(event){
+  const input=event&&event.target;
+  const file=input&&input.files&&input.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const parsed=JSON.parse(e.target.result);
+      // 형식 허용: {data:{...}} 백업본 / localStorage 통짜 객체 / 코드 배열
+      let data;
+      if(parsed&&parsed.data&&typeof parsed.data==='object') data=parsed.data;
+      else if(Array.isArray(parsed)) data={[LS_CODES]:JSON.stringify(parsed)};
+      else if(parsed&&typeof parsed==='object') data=parsed;
+      if(!data||typeof data!=='object'){alert('올바른 백업 파일이 아닙니다.');return;}
+      let codeCnt='?'; try{codeCnt=JSON.parse(data[LS_CODES]||'[]').length;}catch(_){}
+      if(!confirm('가져오면 이 페이지의 기존 데이터를 덮어씁니다.\n코드 '+codeCnt+'개 포함.\n계속할까요?'))return;
+      Object.keys(data).forEach(k=>{const val=data[k];if(val!=null)localStorage.setItem(k,typeof val==='string'?val:JSON.stringify(val));});
+      try{saveToCloud('codes',JSON.parse(localStorage.getItem(LS_CODES)||'[]'));}catch(_){}
+      try{saveToCloud('optmap',JSON.parse(localStorage.getItem(LS_OPTMAP)||'[]'));}catch(_){}
+      alert('✅ 가져오기 완료! 코드 '+codeCnt+'개. 새로고침합니다.');
+      setTimeout(()=>location.reload(),800);
+    }catch(err){alert('가져오기 실패: '+err.message);}
+    finally{if(input)input.value='';}
+  };
+  reader.readAsText(file);
+}
+
 function renderUnmatchedHints(){
   const card=document.getElementById('unmatchedHintCard');
   const regenWrap=document.getElementById('regenBtnWrap');
