@@ -974,7 +974,15 @@ function applyOptMap(productName, selectOpt) {
     // 선택 키워드 전부 포함 체크
     const selKws = rule.selectKws.split(',').map(k=>k.trim().toLowerCase()).filter(Boolean);
     if (selKws.length > 0 && !selKws.every(k => so.includes(k))) continue;
-    return { result: rule.result, ruleId: rule.id };
+    const raw = String(rule.result||'');
+    const hasQty = /-(\d+)$/.test(raw);        // 변환값 끝의 -숫자 = 주문 수량
+    return {
+      result: raw,                              // 원본 변환값 (미리보기용)
+      option: hasQty ? stripCodeQty(raw) : raw, // 발주서 옵션 (수량 제거)
+      qty: hasQty ? extractCodeQty(raw) : null, // 코드 내장 수량
+      qtySpecified: hasQty,
+      ruleId: rule.id
+    };
   }
   return null;
 }
@@ -1001,7 +1009,18 @@ function autoExtractItemName(vendorCode, vendorKey) {
   return null;
 }
 
+// 옵션 변환 규칙에 수량(-N)이 있으면 발주서 옵션·수량에 반영하는 래퍼
 function parseParts(vc, voc, productName, selectOpt, displayOpt) {
+  const res = _parsePartsRaw(vc, voc, productName, selectOpt, displayOpt);
+  const mapped = applyOptMap(productName, selectOpt);
+  if (mapped) {
+    res.optionName = mapped.option;
+    if (mapped.qtySpecified) res.codeQty = mapped.qty;
+    res.optMapped = true;
+  }
+  return res;
+}
+function _parsePartsRaw(vc, voc, productName, selectOpt, displayOpt) {
   const vendorCode = String(vc||''). trim();
   const optCode    = String(voc||'').trim();
 
