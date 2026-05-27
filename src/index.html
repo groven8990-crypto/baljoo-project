@@ -163,6 +163,16 @@
       </div>
     </div>
     <div id="unmatchedAlert"></div>
+    <div class="card" id="directEditCard" style="display:none">
+      <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('directEditBody');var t=document.getElementById('directEditToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';renderDirectEdit();}else{b.style.display='none';t.textContent='▼ 펼치기';}">
+        ✏️ 주문 품목·옵션·수량 직접 수정
+        <span id="directEditToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
+      </div>
+      <div id="directEditBody" style="display:none">
+        <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">발주서에 잘못 나오는 주문을 직접 고치세요. 저장하면 <strong>다음번에 같은 코드·선택사항으로 들어올 때 자동 적용</strong>됩니다. <span style="color:var(--purple)">●</span> 표시는 저장된 직접수정이 있는 줄이에요.</div>
+        <div id="directEditList"></div>
+      </div>
+    </div>
     <div id="loadedFilesBar" style="margin-bottom:8px;font-size:12px;color:var(--text2)"></div>
     <!-- Step2 추가 업로드 드래그앤드롭 -->
     <div id="uploadZoneAdd"
@@ -614,7 +624,7 @@
           <button class="btn btn-sm"        id="expPaidFilter-paid"   onclick="setExpPaidFilter('paid')"   style="white-space:nowrap">✅ 송금완료</button>
         </div>
         <button class="btn btn-green btn-sm" style="margin-left:auto" onclick="exportExpHistXlsx()">📥 Excel 내보내기</button>
-        <button class="btn btn-sm" onclick="if(confirm('전체 이력을 삭제할까요?')){localStorage.removeItem('expHist');renderExpHistList();}">🗑 전체삭제</button>
+        <button class="btn btn-sm" onclick="if(confirm('전체 이력을 삭제할까요?')){localStorage.removeItem('yb_exphist');renderExpHistList();}">🗑 전체삭제</button>
       </div>
       <!-- 선택 다운로드 툴바 -->
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
@@ -937,6 +947,15 @@ function saveOptMap(a) {
   saveToCloud('optmap', a);
 }
 
+// 직접수정(override): "코드+선택사항" 단위로 품목명/옵션/수량을 사용자가 직접 지정
+const LS_OVERRIDES = 'yb_overrides';
+function loadOverrides(){ try{ return JSON.parse(localStorage.getItem(LS_OVERRIDES)||'[]'); }catch{ return []; } }
+function saveOverrides(a){ localStorage.setItem(LS_OVERRIDES, JSON.stringify(a)); }
+function ovKey(vc, so){ return String(vc||'').trim()+''+String(so||'').trim(); }
+function applyOverride(vc, so){
+  return loadOverrides().find(o => o.key === ovKey(vc, so)) || null;
+}
+
 // ══════════════════════════════════════════════════════════
 // 발주처 감지
 // ══════════════════════════════════════════════════════════
@@ -1017,6 +1036,15 @@ function parseParts(vc, voc, productName, selectOpt, displayOpt) {
     res.optionName = mapped.option;
     if (mapped.qtySpecified) res.codeQty = mapped.qty;
     res.optMapped = true;
+  }
+  // 직접수정(override) — 사용자가 직접 고친 값이 최우선
+  const ov = applyOverride(vc, selectOpt);
+  if (ov) {
+    if (ov.item   != null && ov.item   !== '') res.itemName   = ov.item;
+    if (ov.option != null)                      res.optionName = ov.option;
+    if (ov.qty    != null && ov.qty    !== '') res.codeQty    = ov.qty;
+    res.optNeedsCheck = false;
+    res.overridden = true;
   }
   return res;
 }
@@ -1342,6 +1370,7 @@ function renderStep2(){
       <a href="#" onclick="switchTab('codes');return false;" style="font-weight:700;color:var(--warn);text-decoration:underline">⚙️ 코드 관리 탭</a>에서 코드를 등록한 뒤, <strong>발주서 재생성</strong> 버튼을 눌러주세요.<br>
       <span style="font-size:12px">미확인 코드: ${codes.join(', ')}</span></div>`;
   } else ael.innerHTML='';
+  renderDirectEdit();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1900,12 +1929,70 @@ function rematchAllOrders(){
     o.vendor_key=vk;
     o.item_name=parsed.itemName;
     o.option_name=parsed.optionName;
+    o.code_qty=parsed.codeQty||1;
     o.opt_mapped=parsed.optMapped||false;
     o.opt_needs_check=parsed.optNeedsCheck||false;
     o.unmatched=!vk;
     if(vk){const gk=vk+'|'+o.alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(o);}
     else unmatchedList.push(o);
   }
+}
+
+// ── 주문 품목·옵션·수량 직접 수정 (코드+선택사항 단위 저장) ──
+let _editingOvIdx = -1;
+let _directCombos = [];
+function renderDirectEdit(){
+  const card = document.getElementById('directEditCard');
+  if(!card) return;
+  if(!allOrders || allOrders.length===0){ card.style.display='none'; return; }
+  card.style.display='';
+  const listEl = document.getElementById('directEditList');
+  if(!listEl) return;
+  const seen = new Map();
+  for(const o of allOrders){ const k=ovKey(o.vendor_code,o.select_opt); if(!seen.has(k)) seen.set(k,o); }
+  _directCombos = [...seen.entries()].map(([k,o])=>({k,o}));
+  const ovs = loadOverrides();
+  const G = 'display:grid;grid-template-columns:1.7fr 1.3fr 1fr 60px auto;gap:8px;align-items:center';
+  let html = `<div style="${G};padding-bottom:6px;border-bottom:2px solid var(--border);font-size:11px;font-weight:500;color:var(--text2)"><span>코드 / 상품명</span><span>품목명</span><span>옵션</span><span>수량</span><span></span></div>`;
+  _directCombos.forEach(({k,o},i)=>{
+    const hasOv = ovs.some(x=>x.key===k);
+    const dot = hasOv ? '<span title="직접수정 저장됨" style="color:var(--purple)">● </span>' : '';
+    const codeCell = `<div style="font-size:11px;color:var(--text3);word-break:break-all">${dot}${escHtml(o.vendor_code||'')}<div style="color:var(--text2)">${escHtml((o.product||'').slice(0,26))}</div></div>`;
+    if(_editingOvIdx===i){
+      html += `<div style="${G};padding:8px 0;border-bottom:1px solid var(--border);background:var(--accent-bg)">${codeCell}
+        <input class="inp" id="de_item" style="font-size:12px" value="${escHtml(o.item_name||'')}">
+        <input class="inp" id="de_opt" style="font-size:12px" value="${escHtml(o.option_name||'')}">
+        <input class="inp" id="de_qty" type="number" min="1" style="font-size:12px" value="${o.code_qty||1}">
+        <span style="display:flex;gap:4px"><button class="btn btn-primary btn-sm" onclick="saveDirectEdit()">저장</button><button class="btn btn-sm" onclick="_editingOvIdx=-1;renderDirectEdit()">취소</button></span></div>`;
+    }else{
+      html += `<div style="${G};padding:8px 0;border-bottom:1px solid var(--border)">${codeCell}
+        <div style="font-size:12px">${escHtml(o.item_name||'-')}</div>
+        <div style="font-size:12px">${escHtml(o.option_name||'')||'-'}</div>
+        <div style="font-size:12px">${o.code_qty||1}</div>
+        <span style="display:flex;gap:4px"><button class="btn btn-sm" onclick="startDirectEdit(${i})">✏️ 수정</button>${hasOv?`<button class="btn btn-danger btn-sm" onclick="clearDirectEdit(${i})">초기화</button>`:''}</span></div>`;
+    }
+  });
+  listEl.innerHTML = html;
+}
+function startDirectEdit(i){ _editingOvIdx=i; renderDirectEdit(); }
+function saveDirectEdit(){
+  const c = _directCombos[_editingOvIdx]; if(!c) return;
+  const item = (document.getElementById('de_item')?.value||'').trim();
+  const opt  = (document.getElementById('de_opt')?.value||'').trim();
+  const qty  = Math.max(1, parseInt(document.getElementById('de_qty')?.value||'1')||1);
+  const ovs = loadOverrides().filter(x=>x.key!==c.k);
+  ovs.push({key:c.k, item, option:opt, qty});
+  saveOverrides(ovs);
+  _editingOvIdx = -1;
+  rematchAllOrders();
+  renderStep2(); renderUnmatchedHints(); renderOmPreview();
+}
+function clearDirectEdit(i){
+  const c = _directCombos[i]; if(!c) return;
+  if(!confirm('이 줄의 직접수정을 초기화할까요?')) return;
+  saveOverrides(loadOverrides().filter(x=>x.key!==c.k));
+  rematchAllOrders();
+  renderStep2(); renderUnmatchedHints(); renderOmPreview();
 }
 // ══════════════════════════════════════════════════════════
 // 발주서 재생성 — 코드 등록 후 재매칭
