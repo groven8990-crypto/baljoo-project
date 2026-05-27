@@ -303,7 +303,10 @@
         <div><label>상품명 키워드</label><input class="inp" id="om_product" placeholder="예: 박대"></div>
         <div><label>선택사항 키워드 (쉼표 구분)</label><input class="inp" id="om_select" placeholder="예: 32cm,10미"></div>
         <div><label>변환값 (발주서에 입력)</label><input class="inp" id="om_result" placeholder="예: 3P-2"></div>
-        <div><button class="btn btn-primary" onclick="addOptMap()" style="height:36px;margin-top:18px">+ 추가</button></div>
+        <div style="display:flex;gap:6px;align-items:flex-end">
+          <button class="btn btn-primary" id="omAddBtn" onclick="addOptMap()" style="height:36px;margin-top:18px">+ 추가</button>
+          <button class="btn" id="omCancelBtn" onclick="cancelEditOptMap()" style="height:36px;margin-top:18px;display:none">취소</button>
+        </div>
       </div>
       <div id="omAddError" style="font-size:12px;color:var(--danger);margin-top:8px"></div>
     </div>
@@ -1937,11 +1940,15 @@ function renderOptMapList(){
       <div><span class="kw-tag">${r.productKw||'(전체)'}</span></div>
       <div>${skws.map(k=>`<span class="kw-tag">${k}</span>`).join('')}</div>
       <div><strong style="color:var(--accent)">${r.result}</strong></div>
-      <button class="btn btn-danger" onclick="removeOptMap(${i})">삭제</button>
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="editOptMap(${i})">수정</button>
+        <button class="btn btn-danger btn-sm" onclick="removeOptMap(${i})">삭제</button>
+      </div>
     </div>`;
   });
   document.getElementById('optMapList').innerHTML=html;
 }
+let _editingOmIdx = -1;
 function addOptMap(){
   const productKw=document.getElementById('om_product').value.trim();
   const selectKws=document.getElementById('om_select').value.trim();
@@ -1951,12 +1958,34 @@ function addOptMap(){
   if(!productKw&&!selectKws){errEl.textContent='상품명 키워드 또는 선택사항 키워드 중 하나는 입력해 주세요.';return;}
   errEl.textContent='';
   const rules=loadOptMap();
-  rules.push({id:Date.now(),productKw,selectKws,result});
+  if(_editingOmIdx>=0 && rules[_editingOmIdx]){
+    rules[_editingOmIdx]={...rules[_editingOmIdx],productKw,selectKws,result}; // 수정
+  }else{
+    rules.push({id:Date.now(),productKw,selectKws,result});                    // 신규
+  }
   saveOptMap(rules);
-  document.getElementById('om_product').value='';document.getElementById('om_select').value='';document.getElementById('om_result').value='';
+  cancelEditOptMap();
   renderOptMapList();renderOmPreview();
 }
-function removeOptMap(i){if(!confirm('삭제할까요?'))return;const r=loadOptMap();r.splice(i,1);saveOptMap(r);renderOptMapList();renderOmPreview();}
+function editOptMap(i){
+  const rules=loadOptMap();const r=rules[i];if(!r)return;
+  document.getElementById('om_product').value=r.productKw||'';
+  document.getElementById('om_select').value=r.selectKws||'';
+  document.getElementById('om_result').value=r.result||'';
+  _editingOmIdx=i;
+  const addBtn=document.getElementById('omAddBtn');if(addBtn)addBtn.textContent='✏️ 수정 완료';
+  const cancelBtn=document.getElementById('omCancelBtn');if(cancelBtn)cancelBtn.style.display='';
+  document.getElementById('om_product').focus();
+  document.getElementById('om_product').scrollIntoView({behavior:'smooth',block:'center'});
+}
+function cancelEditOptMap(){
+  _editingOmIdx=-1;
+  document.getElementById('om_product').value='';document.getElementById('om_select').value='';document.getElementById('om_result').value='';
+  const addBtn=document.getElementById('omAddBtn');if(addBtn)addBtn.textContent='+ 추가';
+  const cancelBtn=document.getElementById('omCancelBtn');if(cancelBtn)cancelBtn.style.display='none';
+  const errEl=document.getElementById('omAddError');if(errEl)errEl.textContent='';
+}
+function removeOptMap(i){if(!confirm('삭제할까요?'))return;const r=loadOptMap();r.splice(i,1);saveOptMap(r);if(_editingOmIdx===i)cancelEditOptMap();renderOptMapList();renderOmPreview();}
 
 // 변환 미리보기: 마지막 파일 기준으로 어떤 주문에 변환 적용되는지 보여줌
 function renderOmPreview(){
