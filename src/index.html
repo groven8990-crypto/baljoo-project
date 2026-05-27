@@ -1757,10 +1757,8 @@ function addCode(){
   const auto=autoDetectVendorProduct(code);
   const orderProduct=document.getElementById('prefillProduct').textContent||'';
   const product=auto.product || (orderProduct&&orderProduct!=='—'?orderProduct:'');
-  // ── 수정 모드 ──
+  // ── 수정 모드 ── (중복 허용 — 같은 코드도 저장 가능)
   if(_editingCodeIdx>=0){
-    const existing=codes.findIndex((c,idx)=>c.code===code && idx!==_editingCodeIdx);
-    if(existing>=0){errEl.textContent='이미 다른 항목에 등록된 코드입니다.';return;}
     const upd={originalCode:originalCode||code, code, vendor, product};
     if(optKw) upd.optKw=optKw;
     codes[_editingCodeIdx]=upd;
