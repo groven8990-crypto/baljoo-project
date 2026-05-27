@@ -1267,6 +1267,14 @@ function handleFile(file) {
       saveToHistory(file.name, allOrders);
       saveLastFile(file.name);
       showLastFileCard();
+      // 송장입력 탭과 자동 연동: 원본 파일을 송장탭 저장소에도 보관 (송장탭 진입 시 자동 복원)
+      try {
+        const _b = new Uint8Array(e.target.result); let _s = '';
+        for (let _i = 0; _i < _b.length; _i++) _s += String.fromCharCode(_b[_i]);
+        localStorage.setItem('invOrderB64', btoa(_s));
+        localStorage.setItem('invOrderName', file.name);
+        localStorage.setItem('invOrderSavedAt', Date.now().toString());
+      } catch(_e) {}
     }catch(err){setSt('오류: '+err.message,true);console.error(err);}
   };
   reader.readAsArrayBuffer(file);
@@ -1998,6 +2006,7 @@ let invTrackFiles = [];
 let invResultData = null;
 let invResolveCtx = null;   // {trackCol,courierCol,prodCol,dupReg:{rowIdx:{candidates,courierFallback,oAddr}}}
 let invPreviewRows = [];    // 미리보기/요약 렌더용 (rowIdx 포함)
+let invOrderLoadedAt = null; // 현재 메모리에 로드된 주문파일의 저장시각 (중복 복원 방지)
 
 const VENDOR_COURIER_DEFAULT = {
   '푸드앤': '우체국택배', '푸드엔': '우체국택배',
@@ -2124,9 +2133,11 @@ function invLoadOrder(file) {
         const bytes = new Uint8Array(arrayBuf);
         let bin = '';
         bytes.forEach(b => bin += String.fromCharCode(b));
+        const sa = Date.now().toString();
         localStorage.setItem('invOrderB64', btoa(bin));
         localStorage.setItem('invOrderName', file.name);
-        localStorage.setItem('invOrderSavedAt', Date.now().toString());
+        localStorage.setItem('invOrderSavedAt', sa);
+        invOrderLoadedAt = sa;
       } catch(se) {}
       invShowOrderInfo(file.name, rows.length);
       invCheckReady();
@@ -2152,7 +2163,7 @@ function invClearSavedOrder() {
   localStorage.removeItem('invOrderB64');
   localStorage.removeItem('invOrderName');
   localStorage.removeItem('invOrderSavedAt');
-  invOrderData = null; invOrderWb = null; invOrderFileName = '';
+  invOrderData = null; invOrderWb = null; invOrderFileName = ''; invOrderLoadedAt = null;
   document.getElementById('invOrderInfo').innerHTML = '';
   invCheckReady();
 }
@@ -2169,6 +2180,7 @@ function invRestoreOrder() {
     localStorage.removeItem('invOrderSavedAt');
     return;
   }
+  if (invOrderData && invOrderLoadedAt === savedAt) return; // 이미 같은 파일이 로드됨
   try {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
@@ -2177,6 +2189,7 @@ function invRestoreOrder() {
     const ws = invOrderWb.Sheets[invOrderWb.SheetNames[0]];
     invOrderData = XLSX.utils.sheet_to_json(ws, {defval:''});
     invOrderFileName = fname;
+    invOrderLoadedAt = savedAt;
     invShowOrderInfo(fname, invOrderData.length);
     invCheckReady();
   } catch(e) { console.warn('주문파일 복원 실패:', e); }
