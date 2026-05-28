@@ -1075,6 +1075,28 @@ function _parsePartsRaw(vc, voc, productName, selectOpt, displayOpt) {
     const optStr = mapped ? mapped.result : (cleanSelectOpt(selectOpt) || cleanSelectOpt(displayOpt) || '');
     return { itemName: custom.product, optionName: optStr, optMapped: !!mapped, optNeedsCheck: !mapped && !optStr };
   }
+  // custom 매칭됐는데 product가 깨끗하지 않으면 → 등록된 '변경할 상품코드(cc.code)' 자체를 파싱해 사용
+  // (예: m202603185dea835d4 → 일비]박대/대-37cm 10미-1 으로 등록 시, 일비]뒤 박대/대-37cm 10미 추출)
+  if (custom && custom.code && custom.code !== vendorCode) {
+    const cBi = custom.code.indexOf(']');
+    if (cBi >= 0) {
+      const cAfter = custom.code.slice(cBi + 1);
+      const cSi = cAfter.indexOf('/');
+      if (cSi >= 0) {
+        const cItem = cAfter.slice(0, cSi).trim();
+        const cRawOpt = cAfter.slice(cSi + 1).trim();
+        const cQty = extractCodeQty(cRawOpt);
+        const cOpt = stripCodeQty(cRawOpt).replace(/_/g, ' ').trim();
+        if (cItem) {
+          const optStr = mapped ? mapped.result : (cOpt || cleanSelectOpt(selectOpt) || cleanSelectOpt(displayOpt) || '');
+          return { itemName: cItem, optionName: optStr, codeQty: cQty, optMapped: !!mapped };
+        }
+      } else if (cAfter.trim()) {
+        const optStr = mapped ? mapped.result : (cleanSelectOpt(selectOpt) || cleanSelectOpt(displayOpt) || '');
+        return { itemName: cAfter.trim(), optionName: optStr, optMapped: !!mapped };
+      }
+    }
+  }
 
   const bracketIdx = vendorCode.indexOf(']');
   if (bracketIdx >= 0) {
