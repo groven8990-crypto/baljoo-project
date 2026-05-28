@@ -1333,7 +1333,8 @@ function handleFile(file) {
         } catch(_e) {}
         if (typeof invShowOrderInfo === 'function') invShowOrderInfo(file.name, invOrderData.length);
         if (typeof invCheckReady === 'function') invCheckReady();
-      } catch(_e) {}
+        setSt('✅ 송장입력 탭과 자동 연동됨 (' + invOrderData.length + '건)');
+      } catch(_e) { setSt('⚠ 송장 자동연동 실패: '+_e.message, true); }
     }catch(err){setSt('오류: '+err.message,true);console.error(err);}
   };
   reader.readAsArrayBuffer(file);
@@ -1966,7 +1967,7 @@ function renderDirectEdit(){
   _directCombos.forEach(({k,o},i)=>{
     const hasOv = ovs.some(x=>x.key===k);
     const dot = hasOv ? '<span title="직접수정 저장됨" style="color:var(--purple)">● </span>' : '';
-    const codeCell = `<div style="font-size:11px;color:var(--text3);word-break:break-all">${dot}${escHtml(o.vendor_code||'')}<div style="color:var(--text2)">${escHtml((o.product||'').slice(0,26))}</div></div>`;
+    const codeCell = `<div style="font-size:11px;color:var(--text3);word-break:break-word">${dot}${escHtml(o.vendor_code||'')}<div style="color:var(--text2);margin-top:2px;line-height:1.4">${escHtml(o.product||'')}</div></div>`;
     if(_editingOvIdx===i){
       html += `<div style="${G};padding:8px 0;border-bottom:1px solid var(--border);background:var(--accent-bg)">${codeCell}
         <input class="inp" id="de_item" style="font-size:12px" value="${escHtml(o.item_name||'')}">
