@@ -1317,13 +1317,22 @@ function handleFile(file) {
       saveToHistory(file.name, allOrders);
       saveLastFile(file.name);
       showLastFileCard();
-      // 송장입력 탭과 자동 연동: 원본 파일을 송장탭 저장소에도 보관 (송장탭 진입 시 자동 복원)
+      // 송장입력 탭과 자동 연동: 메모리에 즉시 반영 + 원본 파일 영속화(용량 초과 시 무시)
       try {
-        const _b = new Uint8Array(e.target.result); let _s = '';
-        for (let _i = 0; _i < _b.length; _i++) _s += String.fromCharCode(_b[_i]);
-        localStorage.setItem('invOrderB64', btoa(_s));
-        localStorage.setItem('invOrderName', file.name);
-        localStorage.setItem('invOrderSavedAt', Date.now().toString());
+        const _sa = Date.now().toString();
+        invOrderWb = wb;
+        invOrderData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+        invOrderFileName = file.name;
+        invOrderLoadedAt = _sa;
+        try {
+          const _b = new Uint8Array(e.target.result); let _s = '';
+          for (let _i = 0; _i < _b.length; _i++) _s += String.fromCharCode(_b[_i]);
+          localStorage.setItem('invOrderB64', btoa(_s));
+          localStorage.setItem('invOrderName', file.name);
+          localStorage.setItem('invOrderSavedAt', _sa);
+        } catch(_e) {}
+        if (typeof invShowOrderInfo === 'function') invShowOrderInfo(file.name, invOrderData.length);
+        if (typeof invCheckReady === 'function') invCheckReady();
       } catch(_e) {}
     }catch(err){setSt('오류: '+err.message,true);console.error(err);}
   };
@@ -2313,7 +2322,8 @@ function invRestoreOrder() {
     localStorage.removeItem('invOrderSavedAt');
     return;
   }
-  if (invOrderData && invOrderLoadedAt === savedAt) return; // 이미 같은 파일이 로드됨
+  // 메모리에 더 최신(또는 같은) 파일이 이미 있으면 옛 저장본으로 덮지 않음
+  if (invOrderData && invOrderLoadedAt && (!savedAt || +invOrderLoadedAt >= +savedAt)) return;
   try {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
