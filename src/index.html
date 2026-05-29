@@ -355,9 +355,18 @@
       <div style="font-size:32px;margin-bottom:8px">📋</div>
       <div style="font-weight:600;margin-bottom:4px">샵마인 발송대기 엑셀을 끌어다 놓거나 클릭하여 선택</div>
       <div style="font-size:12px;color:var(--text3)">신규주문 / 발송대기 (.xls / .xlsx)</div>
-      <input type="file" id="invOrderFile" accept=".xls,.xlsx" style="display:none" onchange="invLoadOrder(this.files[0])">
+      <input type="file" id="invOrderFile" accept=".xls,.xlsx" style="display:none" onchange="invLoadOrder(this.files[0]); this.value='';">
     </div>
     <div id="invOrderInfo" style="margin-top:10px;font-size:13px;color:var(--text2)"></div>
+    <div id="invOrderAddZone"
+         style="margin-top:10px;border:2px dashed var(--border2);border-radius:var(--radius);padding:12px 16px;text-align:center;cursor:pointer;transition:background .15s;color:var(--text2);font-size:12px"
+         ondragover="event.preventDefault();this.style.background='var(--bg)'"
+         ondragleave="this.style.background=''"
+         ondrop="invDropOrderAdd(event)"
+         onclick="document.getElementById('invOrderAddFile').click()">
+      ➕ 추가 샵마인 파일을 끌어다 놓거나 클릭하여 선택 (기존 주문에 합산됩니다 · 여러 개 가능)
+    </div>
+    <input type="file" id="invOrderAddFile" accept=".xls,.xlsx" multiple style="display:none" onchange="invLoadOrderAdd(this.files); this.value='';">
   </div>
 
   <div class="card">
@@ -2334,6 +2343,45 @@ function invLoadOrder(file) {
     } catch(err) {
       document.getElementById('invOrderInfo').innerHTML =
         '<span style="color:var(--danger)">❌ 파일 읽기 실패: ' + escHtml(err.message) + '</span>';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── 송장탭 주문파일 추가 업로드 (여러 개 합산) ──
+function invDropOrderAdd(e) {
+  e.preventDefault();
+  e.currentTarget.style.background='';
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) invLoadOrderAdd(e.dataTransfer.files);
+}
+function invLoadOrderAdd(files) {
+  if (!files || !files.length) return;
+  const list = [...files];
+  if (!invOrderData) {
+    // 메인 미업로드 상태 — 첫 파일은 메인으로 처리(영속화), 이후는 추가 합산
+    invLoadOrder(list[0]);
+    list.slice(1).forEach(f => _invAppendOrderFile(f));
+    return;
+  }
+  list.forEach(f => _invAppendOrderFile(f));
+}
+function _invAppendOrderFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      if (!rows.length) return;
+      invOrderData = (invOrderData || []).concat(rows);
+      invOrderFileName = invOrderFileName ? (invOrderFileName + ' + ' + file.name) : file.name;
+      invShowOrderInfo(invOrderFileName, invOrderData.length);
+      invCheckReady();
+    } catch(err) {
+      const el = document.getElementById('invOrderInfo');
+      if (el) el.insertAdjacentHTML('beforeend',
+        '<div style="color:var(--danger);font-size:12px;margin-top:4px">❌ ' + escHtml(file.name) + ': ' + escHtml(err.message) + '</div>');
     }
   };
   reader.readAsArrayBuffer(file);
