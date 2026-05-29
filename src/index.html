@@ -1843,7 +1843,23 @@ function addCode(){
   const okw=document.getElementById('newOptKw'); if(okw) okw.value='';
   setVendorSelect('');
   renderCodeList();renderCodeMappingList();
-  if(allOrders.length>0){rematchAllOrders();renderStep2();renderUnmatchedHints();}
+  if(allOrders.length>0){
+    const targetCode = entry.originalCode || entry.code;
+    const beforeUnmatchedTotal = unmatchedList.length;
+    const beforeTarget = unmatchedList.filter(o => o.vendor_code === targetCode).length;
+    rematchAllOrders();renderStep2();renderUnmatchedHints();
+    const afterUnmatchedTotal = unmatchedList.length;
+    const afterTarget = unmatchedList.filter(o => o.vendor_code === targetCode).length;
+    const newlyMatched = beforeUnmatchedTotal - afterUnmatchedTotal;
+    let msg = '✅ 등록 완료'; let color = 'var(--success)';
+    if (beforeTarget > 0) {
+      if (afterTarget === 0) msg += ` — 이 코드(${targetCode}) ${beforeTarget}건 매칭 성공`;
+      else { msg = `⚠ 등록은 됐는데 이 코드(${targetCode})가 여전히 미매칭(${afterTarget}건) — 발주처 선택을 확인하세요`; color = 'var(--danger)'; }
+    }
+    if (newlyMatched > 0) msg += ` · 미매칭 ${beforeUnmatchedTotal}→${afterUnmatchedTotal}건`;
+    errEl.style.color = color; errEl.textContent = msg;
+    setTimeout(()=>{ if(errEl.textContent===msg){errEl.textContent=''; errEl.style.color='';} }, 8000);
+  }
 }
 function removeCode(i){if(!confirm('삭제할까요?'))return;const codes=loadCodes();codes.splice(i,1);saveCodes(codes);renderCodeList();renderCodeMappingList();}
 
