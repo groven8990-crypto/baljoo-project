@@ -119,6 +119,7 @@
   <button class="tab-btn" id="tabBtn-price" onclick="switchTab('price')">📊 매입단가표</button>
   <button class="tab-btn" id="tabBtn-daily" onclick="switchTab('daily')">📋 일일현황</button>
   <button class="tab-btn" id="tabBtn-report" onclick="switchTab('report')">📊 일일보고서</button>
+  <button class="tab-btn" id="tabBtn-salesreport" onclick="switchTab('salesreport')">📈 매출 보고용</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -1339,14 +1340,18 @@ function handleFile(file) {
       for(let i=0;i<Math.min(5,rows.length);i++){if(rows[i].indexOf('판매자상품코드')>=0){hr=i;break;}}
       if(hr<0){setSt('헤더를 찾을 수 없습니다.',true);return;}
       const H=rows[hr],ci=n=>H.indexOf(n);
-      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사')};
+      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시')};
       groupedOrders={};unmatchedList=[];allOrders=[];totalCount=0;loadedFileNames=[];
       for(let i=hr+1;i<rows.length;i++){
         const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn),alias=extractAlias(r[C.al]);
         const parsed=parseParts(vc,vo,pn,so,dop);
-        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||''};
+        // 주문금액 = AB(27) - AI(34) + AH(33)  (샵마인 정산열 기준)
+        const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
+        const order_amt=Math.round(_ab - _ai + _ah);
+        const order_date_raw = (C.od>=0?r[C.od]:'') || '';
+        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw};
         allOrders.push(order);
         if(vk){const gk=vk+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
         else unmatchedList.push(order);
@@ -3477,14 +3482,18 @@ function handleFileAdd(file){
       for(let i=0;i<Math.min(5,rows.length);i++){if(rows[i].indexOf('판매자상품코드')>=0){hr=i;break;}}
       if(hr<0){setSt('헤더를 찾을 수 없습니다.',true);return;}
       const H=rows[hr],ci=n=>H.indexOf(n);
-      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사')};
+      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시')};
       let added=0;
       for(let i=hr+1;i<rows.length;i++){
         const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;added++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn),alias=extractAlias(r[C.al]);
         const parsed=parseParts(vc,vo,pn,so,dop);
-        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||''};
+        // 주문금액 = AB(27) - AI(34) + AH(33)  (샵마인 정산열 기준)
+        const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
+        const order_amt=Math.round(_ab - _ai + _ah);
+        const order_date_raw = (C.od>=0?r[C.od]:'') || '';
+        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw};
         allOrders.push(order);
         if(vk){const gk=vk+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
         else unmatchedList.push(order);
@@ -5544,6 +5553,30 @@ function reconExportXlsx() {
 </div>
 </div><!-- /tab-report -->
 
+<!-- ══════════════════════════════════════════════════════════
+     TAB 9: 매출 보고용  (Sales Report — 발주서 파일 기반)
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-salesreport">
+<div class="container">
+  <div class="card">
+    <div class="card-title">📈 일일 매출 보고용</div>
+    <div class="alert alert-info" style="margin-bottom:14px;font-size:12px">
+      발주서 생성 탭에서 올린 샵마인 파일을 기준으로 매출 보고서를 만들어요.
+      <strong>로또상회 = 그로븐, 자꾸가게 = YB</strong> 로 자동 분류됩니다.
+    </div>
+    <div id="srStatus" style="margin-bottom:12px;font-size:13px;color:var(--text2)">먼저 발주서 생성에서 파일을 업로드하세요.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label style="font-size:12px;color:var(--text2)">보고일자
+        <input type="date" id="srReportDate" class="inp" style="width:160px;font-size:12px;margin-left:6px">
+      </label>
+      <button class="btn btn-primary" onclick="srRender()" id="srBuildBtn">📊 보고서 생성</button>
+      <button class="btn btn-green" onclick="srExportImage()" id="srImageBtn" disabled>🖼 이미지(PNG) 저장</button>
+    </div>
+  </div>
+  <div id="srReport"></div>
+</div>
+</div><!-- /tab-salesreport -->
+
 <script>
 // ══════════════════════════════════════════════════════════
 // 매입단가표  (직접 등록/관리)
@@ -6344,6 +6377,148 @@ async function manualSync() {
 
 // 시작 시 자동 1회 동기화
 window.addEventListener('load', () => { setTimeout(manualSync, 200); });
+
+// ══════════════════════════════════════════════════════════
+// 매출 보고용 (Sales Report — 발주서 파일 기반)
+// ══════════════════════════════════════════════════════════
+const SR_PRODUCT_KEYWORDS = {
+  '간고등어':'간고등어','홍어':'홍어회','흑산':'홍어회','박대':'박대','굴비':'굴비','부세':'굴비',
+  '가시오이':'가시오이','오이':'가시오이','흑돼지':'흑돼지삼겹','삼겹':'흑돼지삼겹',
+  '고구마':'고구마','토마토':'토마토','강낭콩':'강낭콩쑥개떡','쑥개떡':'쑥개떡','쑥떡':'쑥개떡',
+  '뼈다귀':'뼈다귀해장국','해장국':'뼈다귀해장국','압축파우치':'압축파우치','파우치':'압축파우치',
+  '보조테이블':'보조테이블','콘솔':'콘솔쿠션','메론':'메론','멜론':'메론','사과':'사과',
+  '레드키위':'레드키위','메달':'메달키위','경추베개':'경추베개','베개':'경추베개',
+  '누룽지':'포켓누룽지','옥수수':'초당옥수수'
+};
+const SR_FEE_MAP = {'쿠팡':0.1084,'지마켓':0.12,'옥션':0.12,'11번가':0.12,'네이버':0.02};
+function srPlatform(alias){const a=String(alias||'').trim();return a.includes('-')?a.split('-')[0].trim():a;}
+function srFee(plat){return SR_FEE_MAP[plat]||0.10;}
+function srNormalize(name){
+  const n=String(name||'');
+  for(const k of Object.keys(SR_PRODUCT_KEYWORDS)){if(n.includes(k))return SR_PRODUCT_KEYWORDS[k];}
+  return n.slice(0,8) || '미분류';
+}
+function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회'))return 'grobn';if(a.includes('자꾸가게'))return 'yb';return 'other';}
+function srAggregate(orders){
+  const platMap={},prodMap={};let totalSales=0;
+  for(const o of orders){
+    const amt=Number(o.order_amt)||0;totalSales+=amt;
+    const p=srPlatform(o.alias);
+    if(!platMap[p])platMap[p]={count:0,sales:0};
+    platMap[p].count++;platMap[p].sales+=amt;
+    const n=srNormalize(o.product);
+    if(!prodMap[n])prodMap[n]={count:0,sales:0};
+    prodMap[n].count++;prodMap[n].sales+=amt;
+  }
+  return {totalSales,count:orders.length,platMap,prodMap};
+}
+function srBrandSection(title, color, agg){
+  if(agg.count===0) return '';
+  const NAVY='#1E3A5F';
+  const platRows = Object.entries(agg.platMap).sort((a,b)=>b[1].sales-a[1].sales).map(([p,v],i)=>`
+    <tr style="background:${i%2===0?'#fff':'#F2F2F2'}">
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${escHtml(p)}</td>
+      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
+      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.sales.toLocaleString()}원</td>
+    </tr>`).join('');
+  const prodRows = Object.entries(agg.prodMap).sort((a,b)=>b[1].sales-a[1].sales).map(([n,v],i)=>`
+    <tr style="background:${i%2===0?'#fff':'#F2F2F2'}">
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${escHtml(n)}</td>
+      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
+      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.sales.toLocaleString()}원</td>
+    </tr>`).join('');
+  return `
+    <div style="background:${color};color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">${escHtml(title)}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:${NAVY};color:#fff">
+        <th style="padding:7px 12px;text-align:left">플랫폼</th>
+        <th style="padding:7px 12px;text-align:right">주문건수</th>
+        <th style="padding:7px 12px;text-align:right">매출액</th>
+      </tr></thead>
+      <tbody>${platRows}</tbody>
+      <tfoot><tr style="background:${NAVY};color:#fff;font-weight:700">
+        <td style="padding:7px 12px">합계</td>
+        <td style="padding:7px 12px;text-align:right">${agg.count.toLocaleString()}건</td>
+        <td style="padding:7px 12px;text-align:right">${agg.totalSales.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>
+    <div style="height:8px"></div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:${NAVY};color:#fff">
+        <th style="padding:7px 12px;text-align:left">제품</th>
+        <th style="padding:7px 12px;text-align:right">주문건수</th>
+        <th style="padding:7px 12px;text-align:right">매출액</th>
+      </tr></thead>
+      <tbody>${prodRows}</tbody>
+      <tfoot><tr style="background:${NAVY};color:#fff;font-weight:700">
+        <td style="padding:7px 12px">합계</td>
+        <td style="padding:7px 12px;text-align:right">${agg.count.toLocaleString()}건</td>
+        <td style="padding:7px 12px;text-align:right">${agg.totalSales.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>`;
+}
+function srRender(){
+  const statusEl=document.getElementById('srStatus');
+  if(!Array.isArray(allOrders)||allOrders.length===0){
+    statusEl.innerHTML='<span style="color:var(--danger)">⚠ 발주서 생성 탭에서 샵마인 파일을 먼저 업로드해주세요.</span>';
+    return;
+  }
+  const gr=allOrders.filter(o=>srBrand(o.alias)==='grobn');
+  const yb=allOrders.filter(o=>srBrand(o.alias)==='yb');
+  const grAgg=srAggregate(gr), ybAgg=srAggregate(yb);
+  const totalSales=grAgg.totalSales+ybAgg.totalSales;
+  const totalCnt=grAgg.count+ybAgg.count;
+  // 보고일자: 입력 없으면 첫 주문의 일자, 그것도 없으면 오늘
+  let dateStr=document.getElementById('srReportDate').value;
+  if(!dateStr){
+    const first=allOrders.find(o=>o.order_date);
+    if(first){const d=new Date(first.order_date);if(!isNaN(d))dateStr=d.toISOString().slice(0,10);}
+    if(!dateStr)dateStr=new Date().toISOString().slice(0,10);
+    document.getElementById('srReportDate').value=dateStr;
+  }
+  const titleDate=dateStr.replace(/-/g,'.');
+  const html=`
+    <div id="srReportContent" class="card" style="background:#fff;padding:24px;max-width:920px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
+      <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 일일 매출 현황</div>
+      <div style="font-size:11px;color:#888;margin-top:2px">발주일자 기준</div>
+      <div style="background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
+        <div>
+          <div style="font-size:11px;color:#888">총 매출액</div>
+          <div style="font-size:22px;font-weight:700;color:#1A56DB;margin-top:2px">${totalSales.toLocaleString()}원</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">총 ${totalCnt.toLocaleString()}건</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#888">로또상회 (그로븐)</div>
+          <div style="font-size:18px;font-weight:700;color:#1E5F3A;margin-top:2px">${grAgg.totalSales.toLocaleString()}원</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">${grAgg.count.toLocaleString()}건</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#888">자꾸가게 (YB)</div>
+          <div style="font-size:18px;font-weight:700;color:#3A1E5F;margin-top:2px">${ybAgg.totalSales.toLocaleString()}원</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">${ybAgg.count.toLocaleString()}건</div>
+        </div>
+      </div>
+      ${srBrandSection('로또상회 (그로븐)', '#1E5F3A', grAgg)}
+      ${srBrandSection('자꾸가게 (옐로우브릿지)', '#3A1E5F', ybAgg)}
+      <div style="margin-top:18px;font-size:10px;color:#888;text-align:right">발주일자 ${dateStr} 기준 · 발주 자동화 시스템</div>
+    </div>`;
+  document.getElementById('srReport').innerHTML=html;
+  document.getElementById('srImageBtn').disabled=false;
+  const sumAmt = totalSales > 0 ? '' : ' <span style="color:var(--warn);font-size:11px">(주문금액 0 — AB/AH/AI 컬럼이 다른 위치일 수 있어요)</span>';
+  statusEl.innerHTML=`<span style="color:var(--success)">✅ 보고서 생성: 로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건 · 총 ${totalCnt}건 / 매출 ${totalSales.toLocaleString()}원</span>${sumAmt}`;
+}
+function srExportImage(){
+  const el=document.getElementById('srReportContent');
+  if(!el){alert('먼저 보고서를 생성해주세요');return;}
+  if(typeof html2canvas!=='function'){alert('이미지 변환 라이브러리(html2canvas)를 찾을 수 없어요.');return;}
+  html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
+    const link=document.createElement('a');
+    const dateStr=(document.getElementById('srReportDate').value||new Date().toISOString().slice(0,10)).replace(/-/g,'');
+    link.download=`매출보고_${dateStr}.png`;
+    link.href=canvas.toDataURL('image/png');
+    document.body.appendChild(link);link.click();document.body.removeChild(link);
+  }).catch(e=>alert('이미지 저장 실패: '+e.message));
+}
 </script>
 
 </body>
