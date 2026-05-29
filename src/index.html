@@ -1374,6 +1374,7 @@ function handleFile(file) {
           localStorage.setItem('invOrderB64', btoa(_s));
           localStorage.setItem('invOrderName', file.name);
           localStorage.setItem('invOrderSavedAt', _sa);
+          localStorage.removeItem('invOrderAppended');
         } catch(_e) {}
         if (typeof invShowOrderInfo === 'function') invShowOrderInfo(file.name, invOrderData.length);
         if (typeof invCheckReady === 'function') invCheckReady();
@@ -2336,6 +2337,7 @@ function invLoadOrder(file) {
         localStorage.setItem('invOrderB64', btoa(bin));
         localStorage.setItem('invOrderName', file.name);
         localStorage.setItem('invOrderSavedAt', sa);
+        localStorage.removeItem('invOrderAppended');
         invOrderLoadedAt = sa;
       } catch(se) {}
       invShowOrderInfo(file.name, rows.length);
@@ -2376,6 +2378,12 @@ function _invAppendOrderFile(file) {
       if (!rows.length) return;
       invOrderData = (invOrderData || []).concat(rows);
       invOrderFileName = invOrderFileName ? (invOrderFileName + ' + ' + file.name) : file.name;
+      // 추가 업로드 파일 영속화 (새로고침 후에도 유지)
+      try {
+        const appended = JSON.parse(localStorage.getItem('invOrderAppended')||'[]');
+        appended.push({ fname: file.name, rows });
+        localStorage.setItem('invOrderAppended', JSON.stringify(appended));
+      } catch(_e) {}
       invShowOrderInfo(invOrderFileName, invOrderData.length);
       invCheckReady();
     } catch(err) {
@@ -2401,6 +2409,7 @@ function invClearSavedOrder() {
   localStorage.removeItem('invOrderB64');
   localStorage.removeItem('invOrderName');
   localStorage.removeItem('invOrderSavedAt');
+  localStorage.removeItem('invOrderAppended');
   invOrderData = null; invOrderWb = null; invOrderFileName = ''; invOrderLoadedAt = null;
   document.getElementById('invOrderInfo').innerHTML = '';
   invCheckReady();
@@ -2429,7 +2438,17 @@ function invRestoreOrder() {
     invOrderData = XLSX.utils.sheet_to_json(ws, {defval:''});
     invOrderFileName = fname;
     invOrderLoadedAt = savedAt;
-    invShowOrderInfo(fname, invOrderData.length);
+    // 추가 업로드 파일들도 복원
+    try {
+      const appended = JSON.parse(localStorage.getItem('invOrderAppended')||'[]');
+      appended.forEach(a => {
+        if (a && Array.isArray(a.rows) && a.rows.length) {
+          invOrderData = invOrderData.concat(a.rows);
+          if (a.fname) invOrderFileName += ' + ' + a.fname;
+        }
+      });
+    } catch(_e) {}
+    invShowOrderInfo(invOrderFileName, invOrderData.length);
     invCheckReady();
   } catch(e) { console.warn('주문파일 복원 실패:', e); }
 }
@@ -2444,7 +2463,7 @@ function invLoadTracks(files) {
         // rawRows 방식: 20행 스캔하여 헤더 행 자동 탐지
         const rawRows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
         const norm = c => String(c).replace(/\s/g,'').toLowerCase();
-        const isTrackCol   = c => /운송장|송장|배송번호|등기번호|추적번호/.test(norm(c));
+        const isTrackCol   = c => /운송장|송장|배송번호|등기번호|추적번호|대한통운|한진|롯데|우체국|로젠|경동|cj/.test(norm(c));
         const isNameCol    = c => { const n = norm(c); return /받는분성명|수취인명|수령자|수취인|받는분이름|받는사람|수신자|수령인|수화인|수하인/.test(n) && !/주소|전화|전번|연락처|우편/.test(n); };
         const isCourierCol = c => /택배사|배송사|운송사|courier/.test(norm(c));
         const isAddrCol     = c => { const n = norm(c); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); };
@@ -2769,6 +2788,7 @@ function invReset() {
     invOrderData = null; invOrderWb = null; invOrderFileName = '';
     invTrackFiles = []; invResultData = null;
     invResolveCtx = null; invPreviewRows = [];
+    localStorage.removeItem('invOrderAppended');
     const ids = ['invOrderInfo','invTrackList','invSummary'];
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
     const vendorCard = document.getElementById('invVendorCard');
