@@ -2746,7 +2746,14 @@ function invDownload() {
     const wbCopy = JSON.parse(JSON.stringify(invOrderWb));
     const newWs = XLSX.utils.json_to_sheet(invResultData, {header: header.length ? header : undefined});
     wbCopy.Sheets[wbCopy.SheetNames[0]] = newWs;
-    const fname = (invOrderFileName||'송장입력').replace(/\.(xls|xlsx)$/i, '') + '_송장입력.xlsx';
+    // 파일명: 운송장(거래처) 이름 기준 — '{거래처1_거래처2..}_송장입력.xlsx'
+    const vendorNames = [...new Set((invTrackFiles||[]).map(t => (t.vendorName||'').trim()).filter(Boolean))];
+    const base = vendorNames.length > 0
+      ? vendorNames.join('_')
+      : (((invOrderFileName||'').split(' + ')[0] || '송장입력').replace(/\.(xls|xlsx)$/i, ''));
+    // 파일명에 쓸 수 없는 문자 정리
+    const safe = base.replace(/[\\/:*?"<>|]/g, '_');
+    const fname = safe + '_송장입력.xlsx';
     XLSX.writeFile(wbCopy, fname);
     const statusEl = document.getElementById('invStatus');
     if (statusEl) statusEl.textContent = '✅ 다운로드 완료: ' + fname;
