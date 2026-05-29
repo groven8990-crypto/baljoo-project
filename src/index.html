@@ -120,6 +120,7 @@
   <button class="tab-btn" id="tabBtn-daily" onclick="switchTab('daily')">📋 일일현황</button>
   <button class="tab-btn" id="tabBtn-report" onclick="switchTab('report')">📊 일일보고서</button>
   <button class="tab-btn" id="tabBtn-salesreport" onclick="switchTab('salesreport')">📈 매출 보고용</button>
+  <button class="tab-btn" id="tabBtn-weeklyreport" onclick="switchTab('weeklyreport')">📆 주간 매출</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -5573,9 +5574,49 @@ function reconExportXlsx() {
       <button class="btn btn-green" onclick="srExportImage()" id="srImageBtn" disabled>🖼 이미지(PNG) 저장</button>
     </div>
   </div>
+  <div class="card">
+    <div class="card-title">🐟 디네트 발주서 (박대) 업로드 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택</span></div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">규격 컬럼(D열)에 <code>4p</code> / <code>3p</code> / <code>2p+</code> 가, 수량(E열)이 들어있는 발주 엑셀이에요. 묶음 할인 자동 계산해서 보고서에 합쳐줍니다.</div>
+    <div class="upload-zone" id="srDinetteZone" onclick="document.getElementById('srDinetteFile').click()"
+         ondragover="event.preventDefault();this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="srDropDinette(event)">
+      <div style="font-size:24px;margin-bottom:4px">🐟</div>
+      <div style="font-weight:600;margin-bottom:2px">그로븐_발주-디네트.xlsx 끌어다 놓거나 클릭</div>
+      <div style="font-size:11px;color:var(--text3)">없으면 디네트 없이 보고서 만들어요</div>
+      <input type="file" id="srDinetteFile" accept=".xls,.xlsx" style="display:none" onchange="srLoadDinette(this.files[0]); this.value='';">
+    </div>
+    <div id="srDinetteInfo" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+  </div>
   <div id="srReport"></div>
 </div>
 </div><!-- /tab-salesreport -->
+
+<!-- ══════════════════════════════════════════════════════════
+     TAB 10: 주간 매출 보고용 (Weekly Sales Report)
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-weeklyreport">
+<div class="container">
+  <div class="card">
+    <div class="card-title">📆 주간 매출 보고용</div>
+    <div class="alert alert-info" style="margin-bottom:14px;font-size:12px">
+      매출 보고용에서 매일 <strong>📊 보고서 생성</strong>을 누르면 그날 데이터가 자동으로 누적돼요. 여기서 주차를 골라 합산 보고서를 만들 수 있어요.
+    </div>
+    <div id="wrStatus" style="margin-bottom:12px;font-size:13px;color:var(--text2)"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label style="font-size:12px;color:var(--text2)">아무날짜
+        <input type="date" id="wrAnyDate" class="inp" style="width:160px;font-size:12px;margin-left:6px">
+      </label>
+      <span style="font-size:11px;color:var(--text3)" id="wrWeekHint">— 그 날이 속한 월~일 주간으로 자동 계산</span>
+      <button class="btn btn-primary" onclick="wrRender()" id="wrBuildBtn">📊 주간 보고서 생성</button>
+      <button class="btn btn-green" onclick="wrExportImage()" id="wrImageBtn" disabled>🖼 이미지(PNG) 저장</button>
+      <button class="btn btn-sm" onclick="wrShowHistory()" style="font-size:11px">📋 누적 이력 보기</button>
+    </div>
+    <div id="wrHistoryBox" style="display:none;margin-top:10px;font-size:12px"></div>
+  </div>
+  <div id="wrReport"></div>
+</div>
+</div><!-- /tab-weeklyreport -->
 
 <script>
 // ══════════════════════════════════════════════════════════
@@ -6457,6 +6498,113 @@ function srBrandSection(title, color, agg){
       </tr></tfoot>
     </table>`;
 }
+// ─ 디네트 박대 ─
+const SR_DINETTE_SPEC = {
+  '4p':  {price:15100, ship:4500},
+  '3p':  {price:17400, ship:4500},
+  '2p+': {price:22200, ship:4500}
+};
+const SR_DINETTE_UNIT = {'4p':2, '3p':2, '2p+':8};
+const SR_DINETTE_DISC = 4000;
+let srDinetteRows = null;
+let srDinetteFileName = '';
+function srDropDinette(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) srLoadDinette(f);
+}
+function srLoadDinette(file){
+  if (!file) return;
+  srDinetteFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''}).slice(1);
+      srDinetteRows = rows.filter(r => String(r[3]||'').trim() in SR_DINETTE_SPEC);
+      const info = document.getElementById('srDinetteInfo');
+      const valid = srDinetteRows.length;
+      info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(file.name)} — ${valid}건 인식</span> <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearDinette()">제거</button>`;
+    } catch(err) {
+      document.getElementById('srDinetteInfo').innerHTML = '<span style="color:var(--danger)">❌ '+escHtml(err.message)+'</span>';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+function srClearDinette(){
+  srDinetteRows = null; srDinetteFileName = '';
+  document.getElementById('srDinetteInfo').innerHTML = '';
+}
+function srDinettePrice(spec, qty){
+  const unit = SR_DINETTE_UNIT[spec] || 2;
+  const price = (SR_DINETTE_SPEC[spec]||{}).price || 0;
+  if (!price) return 0;
+  const bundles = Math.floor(qty / unit);
+  if (bundles === 0) return price;
+  return price * bundles - SR_DINETTE_DISC * (bundles - 1);
+}
+function srAggregateDinette(rows){
+  if (!rows || !rows.length) return {count:0, sales:0, byCfg:{}};
+  let sales = 0;
+  const byCfg = {};
+  for (const r of rows) {
+    const spec = String(r[3]||'').trim();
+    if (!(spec in SR_DINETTE_SPEC)) continue;
+    const qty = parseInt(r[4]) || SR_DINETTE_UNIT[spec];
+    const price = srDinettePrice(spec, qty);
+    sales += price;
+    if (!byCfg[spec]) byCfg[spec] = {count:0, sales:0, qty:0};
+    byCfg[spec].count++;
+    byCfg[spec].sales += price;
+    byCfg[spec].qty += qty;
+  }
+  return {count: rows.length, sales, byCfg};
+}
+function srDinetteSection(agg){
+  if (agg.count === 0) return '';
+  const DN='#7B4B00', NAVY='#1E3A5F';
+  const totalQty = Object.values(agg.byCfg).reduce((s,v)=>s+v.qty, 0);
+  const rows = Object.entries(agg.byCfg).sort((a,b)=>b[1].sales-a[1].sales).map(([k,v],i)=>`
+    <tr style="background:${i%2===0?'#fff':'#F2F2F2'}">
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${escHtml(k)}</td>
+      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
+      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.qty.toLocaleString()}개</td>
+      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.sales.toLocaleString()}원</td>
+    </tr>`).join('');
+  return `
+    <div style="background:${DN};color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">디네트 · 박대</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:${NAVY}">
+        <th style="padding:7px 12px;text-align:left;color:#fff;font-weight:700">규격</th>
+        <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">주문건수</th>
+        <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">총 수량</th>
+        <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">매출액</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="background:${NAVY};font-weight:700">
+        <td style="padding:7px 12px;color:#fff">합계</td>
+        <td style="padding:7px 12px;text-align:right;color:#fff">${agg.count.toLocaleString()}건</td>
+        <td style="padding:7px 12px;text-align:right;color:#fff">${totalQty.toLocaleString()}개</td>
+        <td style="padding:7px 12px;text-align:right;color:#fff">${agg.sales.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>`;
+}
+
+// ─ 이력 누적 ─
+const SR_HISTORY_KEY = 'yb_sales_history';
+function srLoadHistory(){
+  try { return JSON.parse(localStorage.getItem(SR_HISTORY_KEY)||'[]'); }
+  catch { return []; }
+}
+function srSaveSnapshot(snap){
+  const all = srLoadHistory().filter(s => s.date !== snap.date);
+  all.push(snap);
+  all.sort((a,b)=>a.date<b.date?-1:1);
+  try { localStorage.setItem(SR_HISTORY_KEY, JSON.stringify(all)); } catch(e){}
+}
+
 function srRender(){
   const statusEl=document.getElementById('srStatus');
   if(!Array.isArray(allOrders)||allOrders.length===0){
@@ -6466,9 +6614,12 @@ function srRender(){
   const gr=allOrders.filter(o=>srBrand(o.alias)==='grobn');
   const yb=allOrders.filter(o=>srBrand(o.alias)==='yb');
   const grAgg=srAggregate(gr), ybAgg=srAggregate(yb);
-  const totalSales=grAgg.totalSales+ybAgg.totalSales;
-  const totalCnt=grAgg.count+ybAgg.count;
-  // 보고일자: 입력 없으면 첫 주문의 일자, 그것도 없으면 오늘
+  const dnAgg=srAggregateDinette(srDinetteRows);
+  const selfSales = grAgg.totalSales + ybAgg.totalSales;
+  const selfCnt   = grAgg.count + ybAgg.count;
+  const totalSales = selfSales + dnAgg.sales;
+  const totalCnt   = selfCnt + dnAgg.count;
+  // 보고일자
   let dateStr=document.getElementById('srReportDate').value;
   if(!dateStr){
     const first=allOrders.find(o=>o.order_date);
@@ -6488,24 +6639,32 @@ function srRender(){
           <div style="font-size:11px;color:#888;margin-top:2px">총 ${totalCnt.toLocaleString()}건</div>
         </div>
         <div>
-          <div style="font-size:11px;color:#888">로또상회 (그로븐)</div>
-          <div style="font-size:18px;font-weight:700;color:#1E5F3A;margin-top:2px">${grAgg.totalSales.toLocaleString()}원</div>
-          <div style="font-size:11px;color:#888;margin-top:2px">${grAgg.count.toLocaleString()}건</div>
+          <div style="font-size:11px;color:#888">자사 매출액</div>
+          <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px">${selfSales.toLocaleString()}원</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
         </div>
         <div>
-          <div style="font-size:11px;color:#888">자꾸가게 (YB)</div>
-          <div style="font-size:18px;font-weight:700;color:#3A1E5F;margin-top:2px">${ybAgg.totalSales.toLocaleString()}원</div>
-          <div style="font-size:11px;color:#888;margin-top:2px">${ybAgg.count.toLocaleString()}건</div>
+          <div style="font-size:11px;color:#888">디네트 매출액</div>
+          <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${dnAgg.sales.toLocaleString()}원</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">${dnAgg.count.toLocaleString()}건</div>
         </div>
       </div>
       ${srBrandSection('로또상회 (그로븐)', '#1E5F3A', grAgg)}
       ${srBrandSection('자꾸가게 (옐로우브릿지)', '#3A1E5F', ybAgg)}
+      ${srDinetteSection(dnAgg)}
       <div style="margin-top:18px;font-size:10px;color:#888;text-align:right">발주일자 ${dateStr} 기준 · 발주 자동화 시스템</div>
     </div>`;
   document.getElementById('srReport').innerHTML=html;
   document.getElementById('srImageBtn').disabled=false;
+  // 이력 자동 저장 (주간 보고용)
+  srSaveSnapshot({
+    date: dateStr,
+    grAgg, ybAgg, dnAgg,
+    selfSales, selfCnt, totalSales, totalCnt,
+    savedAt: Date.now()
+  });
   const sumAmt = totalSales > 0 ? '' : ' <span style="color:var(--warn);font-size:11px">(주문금액 0 — AB/AH/AI 컬럼이 다른 위치일 수 있어요)</span>';
-  statusEl.innerHTML=`<span style="color:var(--success)">✅ 보고서 생성: 로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건 · 총 ${totalCnt}건 / 매출 ${totalSales.toLocaleString()}원</span>${sumAmt}`;
+  statusEl.innerHTML=`<span style="color:var(--success)">✅ 보고서 생성 · 누적 저장됨 — 로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건 · 디네트 ${dnAgg.count}건 · 총 ${totalCnt}건 / 매출 ${totalSales.toLocaleString()}원</span>${sumAmt}`;
 }
 function srExportImage(){
   const el=document.getElementById('srReportContent');
@@ -6518,6 +6677,179 @@ function srExportImage(){
     link.href=canvas.toDataURL('image/png');
     document.body.appendChild(link);link.click();document.body.removeChild(link);
   }).catch(e=>alert('이미지 저장 실패: '+e.message));
+}
+
+// ══════════════════════════════════════════════════════════
+// 주간 매출 보고용
+// ══════════════════════════════════════════════════════════
+function wrWeekRange(anyDate){
+  // 월요일~일요일 범위 계산
+  const d = new Date(anyDate);
+  if (isNaN(d)) return null;
+  const wd = (d.getDay()+6)%7; // 월=0..일=6
+  const mon = new Date(d); mon.setDate(d.getDate()-wd);
+  const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+  const fmt = x => x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+  return {start: fmt(mon), end: fmt(sun), mon, sun};
+}
+function wrMergeAggs(snaps, brandKey){
+  // snaps: [{grAgg, ybAgg, dnAgg, ...}]
+  // brandKey: 'grAgg' | 'ybAgg'
+  const platMap={}, prodMap={};
+  let totalSales=0, count=0;
+  for (const s of snaps) {
+    const a = s[brandKey]; if (!a) continue;
+    totalSales += a.totalSales||0;
+    count += a.count||0;
+    for (const [p,v] of Object.entries(a.platMap||{})) {
+      if (!platMap[p]) platMap[p] = {count:0,sales:0};
+      platMap[p].count += v.count||0;
+      platMap[p].sales += v.sales||0;
+    }
+    for (const [p,v] of Object.entries(a.prodMap||{})) {
+      if (!prodMap[p]) prodMap[p] = {count:0,sales:0};
+      prodMap[p].count += v.count||0;
+      prodMap[p].sales += v.sales||0;
+    }
+  }
+  return {totalSales, count, platMap, prodMap};
+}
+function wrMergeDinette(snaps){
+  let sales=0, count=0;
+  const byCfg = {};
+  for (const s of snaps) {
+    const a = s.dnAgg; if (!a) continue;
+    sales += a.sales||0;
+    count += a.count||0;
+    for (const [k,v] of Object.entries(a.byCfg||{})) {
+      if (!byCfg[k]) byCfg[k] = {count:0, sales:0, qty:0};
+      byCfg[k].count += v.count||0;
+      byCfg[k].sales += v.sales||0;
+      byCfg[k].qty   += v.qty||0;
+    }
+  }
+  return {count, sales, byCfg};
+}
+function wrRender(){
+  const status = document.getElementById('wrStatus');
+  let any = document.getElementById('wrAnyDate').value;
+  if (!any) { any = new Date().toISOString().slice(0,10); document.getElementById('wrAnyDate').value = any; }
+  const range = wrWeekRange(any);
+  if (!range) { status.innerHTML='<span style="color:var(--danger)">날짜가 잘못됐어요</span>'; return; }
+  const hist = srLoadHistory();
+  const inWeek = hist.filter(s => s.date >= range.start && s.date <= range.end);
+  if (inWeek.length === 0) {
+    document.getElementById('wrReport').innerHTML = '';
+    document.getElementById('wrImageBtn').disabled = true;
+    status.innerHTML = `<span style="color:var(--warn)">⚠ ${range.start} ~ ${range.end} 기간에 저장된 일일 보고가 없어요. 매출 보고용 탭에서 매일 '보고서 생성'을 눌러 누적하세요.</span>`;
+    return;
+  }
+  const grAgg = wrMergeAggs(inWeek, 'grAgg');
+  const ybAgg = wrMergeAggs(inWeek, 'ybAgg');
+  const dnAgg = wrMergeDinette(inWeek);
+  const selfSales = grAgg.totalSales + ybAgg.totalSales;
+  const selfCnt   = grAgg.count + ybAgg.count;
+  const totalSales = selfSales + dnAgg.sales;
+  const totalCnt   = selfCnt + dnAgg.count;
+  // 일자별 표
+  const byDate = inWeek.sort((a,b)=>a.date<b.date?-1:1);
+  const NAVY='#1E3A5F';
+  const dailyRows = byDate.map((s,i)=>`
+    <tr style="background:${i%2===0?'#fff':'#F2F2F2'}">
+      <td style="padding:7px 12px;border-bottom:1px solid #eee">${escHtml(s.date)}</td>
+      <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.grAgg?.count||0).toLocaleString()}건</td>
+      <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.ybAgg?.count||0).toLocaleString()}건</td>
+      <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.dnAgg?.count||0).toLocaleString()}건</td>
+      <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.totalSales||0).toLocaleString()}원</td>
+    </tr>`).join('');
+  const html = `
+    <div id="wrReportContent" class="card" style="background:#fff;padding:24px;max-width:920px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
+      <div style="font-size:20px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 주간 매출 현황</div>
+      <div style="font-size:11px;color:#888;margin-top:2px">월~일 누적 · 누적된 일일 ${inWeek.length}건</div>
+      <div style="background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
+        <div>
+          <div style="font-size:11px;color:#888">총 매출액</div>
+          <div style="font-size:22px;font-weight:700;color:#1A56DB;margin-top:2px">${totalSales.toLocaleString()}원</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">총 ${totalCnt.toLocaleString()}건</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#888">자사 매출액</div>
+          <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px">${selfSales.toLocaleString()}원</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#888">디네트 매출액</div>
+          <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${dnAgg.sales.toLocaleString()}원</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">${dnAgg.count.toLocaleString()}건</div>
+        </div>
+      </div>
+      <div style="background:#555;color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">일자별 요약</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:${NAVY}">
+          <th style="padding:7px 12px;text-align:left;color:#fff;font-weight:700">일자</th>
+          <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">로또상회</th>
+          <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">자꾸가게</th>
+          <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">디네트</th>
+          <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">매출 합계</th>
+        </tr></thead>
+        <tbody>${dailyRows}</tbody>
+        <tfoot><tr style="background:${NAVY};font-weight:700">
+          <td style="padding:7px 12px;color:#fff">합계</td>
+          <td style="padding:7px 12px;text-align:right;color:#fff">${grAgg.count.toLocaleString()}건</td>
+          <td style="padding:7px 12px;text-align:right;color:#fff">${ybAgg.count.toLocaleString()}건</td>
+          <td style="padding:7px 12px;text-align:right;color:#fff">${dnAgg.count.toLocaleString()}건</td>
+          <td style="padding:7px 12px;text-align:right;color:#fff">${totalSales.toLocaleString()}원</td>
+        </tr></tfoot>
+      </table>
+      ${srBrandSection('로또상회 (그로븐) — 주간 누적', '#1E5F3A', grAgg)}
+      ${srBrandSection('자꾸가게 (옐로우브릿지) — 주간 누적', '#3A1E5F', ybAgg)}
+      ${srDinetteSection(dnAgg)}
+      <div style="margin-top:18px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템</div>
+    </div>`;
+  document.getElementById('wrReport').innerHTML = html;
+  document.getElementById('wrImageBtn').disabled = false;
+  status.innerHTML = `<span style="color:var(--success)">✅ 주간 보고서: ${range.start} ~ ${range.end} · ${inWeek.length}일 합산 · 총 ${totalSales.toLocaleString()}원</span>`;
+}
+function wrExportImage(){
+  const el = document.getElementById('wrReportContent');
+  if (!el) { alert('먼저 주간 보고서를 생성해주세요'); return; }
+  if (typeof html2canvas !== 'function') { alert('html2canvas 없음'); return; }
+  html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
+    const link = document.createElement('a');
+    const range = wrWeekRange(document.getElementById('wrAnyDate').value || new Date().toISOString().slice(0,10));
+    const tag = range ? (range.start+'_'+range.end).replace(/-/g,'') : new Date().toISOString().slice(0,10).replace(/-/g,'');
+    link.download = `주간매출보고_${tag}.png`;
+    link.href = canvas.toDataURL('image/png');
+    document.body.appendChild(link);link.click();document.body.removeChild(link);
+  }).catch(e=>alert('이미지 저장 실패: '+e.message));
+}
+function wrShowHistory(){
+  const box = document.getElementById('wrHistoryBox');
+  if (box.style.display === 'none' || box.style.display === '') {
+    const hist = srLoadHistory();
+    if (hist.length === 0) {
+      box.innerHTML = '<span style="color:var(--text3)">누적된 일일 보고가 없습니다.</span>';
+    } else {
+      const rows = hist.sort((a,b)=>a.date<b.date?1:-1).map(s=>`
+        <tr>
+          <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${escHtml(s.date)}</td>
+          <td style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border)">${(s.totalSales||0).toLocaleString()}원</td>
+          <td style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border)">${(s.totalCnt||0).toLocaleString()}건</td>
+          <td style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border)"><button class="btn btn-danger btn-sm" style="font-size:10px;padding:1px 6px" onclick="wrDeleteSnap('${escHtml(s.date)}')">삭제</button></td>
+        </tr>`).join('');
+      box.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--bg);border:1px solid var(--border)">
+        <thead><tr><th style="padding:4px 8px;text-align:left">일자</th><th style="padding:4px 8px;text-align:right">매출</th><th style="padding:4px 8px;text-align:right">건수</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table>
+        <div style="margin-top:6px;font-size:11px;color:var(--text3)">총 ${hist.length}개 일일 보고 누적</div>`;
+    }
+    box.style.display = 'block';
+  } else { box.style.display = 'none'; }
+}
+function wrDeleteSnap(date){
+  if (!confirm(date+' 의 누적 데이터를 삭제할까요?')) return;
+  const filtered = srLoadHistory().filter(s=>s.date!==date);
+  try { localStorage.setItem(SR_HISTORY_KEY, JSON.stringify(filtered)); } catch(e){}
+  wrShowHistory(); wrShowHistory(); // toggle off then on
 }
 </script>
 
