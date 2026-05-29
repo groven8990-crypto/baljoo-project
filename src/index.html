@@ -1486,36 +1486,23 @@ function buildRows(vk,orders,alias){
       const h = ['마켓','상품번호','옵션코드','옵션명','수량','수령자명','우편번호','배송주소','배송 상세주소\n(선택입력)','휴대전화','추가연락처\n(선택입력)','쇼핑몰명\n(도매매 전용)','전달사항','배송요청사항\n(도매매 전용)','통관고유번호\n(해외직배송 전용)'];
       return [h, ...orders.map(o => {
         const vc = String(o.vendor_code || '');
-        // ] 있으면 그 뒤, 없으면 전체가 상품번호 영역
+        // 상품번호는 vendor_code의 ] 뒤 / 앞 부분
         const afterBracket = vc.includes(']') ? vc.split(']')[1] : vc;
         const slashIdx = afterBracket.indexOf('/');
         const productNo = (slashIdx >= 0 ? afterBracket.slice(0, slashIdx) : afterBracket).trim();
-        let optCode = '', optName = o.option_name || '';
-        if (slashIdx >= 0) {
-          // -수량 제거 후 분석
-          let raw = afterBracket.slice(slashIdx + 1).replace(/-\d+$/, '').trim();
+        // 옵션은 o.option_name(직접수정/규칙/파싱 결과)을 기준으로 — vendor_code 재파싱 X
+        let optCode = '', optName = '';
+        const raw = String(o.option_name || '').trim().replace(/-\d+$/, '').replace(/_\d+$/, '').trim();
+        if (raw) {
           const colonIdx = raw.indexOf(':');
           if (colonIdx >= 0) {
             const before = raw.slice(0, colonIdx).trim();
             const after  = raw.slice(colonIdx + 1).trim();
-            if (/^\d+$/.test(before)) {
-              // 숫자:옵션명 → optCode=숫자, optName=옵션명
-              optCode = before;
-              optName = after || o.option_name || '';
-            } else {
-              // 한글:~ → 전체가 옵션명
-              optCode = '';
-              optName = raw || o.option_name || '';
-            }
+            if (/^\d+$/.test(before)) { optCode = before; optName = after; }   // 숫자:옵션명
+            else { optName = raw; }                                              // 한글:~ → 통째
           } else {
-            // 콜론 없음: 숫자면 optCode, 한글이면 optName
-            if (/^\d+$/.test(raw)) {
-              optCode = raw;
-              optName = o.option_name || '';
-            } else {
-              optCode = '';
-              optName = raw || o.option_name || '';
-            }
+            if (/^\d+$/.test(raw)) optCode = raw;
+            else optName = raw;
           }
         }
         return [
