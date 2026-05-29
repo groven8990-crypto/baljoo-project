@@ -255,14 +255,18 @@
           <input class="inp" id="newVendorCustom" placeholder="발주처 직접 입력" style="flex:1;min-width:0;display:none">
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end">
+      <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:10px;align-items:end">
         <div>
           <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">변경할 상품코드 <span style="color:var(--danger)">★</span></label>
           <input class="inp" id="newCode" placeholder="예: 일비]백찰옥수수">
         </div>
         <div>
+          <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">상품명 키워드 <span style="font-weight:400;color:var(--text3)">(상품명에 포함되면 매칭)</span></label>
+          <input class="inp" id="newProductKw" placeholder="예: 오색 칵테일 토마토" style="font-size:12px">
+        </div>
+        <div>
           <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">옵션 키워드 <span style="font-weight:400;color:var(--text3)">(같은 코드·다른 옵션일 때)</span></label>
-          <input class="inp" id="newOptKw" placeholder="예: 블랙, 베이지" style="font-size:12px">
+          <input class="inp" id="newOptKw" placeholder="예: 1kg, 2kg" style="font-size:12px">
         </div>
         <div><button class="btn btn-primary" id="addCodeBtn" onclick="addCode()" style="height:36px">+ 추가</button></div>
       </div>
@@ -959,20 +963,29 @@ function applyOverride(vc, so){
 // ══════════════════════════════════════════════════════════
 // 발주처 감지
 // ══════════════════════════════════════════════════════════
-function detectVendor(vc) {
-  if (!vc) return null;
-  const c = String(vc).trim();
-  for (const [v, prefixes] of Object.entries(VENDOR_PREFIXES))
-    for (const p of prefixes)
-      if (c.toLowerCase().startsWith(p.toLowerCase())) return v;
-  // 등록 코드 직접 매칭
+function detectVendor(vc, productName) {
+  const c = String(vc||'').trim();
+  const pn = String(productName||'').toLowerCase();
+  if (!c && !pn) return null;
+  if (c) {
+    for (const [v, prefixes] of Object.entries(VENDOR_PREFIXES))
+      for (const p of prefixes)
+        if (c.toLowerCase().startsWith(p.toLowerCase())) return v;
+  }
+  // 등록 코드 매칭: code/originalCode 또는 productKw(상품명 키워드)
   const found = loadCodes().find(cc => {
-    const codeBase = (cc.code||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
-    const origBase = (cc.originalCode||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
-    return c === cc.code || (codeBase && c.startsWith(codeBase)) ||
-           (cc.originalCode && (c === cc.originalCode || (origBase && c.startsWith(origBase)))) ||
-           // 발주처]코드 형식에서 ]뒤 부분만으로도 매칭 (예: 63781045 → 도매꾹]63781045)
-           (cc.code && cc.code.includes(']') && cc.code.split(']')[1].trim() === c);
+    if (c) {
+      const codeBase = (cc.code||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
+      const origBase = (cc.originalCode||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
+      if (c === cc.code) return true;
+      if (codeBase && c.startsWith(codeBase)) return true;
+      if (cc.originalCode && (c === cc.originalCode || (origBase && c.startsWith(origBase)))) return true;
+      // 발주처]코드 형식에서 ]뒤 부분만으로도 매칭 (예: 63781045 → 도매꾹]63781045)
+      if (cc.code && cc.code.includes(']') && cc.code.split(']')[1].trim() === c) return true;
+    }
+    // 상품명 키워드 매칭 — 코드가 비표준이어도 상품명으로 발주처 결정
+    if (cc.productKw && pn && pn.includes(String(cc.productKw).toLowerCase())) return true;
+    return false;
   });
   return found ? found.vendor : null;
 }
@@ -1322,7 +1335,7 @@ function handleFile(file) {
       for(let i=hr+1;i<rows.length;i++){
         const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
-        const vk=detectVendor(vc),alias=extractAlias(r[C.al]);
+        const vk=detectVendor(vc,pn),alias=extractAlias(r[C.al]);
         const parsed=parseParts(vc,vo,pn,so,dop);
         const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||''};
         allOrders.push(order);
@@ -1650,9 +1663,10 @@ function renderCodeList(){
       ?`<div style="font-size:12px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(opText)}">${opText}</div>`
       :`<div style="font-size:12px;color:var(--text3)">—</div>`;
     const optLine=ooText?`<div style="font-size:11px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(ooText)}">${ooText}</div>`:'';
-    const optKwBadge=cc.optKw?`<div style="display:inline-block;margin-top:3px;font-size:10px;background:#fef3c7;color:#92400e;border:1px solid #fbbf24;border-radius:10px;padding:1px 7px;white-space:nowrap">🎨 옵션: ${escHtml(cc.optKw)}</div>`:'';
+    const optKwBadge=cc.optKw?`<div style="display:inline-block;margin-top:3px;margin-right:3px;font-size:10px;background:#fef3c7;color:#92400e;border:1px solid #fbbf24;border-radius:10px;padding:1px 7px;white-space:nowrap">🎨 옵션: ${escHtml(cc.optKw)}</div>`:'';
+    const productKwBadge=cc.productKw?`<div style="display:inline-block;margin-top:3px;margin-right:3px;font-size:10px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:10px;padding:1px 7px;white-space:nowrap">🔎 상품명: ${escHtml(cc.productKw)}</div>`:'';
     html+=`<div class="code-item" id="codeitem-${i}" style="${G}">
-      <div style="min-width:0"><div class="code-tag" style="font-size:11px;word-break:break-all">${orig}</div>${autoBadge}${optKwBadge}</div>
+      <div style="min-width:0"><div class="code-tag" style="font-size:11px;word-break:break-all">${orig}</div>${autoBadge}${productKwBadge}${optKwBadge}</div>
       <div style="min-width:0;padding-top:2px">${productLine}${optLine}</div>
       <div style="min-width:0;padding-top:2px">${changed}</div>
       <div style="display:flex;gap:6px;padding-top:2px;white-space:nowrap"><button class="btn btn-sm" onclick="editCode(${i})">✏️</button><button class="btn btn-danger" onclick="removeCode(${i})">삭제</button></div>
@@ -1669,6 +1683,7 @@ function editCode(i){
   document.getElementById('newCode').value=cc.code;
   setVendorSelect(cc.vendor||'');
   const okwEl=document.getElementById('newOptKw'); if(okwEl) okwEl.value=cc.optKw||'';
+  const pkwEl=document.getElementById('newProductKw'); if(pkwEl) pkwEl.value=cc.productKw||'';
   // 주문 원본 정보 표시 (있으면)
   let opText=cc.orderProduct||'', ooText=cc.orderOpt||'';
   if(!opText && typeof allOrders!=='undefined'){
@@ -1707,6 +1722,7 @@ function cancelEditCode(){
   document.getElementById('newCode').value='';
   setVendorSelect('');
   const okw=document.getElementById('newOptKw'); if(okw) okw.value='';
+  const pkw=document.getElementById('newProductKw'); if(pkw) pkw.value='';
   document.getElementById('addError').textContent='';
   document.getElementById('prefillInfo').style.display='none';
   document.getElementById('prefillOrigCode').textContent='';
@@ -1797,6 +1813,7 @@ function addCode(){
   const originalCode=document.getElementById('newOriginalCode').value.trim();
   const code=document.getElementById('newCode').value.trim();
   const optKw=(document.getElementById('newOptKw')?.value||'').trim();
+  const productKw=(document.getElementById('newProductKw')?.value||'').trim();
   const errEl=document.getElementById('addError');
   if(!code){errEl.textContent='변경할 상품코드를 입력해 주세요.';return;}
   const vendor=getSelectedVendor();
@@ -1809,6 +1826,7 @@ function addCode(){
   if(_editingCodeIdx>=0){
     const upd={originalCode:originalCode||code, code, vendor, product};
     if(optKw) upd.optKw=optKw;
+    if(productKw) upd.productKw=productKw;
     codes[_editingCodeIdx]=upd;
     saveCodes(codes);
     cancelEditCode();
@@ -1821,6 +1839,7 @@ function addCode(){
   const orderOpt=document.getElementById('prefillOpt').textContent||'';
   const entry={originalCode:originalCode||code, code, vendor, product};
   if(optKw) entry.optKw=optKw;
+  if(productKw) entry.productKw=productKw;
   if(orderProduct&&orderProduct!=='—') entry.orderProduct=orderProduct;
   if(orderOpt&&orderOpt!=='—') entry.orderOpt=orderOpt;
   codes.push(entry);
@@ -1828,22 +1847,24 @@ function addCode(){
   document.getElementById('newOriginalCode').value='';
   document.getElementById('newCode').value='';
   const okw=document.getElementById('newOptKw'); if(okw) okw.value='';
+  const pkw=document.getElementById('newProductKw'); if(pkw) pkw.value='';
   setVendorSelect('');
   renderCodeList();renderCodeMappingList();
   if(allOrders.length>0){
-    const targetCode = entry.originalCode || entry.code;
     const beforeUnmatchedTotal = unmatchedList.length;
-    const beforeTarget = unmatchedList.filter(o => o.vendor_code === targetCode).length;
     rematchAllOrders();renderStep2();renderUnmatchedHints();
     const afterUnmatchedTotal = unmatchedList.length;
-    const afterTarget = unmatchedList.filter(o => o.vendor_code === targetCode).length;
     const newlyMatched = beforeUnmatchedTotal - afterUnmatchedTotal;
-    let msg = '✅ 등록 완료'; let color = 'var(--success)';
-    if (beforeTarget > 0) {
-      if (afterTarget === 0) msg += ` — 이 코드(${targetCode}) ${beforeTarget}건 매칭 성공`;
-      else { msg = `⚠ 등록은 됐는데 이 코드(${targetCode})가 여전히 미매칭(${afterTarget}건) — 발주처 선택을 확인하세요`; color = 'var(--danger)'; }
+    let msg, color;
+    if (newlyMatched > 0) {
+      msg = `✅ 등록 완료 — ${newlyMatched}건 매칭 성공 (미매칭 ${beforeUnmatchedTotal}→${afterUnmatchedTotal}건)`;
+      color = 'var(--success)';
+    } else if (beforeUnmatchedTotal > 0) {
+      msg = `⚠ 등록은 됐는데 어떤 주문과도 매칭되지 않았어요 — 발주처/상품명 키워드/변경할 상품코드를 확인하세요`;
+      color = 'var(--warn)';
+    } else {
+      msg = '✅ 등록 완료'; color = 'var(--success)';
     }
-    if (newlyMatched > 0) msg += ` · 미매칭 ${beforeUnmatchedTotal}→${afterUnmatchedTotal}건`;
     errEl.style.color = color; errEl.textContent = msg;
     setTimeout(()=>{ if(errEl.textContent===msg){errEl.textContent=''; errEl.style.color='';} }, 8000);
   }
@@ -1959,7 +1980,7 @@ function autoRegisterBracketCodes(orders){
 function rematchAllOrders(){
   groupedOrders={};unmatchedList=[];
   for(const o of allOrders){
-    const vk=detectVendor(o.vendor_code);
+    const vk=detectVendor(o.vendor_code, o.product);
     const parsed=parseParts(o.vendor_code, o.vendor_opt||'', o.product, o.select_opt, '');
     o.vendor_key=vk;
     o.item_name=parsed.itemName;
@@ -3385,7 +3406,7 @@ function handleFileAdd(file){
       for(let i=hr+1;i<rows.length;i++){
         const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;added++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
-        const vk=detectVendor(vc),alias=extractAlias(r[C.al]);
+        const vk=detectVendor(vc,pn),alias=extractAlias(r[C.al]);
         const parsed=parseParts(vc,vo,pn,so,dop);
         const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||''};
         allOrders.push(order);
