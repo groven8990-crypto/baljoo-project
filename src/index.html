@@ -115,7 +115,6 @@
   <button class="tab-btn" id="tabBtn-expense" onclick="switchTab('expense')">📝 지출결의서</button>
   <button class="tab-btn" id="tabBtn-income" onclick="switchTab('income')">📥 입금결의서</button>
   <button class="tab-btn" id="tabBtn-invoice" onclick="switchTab('invoice')">🚚 송장입력</button>
-  <button class="tab-btn" id="tabBtn-recon" onclick="switchTab('recon')">⚖️ 정산 대조</button>
   <button class="tab-btn" id="tabBtn-price" onclick="switchTab('price')">📊 매입단가표</button>
   <button class="tab-btn" id="tabBtn-daily" onclick="switchTab('daily')">📋 일일현황</button>
   <button class="tab-btn" id="tabBtn-salesreport" onclick="switchTab('salesreport')">📈 매출 보고용</button>
@@ -5190,116 +5189,6 @@ function reconExportXlsx() {
 <!-- ══════════════════════════════════════════════════════════
      TAB 5: 정산 대조
 ══════════════════════════════════════════════════════════ -->
-<div class="tab-content" id="tab-recon">
-<div class="container">
-
-  <!-- 파일 업로드 카드 -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-
-    <!-- 정산서 -->
-    <div class="card">
-      <div class="card-title">📄 정산서 (거래처 발송 파일)</div>
-      <div id="reconSettleZone" style="border:2px dashed var(--border2);border-radius:var(--radius);padding:16px;text-align:center;cursor:pointer;font-size:13px;color:var(--text2)"
-        ondragover="event.preventDefault();this.style.background='var(--bg)'"
-        ondragleave="this.style.background=''"
-        ondrop="event.preventDefault();this.style.background='';reconLoadFile(event.dataTransfer.files[0],'settle')"
-        onclick="document.getElementById('reconSettleInput').click()">
-        📊 정산서 파일을 끌어다 놓거나 클릭
-      </div>
-      <input type="file" id="reconSettleInput" accept=".xlsx,.xls,.csv" style="display:none"
-        onchange="reconLoadFile(this.files[0],'settle');this.value=''">
-      <div id="reconSettleInfo" style="margin-top:8px;font-size:12px;color:var(--text3)"></div>
-    </div>
-
-    <!-- 매입현황 -->
-    <div class="card">
-      <div class="card-title">📋 매입현황 (내 관리 파일)</div>
-      <div id="reconMyZone" style="border:2px dashed var(--border2);border-radius:var(--radius);padding:16px;text-align:center;cursor:pointer;font-size:13px;color:var(--text2)"
-        ondragover="event.preventDefault();this.style.background='var(--bg)'"
-        ondragleave="this.style.background=''"
-        ondrop="event.preventDefault();this.style.background='';reconLoadFile(event.dataTransfer.files[0],'my')"
-        onclick="document.getElementById('reconMyInput').click()">
-        📊 매입현황 파일을 끌어다 놓거나 클릭
-      </div>
-      <input type="file" id="reconMyInput" accept=".xlsx,.xls,.csv" style="display:none"
-        onchange="reconLoadFile(this.files[0],'my');this.value=''">
-      <div id="reconMyInfo" style="margin-top:8px;font-size:12px;color:var(--text3)"></div>
-    </div>
-  </div>
-
-  <!-- 컬럼 매핑 -->
-  <div id="reconMappingCard" class="card" style="display:none">
-    <div class="card-title">⚙️ 대조 컬럼 설정</div>
-    <p style="font-size:13px;color:var(--text2);margin-bottom:14px">두 파일에서 이름·주소·금액에 해당하는 컬럼을 선택하세요.</p>
-    <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead>
-          <tr style="background:var(--bg)">
-            <th style="padding:8px 12px;text-align:left;border:1px solid var(--border)">항목</th>
-            <th style="padding:8px 12px;text-align:left;border:1px solid var(--border)">정산서 컬럼</th>
-            <th style="padding:8px 12px;text-align:left;border:1px solid var(--border)">매입현황 컬럼</th>
-            <th style="padding:8px 12px;text-align:left;border:1px solid var(--border)">비고</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600">이름 <span style="color:var(--danger)">*</span></td>
-            <td style="padding:8px 12px;border:1px solid var(--border)"><select id="rcol_settle_name" class="inp" style="width:100%"></select></td>
-            <td style="padding:8px 12px;border:1px solid var(--border)"><select id="rcol_my_name" class="inp" style="width:100%"></select></td>
-            <td style="padding:8px 12px;border:1px solid var(--border);color:var(--text3);font-size:12px">필수 — 기본 매칭 기준</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600">주소</td>
-            <td style="padding:8px 12px;border:1px solid var(--border)"><select id="rcol_settle_addr" class="inp" style="width:100%"></select></td>
-            <td style="padding:8px 12px;border:1px solid var(--border)"><select id="rcol_my_addr" class="inp" style="width:100%"></select></td>
-            <td style="padding:8px 12px;border:1px solid var(--border);color:var(--text3);font-size:12px">선택 — 동명이인 구분</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600">금액 <span style="color:var(--danger)">*</span></td>
-            <td style="padding:8px 12px;border:1px solid var(--border)"><select id="rcol_settle_amt" class="inp" style="width:100%"></select></td>
-            <td style="padding:8px 12px;border:1px solid var(--border)"><select id="rcol_my_amt" class="inp" style="width:100%"></select></td>
-            <td style="padding:8px 12px;border:1px solid var(--border);color:var(--text3);font-size:12px">필수 — 금액 대조</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600">주문번호</td>
-            <td style="padding:8px 12px;border:1px solid var(--border)"><select id="rcol_settle_order" class="inp" style="width:100%"></select></td>
-            <td style="padding:8px 12px;border:1px solid var(--border)"><select id="rcol_my_order" class="inp" style="width:100%"></select></td>
-            <td style="padding:8px 12px;border:1px solid var(--border);color:var(--text3);font-size:12px">선택 — 추가 참고용</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="reconAddrCheck" checked style="width:14px;height:14px">
-        주소도 함께 대조 (동명이인 구분)
-      </label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-left:16px">
-        <input type="checkbox" id="reconFuzzyName" style="width:14px;height:14px">
-        이름 유사 매칭 (공백·특수문자 무시)
-      </label>
-      <button class="btn btn-primary" style="margin-left:auto" onclick="reconRun()">🔍 대조 실행</button>
-    </div>
-  </div>
-
-  <!-- 결과 -->
-  <div id="reconResultCard" class="card" style="display:none">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-      <div class="card-title" style="margin:0">📊 대조 결과</div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-sm" onclick="reconFilterAll()" id="rfAll" style="background:var(--text);color:#fff">전체</button>
-        <button class="btn btn-sm" onclick="reconFilter('mismatch')" id="rfMismatch">💰 금액불일치</button>
-        <button class="btn btn-sm" onclick="reconFilter('settle_only')" id="rfSettle">📄 정산서에만</button>
-        <button class="btn btn-sm" onclick="reconFilter('my_only')" id="rfMy">📋 내파일에만</button>
-        <button class="btn btn-sm btn-green" onclick="reconExportXlsx()">📥 Excel 내보내기</button>
-      </div>
-    </div>
-    <div id="reconSummary" style="margin-bottom:12px"></div>
-    <div id="reconTable" style="overflow-x:auto"></div>
-  </div>
-
-</div>
-</div><!-- /tab-recon -->
 
 <!-- ══════════════════════════════════════════════════════════
      TAB 6: 매입단가표  (직접 등록/관리)
