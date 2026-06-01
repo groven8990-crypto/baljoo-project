@@ -5476,6 +5476,7 @@ function reconExportXlsx() {
         <input type="date" id="srReportDate" class="inp" style="width:160px;font-size:12px;margin-left:6px">
       </label>
       <button class="btn btn-primary" onclick="srRender()" id="srBuildBtn">📊 보고서 생성</button>
+      <button class="btn" onclick="srSaveCurrentSnapshot()" id="srSaveBtn" disabled>💾 이력에 저장</button>
       <button class="btn btn-green" onclick="srExportImage()" id="srImageBtn" disabled>🖼 이미지(PNG) 저장</button>
     </div>
   </div>
@@ -5509,12 +5510,14 @@ function reconExportXlsx() {
       </ul>
       <div><b>3단계 · 저장 / 공유</b></div>
       <ul style="margin:4px 0 10px 18px;padding:0">
+        <li><b>💾 이력에 저장</b> 클릭 → 그날 데이터가 주간 매출에 합산되도록 누적됨</li>
         <li><b>🖼 이미지(PNG) 저장</b> 클릭 → 보고서를 그대로 PNG로 다운로드</li>
+        <li>둘은 별개 — 이미지만 저장해도 누적엔 안 들어가요. 주간 합산이 필요하면 꼭 💾 이력에 저장도 눌러주세요</li>
       </ul>
-      <div><b>자동 누적</b></div>
+      <div><b>수정하려면</b></div>
       <ul style="margin:4px 0 10px 18px;padding:0">
-        <li>보고서 생성할 때마다 그날 데이터가 자동으로 저장됨 (브라우저 보관)</li>
-        <li>일주일치 모이면 <b>📆 주간 매출</b> 탭에서 합산 보고서 만들 수 있어요</li>
+        <li>📆 주간 매출 탭 → 📋 누적 이력 보기 → 해당 날짜의 <b>수정</b> 버튼</li>
+        <li>이 탭으로 돌아와서 그 날짜로 다시 생성 + 💾 저장 → 자동 덮어쓰기</li>
       </ul>
       <div style="font-size:12px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
         💡 상품명이 잘려서 이상하게 나오면 (예: "휴대용 터빈 손") 알려주세요. 상품명 사전에 추가해드려요.<br>
@@ -5553,8 +5556,9 @@ function reconExportXlsx() {
     <div style="font-size:13px;color:var(--text2);line-height:1.7">
       <div><b>1단계 · 일일 누적</b></div>
       <ul style="margin:4px 0 10px 18px;padding:0">
-        <li>매일 📈 <b>매출 보고용</b> 탭에서 보고서 생성 누르면 그날 데이터가 자동으로 누적</li>
-        <li>월요일에 시작 안 했어도 OK — 그 주에 만든 날만 합산</li>
+        <li>매일 📈 <b>매출 보고용</b> 탭에서 보고서 생성 후 <b>💾 이력에 저장</b> 누르면 그날 데이터가 누적됨</li>
+        <li>저장 안 하고 이미지만 받으면 주간엔 안 들어가요</li>
+        <li>월요일에 시작 안 했어도 OK — 그 주에 저장한 날만 합산</li>
       </ul>
       <div><b>2단계 · 주간 합산</b></div>
       <ul style="margin:4px 0 10px 18px;padding:0">
@@ -5567,7 +5571,9 @@ function reconExportXlsx() {
       </ul>
       <div><b>누적 관리</b></div>
       <ul style="margin:4px 0 10px 18px;padding:0">
-        <li><b>📋 누적 이력 보기</b> → 저장된 일일 데이터 확인 / 잘못 들어간 거 삭제</li>
+        <li><b>📋 누적 이력 보기</b> → 저장된 일일 데이터 확인</li>
+        <li><b>수정</b> 버튼: 매출 보고용 탭으로 점프 → 그 날짜로 다시 생성 + 저장 → 덮어쓰기</li>
+        <li><b>삭제</b> 버튼: 그 날짜 이력만 제거</li>
       </ul>
       <div style="font-size:12px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
         💡 데이터가 안 보이면 → 매출 보고용 탭에서 그 날의 보고서를 먼저 생성하셔야 누적됩니다.
@@ -6615,15 +6621,28 @@ function srRender(){
     </div>`;
   document.getElementById('srReport').innerHTML=html;
   document.getElementById('srImageBtn').disabled=false;
-  // 이력 자동 저장 (주간 보고용)
-  srSaveSnapshot({
+  // 미리보기만 — 이력 저장은 사용자가 명시적으로 💾 이력에 저장 눌러야 함
+  _srLastSnapshot = {
     date: dateStr,
     grAgg, ybAgg, dnAgg,
     selfSales, selfCnt, totalSales, totalCnt,
     savedAt: Date.now()
-  });
+  };
+  const saveBtn = document.getElementById('srSaveBtn'); if (saveBtn) saveBtn.disabled = false;
   const sumAmt = totalSales > 0 ? '' : ' <span style="color:var(--warn);font-size:11px">(주문금액 0 — AB/AH/AI 컬럼이 다른 위치일 수 있어요)</span>';
-  statusEl.innerHTML=`<span style="color:var(--success)">✅ 보고서 생성 · 누적 저장됨 — 로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건 · 디네트 ${dnAgg.count}건 · 총 ${totalCnt}건 / 매출 ${totalSales.toLocaleString()}원</span>${sumAmt}`;
+  const already = srLoadHistory().some(s => s.date === dateStr);
+  const histHint = already ? ' <span style="color:var(--warn);font-size:11px">· 이 날짜는 이미 이력에 있어요 (저장 시 덮어쓰기)</span>' : ' <span style="color:var(--text3);font-size:11px">· 주간에 합산하려면 💾 이력에 저장</span>';
+  statusEl.innerHTML=`<span style="color:var(--success)">✅ 보고서 생성 — 로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건 · 디네트 ${dnAgg.count}건 · 총 ${totalCnt}건 / 매출 ${totalSales.toLocaleString()}원</span>${histHint}${sumAmt}`;
+}
+let _srLastSnapshot = null;
+function srSaveCurrentSnapshot(){
+  if (!_srLastSnapshot) { alert('먼저 📊 보고서 생성을 눌러주세요'); return; }
+  const date = _srLastSnapshot.date;
+  const existing = srLoadHistory().some(s => s.date === date);
+  if (existing && !confirm(`${date} 이력이 이미 있어요. 덮어쓸까요?`)) return;
+  srSaveSnapshot(_srLastSnapshot);
+  const status = document.getElementById('srStatus');
+  status.innerHTML = `<span style="color:var(--success)">✅ ${date} 누적 이력에 저장됐어요</span> <span style="color:var(--text3);font-size:11px">· 주간 매출 탭에서 합산됩니다</span>`;
 }
 function srExportImage(){
   const el=document.getElementById('srReportContent');
@@ -6794,15 +6813,24 @@ function wrShowHistory(){
           <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${escHtml(s.date)}</td>
           <td style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border)">${(s.totalSales||0).toLocaleString()}원</td>
           <td style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border)">${(s.totalCnt||0).toLocaleString()}건</td>
-          <td style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border)"><button class="btn btn-danger btn-sm" style="font-size:10px;padding:1px 6px" onclick="wrDeleteSnap('${escHtml(s.date)}')">삭제</button></td>
+          <td style="padding:4px 8px;text-align:right;border-bottom:1px solid var(--border)">
+            <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;margin-right:4px" onclick="wrEditSnap('${escHtml(s.date)}')">수정</button>
+            <button class="btn btn-danger btn-sm" style="font-size:10px;padding:1px 6px" onclick="wrDeleteSnap('${escHtml(s.date)}')">삭제</button>
+          </td>
         </tr>`).join('');
       box.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;background:var(--bg);border:1px solid var(--border)">
         <thead><tr><th style="padding:4px 8px;text-align:left">일자</th><th style="padding:4px 8px;text-align:right">매출</th><th style="padding:4px 8px;text-align:right">건수</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table>
-        <div style="margin-top:6px;font-size:11px;color:var(--text3)">총 ${hist.length}개 일일 보고 누적</div>`;
+        <div style="margin-top:6px;font-size:11px;color:var(--text3)">총 ${hist.length}개 일일 보고 누적 · 수정은 그 날짜로 매출 보고용 탭에서 다시 생성 후 저장</div>`;
     }
     box.style.display = 'block';
   } else { box.style.display = 'none'; }
+}
+function wrEditSnap(date){
+  switchTab('salesreport');
+  const di = document.getElementById('srReportDate'); if (di) di.value = date;
+  const status = document.getElementById('srStatus');
+  if (status) status.innerHTML = `<span style="color:var(--warn)">✏️ 수정 모드: ${date}</span> <span style="color:var(--text3);font-size:12px">— 발주서 생성에서 그 날 파일 다시 올리고, (디네트 있으면 같이 올린 뒤) 📊 보고서 생성 → 💾 이력에 저장 누르면 덮어써집니다</span>`;
 }
 function wrDeleteSnap(date){
   if (!confirm(date+' 의 누적 데이터를 삭제할까요?')) return;
