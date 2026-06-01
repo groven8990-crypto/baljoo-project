@@ -440,6 +440,29 @@
     <button class="sub-tab-btn active" id="stab-expwrite" onclick="switchExpSubTab('write')">✏️ 지출결의서 작성</button>
     <button class="sub-tab-btn" id="stab-expbank" onclick="switchExpSubTab('bank')">🏦 계좌 관리</button>
     <button class="sub-tab-btn" id="stab-explist" onclick="switchExpSubTab('list')">📋 작성 이력</button>
+    <button class="sub-tab-btn" id="stab-expimport" onclick="switchExpSubTab('import')">📥 옛 양식 가져오기</button>
+  </div>
+
+  <!-- 옛 양식 가져오기 서브탭 -->
+  <div class="sub-content" id="expsubtab-import" style="display:none">
+    <div class="card">
+      <div class="card-title">📥 옛 지출결의서 일괄 가져오기</div>
+      <div class="alert alert-info" style="margin-bottom:14px;font-size:12px">
+        예전 양식의 지출결의서 엑셀 파일(들)을 올리면 자동으로 <strong>작성 이력</strong>에 추가됩니다.
+        파일 하나 = 송금 1건. 여러 개 한 번에 가능.
+      </div>
+      <div class="upload-zone" id="expImportZone" onclick="document.getElementById('expImportFile').click()"
+           ondragover="event.preventDefault();this.classList.add('dragover')"
+           ondragleave="this.classList.remove('dragover')"
+           ondrop="event.preventDefault();this.classList.remove('dragover');expBulkImport(event.dataTransfer.files);">
+        <div style="font-size:24px;margin-bottom:6px">📂</div>
+        <div style="font-weight:600;margin-bottom:2px">옛 지출결의서 엑셀을 끌어다 놓거나 클릭하여 선택</div>
+        <div style="font-size:11px;color:var(--text3)">.xls / .xlsx · 여러 개 한 번에 가능</div>
+        <input type="file" id="expImportFile" accept=".xls,.xlsx" multiple style="display:none" onchange="expBulkImport(this.files); this.value='';">
+      </div>
+      <div id="expImportStatus" style="margin-top:12px;font-size:13px"></div>
+      <div id="expImportPreview" style="margin-top:12px"></div>
+    </div>
   </div>
 
   <!-- 작성 서브탭 -->
@@ -2909,14 +2932,14 @@ function toggleExpPaid(i) {
 }
 
 function switchExpSubTab(name) {
-  document.querySelectorAll('#tab-expense .sub-content').forEach(el => el.classList.remove('active'));
-  ['write','bank','list'].forEach(n => {
-    const btn = document.getElementById('stab-exp' + (n==='write'?'write':n==='bank'?'bank':'list'));
+  document.querySelectorAll('#tab-expense .sub-content').forEach(el => { el.classList.remove('active'); el.style.display = 'none'; });
+  ['write','bank','list','import'].forEach(n => {
+    const btn = document.getElementById('stab-exp' + n);
     if (btn) btn.classList.remove('active');
   });
   const content = document.getElementById('expsubtab-' + name);
   const btn = document.getElementById('stab-exp' + name);
-  if (content) content.classList.add('active');
+  if (content) { content.classList.add('active'); content.style.display = ''; }
   if (btn) btn.classList.add('active');
   if (name === 'list') renderExpHistList();
   if (name === 'bank') renderBankList();
@@ -3737,6 +3760,192 @@ function loadBankInfo() { try{ return JSON.parse(localStorage.getItem(LS_BANK)||
 function saveBankInfo(a){ localStorage.setItem(LS_BANK, JSON.stringify(a)); }
 function loadExpHist() { try{ return JSON.parse(localStorage.getItem(LS_EXPHIST)||'[]'); }catch{ return []; } }
 function saveExpHist(a){ localStorage.setItem(LS_EXPHIST, JSON.stringify(a)); }
+
+// ── 옛 양식 지출결의서 일괄 가져오기 ──
+function parseOldExpenseFile(buf, fname) {
+  const wb = XLSX.read(buf, {type:'array', cellDates:true});
+  const sheetName = wb.SheetNames.find(n => /송금|지출/.test(n)) || wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+  const get = (r,c) => (rows[r] && rows[r][c] !== undefined) ? rows[r][c] : '';
+
+  // 회사: 행0 첫 셀 ('YB' / '그로븐'), 없으면 시트명/파일명에서 추론
+  let coRaw = String(get(0,0)).trim();
+  if (!coRaw) coRaw = sheetName + ' ' + fname;
+  let co = '그로븐';
+  if (/YB|옐로우|yellow/i.test(coRaw)) co = '옐로우브릿지';
+  else if (/그로븐|GROBN|groven/i.test(coRaw)) co = '그로븐';
+
+  // 작성일자 (행4 셀3)
+  let date = '';
+  const dr = get(4,3);
+  if (dr instanceof Date && !isNaN(dr)) {
+    const y = dr.getFullYear(), m = String(dr.getMonth()+1).padStart(2,'0'), d = String(dr.getDate()).padStart(2,'0');
+    date = `${y}-${m}-${d}`;
+  } else if (dr) {
+    const d = new Date(dr);
+    if (!isNaN(d)) date = d.toISOString().slice(0,10);
+  }
+
+  const writer = String(get(4,13)).trim();
+
+  // 송금처 → vendor (괄호 안 부수 정보 제거)
+  const vendor = String(get(5,3)).trim().replace(/\s*\([^)]*\)\s*$/, '');
+
+  const desc = String(get(6,3)).trim();
+
+  // 결제조건 → payType (공백 제거)
+  let payType = String(get(7,3)).trim().replace(/\s+/g, '');
+
+  // 송금금액
+  const total = String(parseInt(get(7,13)) || 0);
+
+  // 공급가액/세액 (행16/17 셀4)
+  const supply = String(parseInt(get(16,4)) || 0);
+  const vat = String(parseInt(get(17,4)) || 0);
+
+  // 증빙 O 체크
+  const r8 = rows[8] || [];
+  const labelMap = {};
+  r8.forEach((cell, i) => {
+    const s = String(cell||'').replace(/\s/g,'');
+    if (s === '세금계산서') labelMap.ev1 = i;
+    else if (s === '계산서')   labelMap.ev2 = i;
+    else if (s === '현금영수증') labelMap.ev3 = i;
+    else if (s === '고지서')   labelMap.ev4 = i;
+    else if (s === '기타')     labelMap.ev5 = i;
+    else if (s === '사후첨부') labelMap.ev6 = i;
+  });
+  const isMarked = (labelCol) => {
+    if (labelCol == null) return false;
+    for (let off = 1; off <= 5; off++) {
+      const v = String(r8[labelCol+off] || '').trim().toUpperCase();
+      if (v === 'O' || v === '○' || v === '✓') return true;
+      // 다음 라벨 만나면 중단
+      const s = v.replace(/\s/g,'');
+      if (['세금계산서','계산서','현금영수증','고지서','기타','사후첨부'].includes(s)) break;
+    }
+    return false;
+  };
+
+  // memo: 송금내역 MEMO (행12~16, 셀1)
+  const memoLines = [];
+  for (let r = 12; r <= 20; r++) {
+    const left = String(get(r,1)).trim();
+    if (left) memoLines.push('* ' + left);
+  }
+  // 은행정보: 재무회계과 MEMO (행12~16, 셀10/12)
+  let bankBank = '', bankAcct = '', bankHolder = '';
+  for (let r = 12; r <= 18; r++) {
+    const lineA = String(get(r,10)).trim();
+    const lineB = String(get(r,12)).trim();
+    if (lineA.includes('예금주명') && lineB) bankHolder = bankHolder || lineB;
+    else if (lineA.includes('계좌번호')) {
+      const m = lineA.match(/(\d[\d-]+)/); if (m) bankAcct = bankAcct || m[1];
+    } else if (!bankBank && lineA && /은행|농협|신협|국민|기업|하나|카카오|광주|우체국|신한|우리|광주|부산|대구|경남/.test(lineA)) {
+      bankBank = lineA;
+    }
+  }
+  if (!bankHolder) {
+    // memo 본문에서 추출 시도
+    const memoText = memoLines.join('\n');
+    const mh = memoText.match(/예금주명\s*:\s*([^\n]+)/); if (mh) bankHolder = mh[1].trim();
+    const ma = memoText.match(/계좌번호\s*:\s*(\d[\d-]+)/); if (ma) bankAcct = ma[1].trim();
+    const mb = memoText.match(/\n\*\s*([가-힣]+(은행)?)\s*\n/); if (mb) bankBank = mb[1].trim();
+  }
+  const memo = memoLines.join('\n');
+  const bank = (bankBank || bankAcct || bankHolder) ? {
+    name: vendor, bank: bankBank, acct: bankAcct, holder: bankHolder,
+    tmemo:'', tnote:'', tev1:false,tev2:true,tev3:false,tev4:false,tev5:false,tev6:false, tpayType: payType || '즉시결제'
+  } : null;
+
+  return {
+    co, date, writer, vendor, desc, bank,
+    ev1: isMarked(labelMap.ev1),
+    ev2: isMarked(labelMap.ev2),
+    ev3: isMarked(labelMap.ev3),
+    ev4: isMarked(labelMap.ev4),
+    ev5: isMarked(labelMap.ev5),
+    ev6: isMarked(labelMap.ev6),
+    id: Date.now() + Math.floor(Math.random()*100000),
+    memo, note: '',
+    payType, savedAt: new Date().toISOString(),
+    supply, total, vat
+  };
+}
+
+function expBulkImport(files) {
+  if (!files || !files.length) return;
+  const statusEl = document.getElementById('expImportStatus');
+  const previewEl = document.getElementById('expImportPreview');
+  if (statusEl) statusEl.innerHTML = '⏳ 가져오는 중...';
+  if (previewEl) previewEl.innerHTML = '';
+  const fileArr = [...files];
+  const results = [];
+  let processed = 0;
+  fileArr.forEach((file, idx) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const entry = parseOldExpenseFile(e.target.result, file.name);
+        results.push({ok:true, file: file.name, entry});
+      } catch(err) {
+        results.push({ok:false, file: file.name, error: err.message});
+      }
+      processed++;
+      if (processed === fileArr.length) finalize();
+    };
+    reader.onerror = () => { results.push({ok:false, file:file.name, error:'읽기 실패'}); processed++; if (processed === fileArr.length) finalize(); };
+    reader.readAsArrayBuffer(file);
+  });
+  function finalize() {
+    const ok = results.filter(r=>r.ok);
+    const err = results.filter(r=>!r.ok);
+    // 중복 방지: 같은 (co, date, vendor, total) 조합 이미 있으면 건너뜀
+    const hist = loadExpHist();
+    const keyOf = e => `${e.co}|${e.date}|${e.vendor}|${e.total}`;
+    const existingKeys = new Set(hist.map(keyOf));
+    const fresh = ok.filter(r => !existingKeys.has(keyOf(r.entry)));
+    const dupSkipped = ok.length - fresh.length;
+    fresh.forEach(r => hist.unshift(r.entry));
+    saveExpHist(hist);
+    if (statusEl) {
+      statusEl.innerHTML = `<span style="color:var(--success)">✅ ${fresh.length}건 추가</span>` +
+        (dupSkipped>0?` <span style="color:var(--warn)">· 중복 ${dupSkipped}건 제외</span>`:'') +
+        (err.length>0?` <span style="color:var(--danger)">· 실패 ${err.length}건</span>`:'');
+    }
+    if (previewEl) {
+      const rowsHtml = ok.slice(0,30).map(r => {
+        const e = r.entry;
+        const isDup = existingKeys.has(keyOf(e));
+        const tag = isDup ? '<span class="badge badge-warn">중복</span>' : '<span class="badge badge-green">추가</span>';
+        return `<tr>
+          <td style="padding:5px 8px;border-bottom:1px solid var(--border)">${tag}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid var(--border);font-size:11px">${escHtml(r.file)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid var(--border)">${escHtml(e.co)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid var(--border)">${escHtml(e.date)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid var(--border)">${escHtml(e.vendor)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid var(--border);text-align:right">${(parseInt(e.total)||0).toLocaleString()}원</td>
+        </tr>`;
+      }).join('');
+      const errHtml = err.length>0 ? `<div style="margin-top:8px;color:var(--danger);font-size:12px">실패 파일: ${err.map(x=>escHtml(x.file)+'('+escHtml(x.error)+')').join(', ')}</div>` : '';
+      previewEl.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
+          <thead><tr style="background:var(--bg)">
+            <th style="padding:5px 8px;text-align:left">상태</th>
+            <th style="padding:5px 8px;text-align:left">파일</th>
+            <th style="padding:5px 8px;text-align:left">회사</th>
+            <th style="padding:5px 8px;text-align:left">날짜</th>
+            <th style="padding:5px 8px;text-align:left">송금처</th>
+            <th style="padding:5px 8px;text-align:right">금액</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>${errHtml}
+        <div style="margin-top:8px;font-size:11px;color:var(--text3)">📋 작성 이력 탭에서 전체 확인 가능</div>`;
+    }
+    try { renderExpHistList && renderExpHistList(); } catch(e){}
+  }
+}
 
 function initExpenseTab() {
   _restoreExpSaveFolder(); // 저장된 폴더 핸들 복원
