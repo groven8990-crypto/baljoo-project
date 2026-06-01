@@ -3511,11 +3511,26 @@ function showStatementModal({byVendor, vendors, issuer, period, selected}){
             <span style="font-size:13px;color:#555">총 합계</span>
             <span style="font-size:20px;font-weight:700;color:#1A56DB">${grandTotal.toLocaleString()}원</span>
           </div>
-          <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">발주 자동화 시스템</div>
         </div>
       </div>
     </div>`;
   document.body.insertAdjacentHTML('beforeend', overlayHTML);
+}
+
+function _stmtFileBase(){
+  if (!_stmtData) return '거래내역서_' + new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const {groups} = _stmtData;
+  const tag = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const vendors = [...new Set(groups.map(g=>g.vendor))];
+  const cos = [...new Set(groups.map(g=>g.co))];
+  const safe = s => String(s||'').replace(/[\\/?*\[\]:]/g,'_').trim();
+  // 일자-거래처-거래내역서_내사업자
+  let parts = [tag];
+  if (vendors.length === 1) parts.push(safe(vendors[0]));
+  parts.push('거래내역서');
+  let name = parts.join('-');
+  if (cos.length === 1) name += '_' + safe(cos[0]);
+  return name;
 }
 
 function exportStatementImage(){
@@ -3524,8 +3539,7 @@ function exportStatementImage(){
   if (typeof html2canvas !== 'function') { alert('html2canvas 없음'); return; }
   html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
     const link = document.createElement('a');
-    const tag = new Date().toISOString().slice(0,10).replace(/-/g,'');
-    link.download = `거래내역서_${tag}.png`;
+    link.download = _stmtFileBase() + '.png';
     link.href = canvas.toDataURL('image/png');
     document.body.appendChild(link);link.click();document.body.removeChild(link);
   }).catch(e=>alert('이미지 저장 실패: '+e.message));
@@ -3591,11 +3605,7 @@ function exportStatementXlsx(){
     wsAll['!cols'] = [{wch:16},{wch:14},{wch:12},{wch:32},{wch:12},{wch:10},{wch:14}];
     XLSX.utils.book_append_sheet(wb, wsAll, '통합');
   }
-  const tag = new Date().toISOString().slice(0,10).replace(/-/g,'');
-  const fname = groups.length === 1
-    ? `거래내역서_${groups[0].vendor.replace(/[\\/?*\[\]:]/g,'_')}_${tag}.xlsx`
-    : `거래내역서_${tag}.xlsx`;
-  XLSX.writeFile(wb, fname);
+  XLSX.writeFile(wb, _stmtFileBase() + '.xlsx');
 }
 
 async function downloadSelectedExpImg() {
