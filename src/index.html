@@ -3385,9 +3385,10 @@ function toggleAllExpHist(checked) {
 function buildStatement(){
   const checked = [...document.querySelectorAll('.exp-hist-chk:checked')];
   if (!checked.length) { alert('항목을 먼저 선택해주세요'); return; }
-  const ids = new Set(checked.map(c => String(c.value)));
   const hist = loadExpHist();
-  const selected = hist.filter(e => ids.has(String(e.id)));
+  const selected = checked
+    .map(c => hist[parseInt(c.dataset.idx)])
+    .filter(Boolean);
   if (!selected.length) { alert('선택된 항목을 못 찾았어요'); return; }
   // 거래처별 그룹
   const byVendor = {};
