@@ -6471,7 +6471,8 @@ const SR_DINETTE_SPEC = {
   '2p+': {price:22200, ship:4500}
 };
 const SR_DINETTE_UNIT = {'4p':2, '3p':2, '2p+':8};
-const SR_DINETTE_DISC = 4000;
+const SR_DINETTE_DISC = 4500;  // 행사기간 단가 (수량 ×2 추가마다 4500원 할인)
+const SR_DINETTE_LABEL = {'4p':'박대 4P','3p':'박대 3P','2p+':'박대 2P+'};
 let srDinetteRows = null;
 let srDinetteFileName = '';
 function srDropDinette(e){
@@ -6533,7 +6534,7 @@ function srDinetteSection(agg){
   const DN='#7B4B00', NAVY='#1E3A5F';
   const rows = Object.entries(agg.byCfg).sort((a,b)=>b[1].sales-a[1].sales).map(([k,v],i)=>`
     <tr style="background:${i%2===0?'#fff':'#F2F2F2'}">
-      <td style="padding:8px 12px;border-bottom:1px solid #eee">${escHtml(k)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee">${escHtml(SR_DINETTE_LABEL[k]||k)}</td>
       <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
       <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.sales.toLocaleString()}원</td>
     </tr>`).join('');
@@ -6542,7 +6543,7 @@ function srDinetteSection(agg){
     <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
       <colgroup><col style="width:45%"><col style="width:25%"><col style="width:30%"></colgroup>
       <thead><tr style="background:${NAVY}">
-        <th style="padding:7px 12px;text-align:left;color:#fff;font-weight:700">규격</th>
+        <th style="padding:7px 12px;text-align:left;color:#fff;font-weight:700">제품</th>
         <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">주문건수</th>
         <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">매출액</th>
       </tr></thead>
