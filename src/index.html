@@ -3407,7 +3407,9 @@ function buildStatement(){
   showStatementModal({byVendor, vendors, issuer, period, selected});
 }
 
+let _stmtData = null;
 function showStatementModal({byVendor, vendors, issuer, period, selected}){
+  _stmtData = {byVendor, vendors, issuer, period, selected};
   // 기존 모달 제거
   document.getElementById('stmtOverlay')?.remove();
   const NAVY = '#1E3A5F';
@@ -3440,7 +3442,7 @@ function showStatementModal({byVendor, vendors, issuer, period, selected}){
             <th style="padding:7px 10px;text-align:left;font-size:11px;color:#555;border-bottom:1px solid #ddd">내역</th>
             <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">공급가</th>
             <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">부가세</th>
-            <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">금액</th>
+            <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">송금금액</th>
             <th style="padding:7px 10px;text-align:center;font-size:11px;color:#555;border-bottom:1px solid #ddd">결제</th>
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -3462,7 +3464,8 @@ function showStatementModal({byVendor, vendors, issuer, period, selected}){
         <div style="background:#fff;border-radius:8px;padding:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
           <span style="font-weight:700">📋 거래내역서</span>
           <span style="font-size:12px;color:var(--text3)">${vendors.length}개 거래처 · ${selected.length}건 · 총 ${grandTotal.toLocaleString()}원</span>
-          <button class="btn btn-green btn-sm" style="margin-left:auto" onclick="exportStatementImage()">🖼 이미지(PNG) 저장</button>
+          <button class="btn btn-green btn-sm" style="margin-left:auto" onclick="exportStatementImage()">🖼 이미지(PNG)</button>
+          <button class="btn btn-sm" style="background:#16a34a;color:#fff;border:none" onclick="exportStatementXlsx()">📊 엑셀(XLSX)</button>
           <button class="btn btn-sm" onclick="document.getElementById('stmtOverlay').remove()">✕ 닫기</button>
         </div>
         <div id="stmtBody" style="background:#fff;padding:28px;border-radius:8px;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
@@ -3494,6 +3497,71 @@ function exportStatementImage(){
     link.href = canvas.toDataURL('image/png');
     document.body.appendChild(link);link.click();document.body.removeChild(link);
   }).catch(e=>alert('이미지 저장 실패: '+e.message));
+}
+
+function exportStatementXlsx(){
+  if (!_stmtData) { alert('데이터가 없어요'); return; }
+  if (typeof XLSX === 'undefined') { alert('XLSX 라이브러리 없음'); return; }
+  const {byVendor, vendors, issuer, period, selected} = _stmtData;
+  const wb = XLSX.utils.book_new();
+  // 거래처가 1개면 시트 1장, 여러 개면 거래처별 + 통합
+  function buildVendorAOA(v, arr){
+    const bankObj = arr.find(e => e.bank && (e.bank.bank || e.bank.acct))?.bank;
+    const aoa = [];
+    aoa.push(['거래내역서']);
+    aoa.push([]);
+    aoa.push(['발행', issuer, '', '기간', period]);
+    aoa.push(['거래처', v, '', '건수', arr.length]);
+    if (bankObj) {
+      aoa.push(['입금계좌', `${bankObj.bank||''} ${bankObj.acct||''}`, '', '예금주', bankObj.holder||'']);
+    }
+    aoa.push([]);
+    aoa.push(['날짜','내역','공급가','부가세','송금금액','결제조건','메모']);
+    let supply=0, vat=0, total=0;
+    arr.forEach(e=>{
+      const s = parseInt(e.supply)||0, va = parseInt(e.vat)||0, t = parseInt(e.total)||0;
+      supply+=s; vat+=va; total+=t;
+      aoa.push([e.date||'', e.desc||'', s, va, t, e.payType||'', (e.memo||'').replace(/\n/g,' / ')]);
+    });
+    aoa.push(['합계','('+arr.length+'건)', supply, vat, total, '', '']);
+    return aoa;
+  }
+  // 거래처별 시트
+  vendors.forEach(v=>{
+    const aoa = buildVendorAOA(v, byVendor[v]);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    // 컬럼 폭
+    ws['!cols'] = [{wch:12},{wch:38},{wch:11},{wch:9},{wch:13},{wch:10},{wch:30}];
+    // 시트명: 거래처명에서 특수문자 제거, 31자 제한
+    const safe = String(v).replace(/[\\/?*\[\]:]/g,'_').slice(0,31) || '거래내역';
+    XLSX.utils.book_append_sheet(wb, ws, safe);
+  });
+  // 통합 시트 (거래처가 2개 이상일 때)
+  if (vendors.length > 1) {
+    const all = [];
+    all.push(['거래내역서 — 통합']);
+    all.push([]);
+    all.push(['발행', issuer, '', '기간', period, '', '']);
+    all.push([]);
+    all.push(['거래처','날짜','내역','공급가','부가세','송금금액','결제']);
+    let gs=0,gv=0,gt=0;
+    vendors.forEach(v=>{
+      byVendor[v].forEach(e=>{
+        const s=parseInt(e.supply)||0, va=parseInt(e.vat)||0, t=parseInt(e.total)||0;
+        gs+=s; gv+=va; gt+=t;
+        all.push([v, e.date||'', e.desc||'', s, va, t, e.payType||'']);
+      });
+    });
+    all.push(['총합계','','('+selected.length+'건)', gs, gv, gt, '']);
+    const wsAll = XLSX.utils.aoa_to_sheet(all);
+    wsAll['!cols'] = [{wch:16},{wch:12},{wch:34},{wch:11},{wch:9},{wch:13},{wch:10}];
+    XLSX.utils.book_append_sheet(wb, wsAll, '통합');
+  }
+  const tag = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const fname = vendors.length === 1
+    ? `거래내역서_${vendors[0].replace(/[\\/?*\[\]:]/g,'_')}_${tag}.xlsx`
+    : `거래내역서_${tag}.xlsx`;
+  XLSX.writeFile(wb, fname);
 }
 
 async function downloadSelectedExpImg() {
