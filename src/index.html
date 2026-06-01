@@ -2262,6 +2262,7 @@ const VENDOR_COURIER_DEFAULT = {
   '거풍푸드': 'CJ대한통운', '거풍': 'CJ대한통운',
   '남부파머스': 'CJ대한통운',
   '최고집': 'CJ대한통운',
+  '공덕농협': 'CJ대한통운', '공덕': 'CJ대한통운',
   '현해랑': '롯데택배',
   '도매꾹': '롯데택배',
   '늘푸른': '롯데택배',
@@ -2281,7 +2282,7 @@ function invLookupCourier(fname) {
     if (entry.keyword && entry.courier && fname.includes(entry.keyword)) return {courier: entry.courier, matchedKey: entry.keyword};
   }
   // 하드코딩 기본 매핑
-  const known = ['푸드앤','푸드엔','일비','거풍푸드','거풍','남부파머스','최고집','현해랑','도매꾹','늘푸른'];
+  const known = ['푸드앤','푸드엔','일비','거풍푸드','거풍','남부파머스','최고집','공덕농협','공덕','현해랑','도매꾹','늘푸른'];
   for (const v of known) {
     if (fname.includes(v)) return {courier: VENDOR_COURIER_DEFAULT[v] || '롯데택배', matchedKey: v};
   }
@@ -2717,16 +2718,16 @@ function invProcess() {
             ambiguous = true;
             dupReg[rowIdx] = {
               candidates: entries.map(e => ({no:e.no, courier:e.courier||'', addr:e.addr||''})),
-              courierFallback: vendorCourierDefault || tf.courierName || '',
+              courierFallback: tf.courierName || vendorCourierDefault || '',
               resolved: null
             };
             continue;
           }
         }
         const trackNo = entry.no;
-        // 우선순위: ① 운송장파일 택배사컬럼 ② 거래처명 매핑 ③ 파일명 기반 매핑
+        // 우선순위: ① 운송장파일 택배사컬럼 ② 사용자가 고른 거래처별 택배사(파일별) ③ 발주처명 기반 매핑
         const trackCourier = entry.courier || '';
-        const courier = trackCourier || vendorCourierDefault || tf.courierName;
+        const courier = trackCourier || tf.courierName || vendorCourierDefault;
         newRow[trackCol]   = trackNo;
         newRow[courierCol] = courier;
         found = true;
