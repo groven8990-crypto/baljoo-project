@@ -2382,16 +2382,42 @@ function _invAppendOrderFile(file) {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
       if (!rows.length) return;
-      invOrderData = (invOrderData || []).concat(rows);
+      // 중복 거르기: 주문번호 키로 비교 (열 이름이 '주문번호' 또는 '고객주문번호' 등인 경우 인식)
+      const sample = (invOrderData && invOrderData[0]) || rows[0] || {};
+      const onKey = Object.keys(sample).find(k => /주문번호/.test(k));
+      const existingNos = onKey
+        ? new Set((invOrderData||[]).map(r => String(r[onKey]||'').trim()).filter(Boolean))
+        : null;
+      let dupSkipped = 0;
+      const fresh = onKey
+        ? rows.filter(r => {
+            const v = String(r[onKey]||'').trim();
+            if (v && existingNos.has(v)) { dupSkipped++; return false; }
+            if (v) existingNos.add(v);
+            return true;
+          })
+        : rows;
+      if (!fresh.length && dupSkipped > 0) {
+        const el = document.getElementById('invOrderInfo');
+        if (el) el.insertAdjacentHTML('beforeend',
+          '<div style="color:var(--warn);font-size:12px;margin-top:4px">⚠ ' + escHtml(file.name) + ': 모두 중복 — 제외 ' + dupSkipped + '건</div>');
+        return;
+      }
+      invOrderData = (invOrderData || []).concat(fresh);
       invOrderFileName = invOrderFileName ? (invOrderFileName + ' + ' + file.name) : file.name;
       // 추가 업로드 파일 영속화 (새로고침 후에도 유지)
       try {
         const appended = JSON.parse(localStorage.getItem('invOrderAppended')||'[]');
-        appended.push({ fname: file.name, rows });
+        appended.push({ fname: file.name, rows: fresh });
         localStorage.setItem('invOrderAppended', JSON.stringify(appended));
       } catch(_e) {}
       invShowOrderInfo(invOrderFileName, invOrderData.length);
       invCheckReady();
+      if (dupSkipped > 0) {
+        const el = document.getElementById('invOrderInfo');
+        if (el) el.insertAdjacentHTML('beforeend',
+          '<div style="color:var(--text3);font-size:11px;margin-top:2px">↳ ' + escHtml(file.name) + ': +' + fresh.length + '건 추가 (중복 ' + dupSkipped + '건 제외)</div>');
+      }
     } catch(err) {
       const el = document.getElementById('invOrderInfo');
       if (el) el.insertAdjacentHTML('beforeend',
@@ -3484,9 +3510,15 @@ function handleFileAdd(file){
       if(hr<0){setSt('헤더를 찾을 수 없습니다.',true);return;}
       const H=rows[hr],ci=n=>H.indexOf(n);
       const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시')};
-      let added=0;
+      // 기존 주문번호 집합(중복 제외용)
+      const existingOrderNos = new Set(allOrders.map(o => String(o.order_no||'').trim()).filter(Boolean));
+      let added=0, dupSkipped=0;
       for(let i=hr+1;i<rows.length;i++){
-        const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;added++;
+        const r=rows[i];if(!r||r.every(c=>c===''))continue;
+        const onVal = String(r[C.on]||'').trim();
+        if (onVal && existingOrderNos.has(onVal)) { dupSkipped++; continue; }
+        if (onVal) existingOrderNos.add(onVal);
+        totalCount++;added++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn),alias=extractAlias(r[C.al]);
         const parsed=parseParts(vc,vo,pn,so,dop);
@@ -3501,8 +3533,9 @@ function handleFileAdd(file){
       }
       const autoAdded=autoRegisterBracketCodes(allOrders);
       if(autoAdded>0) rematchAllOrders();
-      setSt('');
-      loadedFileNames.push(file.name+'(+'+added+'건)');
+      const dupNote = dupSkipped>0 ? ` (중복 ${dupSkipped}건 제외)` : '';
+      setSt(added>0 ? `✅ ${file.name}: ${added}건 추가${dupNote}` : `⚠ ${file.name}: 추가할 새 주문이 없음 (중복 ${dupSkipped}건 모두 제외)`);
+      loadedFileNames.push(file.name+'(+'+added+'건'+(dupSkipped>0?',중복'+dupSkipped+'제외':'')+')');
       renderLoadedFiles();
       renderStep2();renderStep3();renderUnmatchedHints();renderOmPreview();
     }catch(err){setSt('오류: '+err.message,true);console.error(err);}
