@@ -6336,7 +6336,8 @@ function srBrandSection(title, color, agg){
     </tr>`).join('');
   return `
     <div style="background:${color};color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">${escHtml(title)}</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+      <colgroup><col style="width:45%"><col style="width:25%"><col style="width:30%"></colgroup>
       <thead><tr style="background:${NAVY}">
         <th style="padding:7px 12px;text-align:left;color:#fff;font-weight:700">플랫폼</th>
         <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">주문건수</th>
@@ -6350,7 +6351,8 @@ function srBrandSection(title, color, agg){
       </tr></tfoot>
     </table>
     <div style="height:8px"></div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+      <colgroup><col style="width:45%"><col style="width:25%"><col style="width:30%"></colgroup>
       <thead><tr style="background:${NAVY}">
         <th style="padding:7px 12px;text-align:left;color:#fff;font-weight:700">제품</th>
         <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">주문건수</th>
@@ -6431,28 +6433,25 @@ function srAggregateDinette(rows){
 function srDinetteSection(agg){
   if (agg.count === 0) return '';
   const DN='#7B4B00', NAVY='#1E3A5F';
-  const totalQty = Object.values(agg.byCfg).reduce((s,v)=>s+v.qty, 0);
   const rows = Object.entries(agg.byCfg).sort((a,b)=>b[1].sales-a[1].sales).map(([k,v],i)=>`
     <tr style="background:${i%2===0?'#fff':'#F2F2F2'}">
       <td style="padding:8px 12px;border-bottom:1px solid #eee">${escHtml(k)}</td>
       <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
-      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.qty.toLocaleString()}개</td>
       <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.sales.toLocaleString()}원</td>
     </tr>`).join('');
   return `
     <div style="background:${DN};color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">디네트 · 박대</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+      <colgroup><col style="width:45%"><col style="width:25%"><col style="width:30%"></colgroup>
       <thead><tr style="background:${NAVY}">
         <th style="padding:7px 12px;text-align:left;color:#fff;font-weight:700">규격</th>
         <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">주문건수</th>
-        <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">총 수량</th>
         <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">매출액</th>
       </tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr style="background:${NAVY};font-weight:700">
         <td style="padding:7px 12px;color:#fff">합계</td>
         <td style="padding:7px 12px;text-align:right;color:#fff">${agg.count.toLocaleString()}건</td>
-        <td style="padding:7px 12px;text-align:right;color:#fff">${totalQty.toLocaleString()}개</td>
         <td style="padding:7px 12px;text-align:right;color:#fff">${agg.sales.toLocaleString()}원</td>
       </tr></tfoot>
     </table>`;
