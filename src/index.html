@@ -173,6 +173,11 @@
         <div id="directEditList"></div>
       </div>
     </div>
+    <div class="card" id="mergeCandidatesCard" style="display:none;border:1px solid #fbbf24;background:#fffbeb">
+      <div class="card-title">🚚 합배송 후보 <span id="mergeCount" style="font-weight:400;font-size:12px;color:var(--warn)"></span></div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">같은 <b>수령자 + 주소</b>로 여러 건 들어왔어요. 같은 발주처 안에서는 한 박스로 합배송 가능해요.</div>
+      <div id="mergeList"></div>
+    </div>
     <div id="loadedFilesBar" style="margin-bottom:8px;font-size:12px;color:var(--text2)"></div>
     <!-- Step2 추가 업로드 드래그앤드롭 -->
     <div id="uploadZoneAdd"
@@ -1454,6 +1459,63 @@ function renderStep2(){
       <span style="font-size:12px">미확인 코드: ${codes.join(', ')}</span></div>`;
   } else ael.innerHTML='';
   renderDirectEdit();
+  renderMergeCandidates();
+}
+
+// ── 합배송 후보 감지 (같은 이름 + 주소) ──
+function _addrNorm(s){ return String(s||'').replace(/\s+/g,' ').replace(/[(),.\-_/]/g,'').trim().toLowerCase(); }
+function detectMergeGroups(){
+  const map = new Map();
+  for (const o of allOrders) {
+    const name = String(o.recv_name||'').trim();
+    const addrN = _addrNorm(o.addr);
+    if (!name || !addrN) continue;
+    const key = name + '|' + addrN;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(o);
+  }
+  return [...map.values()].filter(arr => arr.length > 1).sort((a,b) => b.length - a.length);
+}
+function renderMergeCandidates(){
+  const card = document.getElementById('mergeCandidatesCard');
+  if (!card) return;
+  const groups = detectMergeGroups();
+  if (!groups.length) { card.style.display='none'; return; }
+  card.style.display = '';
+  const countEl = document.getElementById('mergeCount');
+  const totalItems = groups.reduce((s,g)=>s+g.length, 0);
+  if (countEl) countEl.textContent = `· ${groups.length}명 (총 ${totalItems}건)`;
+  const html = groups.map(arr => {
+    const sample = arr[0];
+    // 발주처별로 다시 묶기
+    const byVendor = {};
+    arr.forEach(o => {
+      const v = o.vendor_key || '미인식';
+      if (!byVendor[v]) byVendor[v] = [];
+      byVendor[v].push(o);
+    });
+    const vendorBlocks = Object.entries(byVendor).map(([v, items]) => {
+      const isMergeable = items.length > 1;
+      const tag = isMergeable
+        ? `<span class="badge badge-green" style="font-size:10px">✅ 합배송 가능 ${items.length}건</span>`
+        : `<span style="font-size:10px;color:var(--text3)">개별 발주 1건</span>`;
+      const rows = items.map(o => `
+        <div style="font-size:12px;padding:3px 0;display:flex;justify-content:space-between;gap:8px;${isMergeable?'color:#166534':''}">
+          <span style="flex:1;min-width:0">· ${escHtml(o.item_name||'')} ${escHtml(o.option_name||'')}${o.code_qty>1?` × ${o.code_qty}`:''}</span>
+          <span style="color:var(--text3);font-size:11px;flex-shrink:0">${escHtml(o.alias||'')}</span>
+        </div>`).join('');
+      return `<div style="margin-top:6px;padding:6px 10px;background:${isMergeable?'#f0fdf4':'#fff'};border-radius:6px;border:1px solid ${isMergeable?'#bbf7d0':'var(--border)'}">
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:2px">[${escHtml(v)}] ${tag}</div>
+        ${rows}
+      </div>`;
+    }).join('');
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#fff">
+      <div style="font-weight:700;font-size:13px">${escHtml(sample.recv_name||'')} <span style="font-size:11px;color:var(--text3);font-weight:400">· 총 ${arr.length}건</span></div>
+      <div style="font-size:11px;color:var(--text2);margin-top:2px">${escHtml(sample.addr||'')}</div>
+      ${vendorBlocks}
+    </div>`;
+  }).join('');
+  document.getElementById('mergeList').innerHTML = html;
 }
 
 // ══════════════════════════════════════════════════════════
