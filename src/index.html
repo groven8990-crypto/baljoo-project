@@ -118,7 +118,6 @@
   <button class="tab-btn" id="tabBtn-recon" onclick="switchTab('recon')">⚖️ 정산 대조</button>
   <button class="tab-btn" id="tabBtn-price" onclick="switchTab('price')">📊 매입단가표</button>
   <button class="tab-btn" id="tabBtn-daily" onclick="switchTab('daily')">📋 일일현황</button>
-  <button class="tab-btn" id="tabBtn-report" onclick="switchTab('report')">📊 일일보고서</button>
   <button class="tab-btn" id="tabBtn-salesreport" onclick="switchTab('salesreport')">📈 매출 보고용</button>
   <button class="tab-btn" id="tabBtn-weeklyreport" onclick="switchTab('weeklyreport')">📆 주간 매출</button>
 </div>
@@ -5526,66 +5525,6 @@ function reconExportXlsx() {
 <!-- ══════════════════════════════════════════════════════════
      TAB 8: 일일보고서
 ══════════════════════════════════════════════════════════ -->
-<div class="tab-content" id="tab-report">
-<div class="container">
-
-  <div class="card">
-    <div class="card-title" style="cursor:pointer;user-select:none" onclick="rptToggleSettings()">
-      ⚙️ 광고비·인건비 설정
-      <span id="rptSettingsToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
-    </div>
-    <div id="rptSettingsBody" style="display:none">
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
-        <div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:4px">🔴 로또상회(그로븐) 일 광고비</div>
-          <input class="inp" id="rptGrovAd" type="number" value="30000" style="font-size:13px">
-        </div>
-        <div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:4px">🟡 자꾸가게(YB) 일 광고비</div>
-          <input class="inp" id="rptYbAd" type="number" value="40000" style="font-size:13px">
-        </div>
-        <div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:4px">👥 인건비 월 합계 (없으면 0)</div>
-          <input class="inp" id="rptLabor" type="number" value="0" style="font-size:13px">
-        </div>
-      </div>
-      <button class="btn btn-sm btn-primary" onclick="rptSaveSettings()">💾 저장</button>
-      <span id="rptSettingsMsg" style="font-size:12px;color:var(--success);margin-left:8px;display:none">저장됐어요!</span>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">📂 유통 일일매출현황 파일 업로드</div>
-    <div class="upload-zone" id="rptUploadZone"
-      onclick="document.getElementById('rptFileInput').click()"
-      ondragover="event.preventDefault();this.classList.add('dragover')"
-      ondragleave="this.classList.remove('dragover')"
-      ondrop="rptDropFile(event)">
-      <div style="font-size:32px;margin-bottom:8px">📊</div>
-      <div style="font-weight:600;margin-bottom:4px">유통 일일매출현황.xlsx 끌어다 놓거나 클릭</div>
-      <div style="font-size:12px;color:var(--text3)">그로븐 / YB 시트가 있는 엑셀 파일</div>
-      <input type="file" id="rptFileInput" accept=".xlsx,.xls" style="display:none" onchange="rptLoadFile(this.files[0])">
-    </div>
-    <div id="rptSheetInfo" style="margin-top:10px;font-size:13px;color:var(--text2)"></div>
-  </div>
-
-  <div class="card">
-    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
-      <div style="flex:1;min-width:160px">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:4px">📅 조회 날짜 (발주일자 기준)</div>
-        <input class="inp" type="date" id="rptDate" style="font-size:14px">
-      </div>
-      <button class="btn btn-primary" id="rptGenerateBtn" onclick="rptGenerate()" disabled>📊 보고서 생성</button>
-      <button class="btn btn-green" id="rptDownloadBtn" onclick="rptDownloadExcel()" style="display:none">⬇️ Excel 다운로드</button>
-    </div>
-  </div>
-
-  <div id="rptPreviewCard" style="display:none" class="card">
-    <div id="rptPreview"></div>
-  </div>
-
-</div>
-</div><!-- /tab-report -->
 
 <!-- ══════════════════════════════════════════════════════════
      TAB 9: 매출 보고용  (Sales Report — 발주서 파일 기반)
