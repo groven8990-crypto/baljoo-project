@@ -1437,18 +1437,62 @@ function renderStep2(){
 // ══════════════════════════════════════════════════════════
 function renderStep3(){
   const today=todayStr();let html='';
+  const emails=loadVendorEmails();
   for(const gk of Object.keys(groupedOrders).sort()){
     const [v,a]=gk.split('|'),cnt=groupedOrders[gk].length;
+    const savedEmail=emails[v]||'';
+    const emailTag=savedEmail?`<span style="font-size:11px;color:var(--text3);margin-left:6px" title="저장된 메일">✉ ${escHtml(savedEmail)}</span>`:'';
     html+=`<div class="gen-card" id="gc_${ekey(gk)}">
-      <div>
+      <div style="min-width:0;flex:1">
         <span style="font-size:14px;font-weight:700">${v}</span>
         <span class="badge badge-purple" style="margin-left:6px;vertical-align:middle">${a}</span>
+        ${emailTag}
         <div style="font-size:12px;color:var(--text2);margin-top:3px">${makeFileName(v,a)} · ${cnt}건</div>
       </div>
-      <button class="btn btn-sm" onclick="dlOne('${esc(gk)}')">⬇ 다운로드</button>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-sm" onclick="dlOne('${esc(gk)}')">⬇ 다운로드</button>
+        <button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="엑셀 다운로드 + Gmail 작성창 열기">📧 메일</button>
+      </div>
     </div>`;
   }
   document.getElementById('genListArea').innerHTML=html;
+}
+
+// ── 거래처별 이메일 저장 ──
+const LS_VENDOR_EMAILS = 'yb_vendor_emails';
+function loadVendorEmails(){ try{ return JSON.parse(localStorage.getItem(LS_VENDOR_EMAILS)||'{}'); }catch{ return {}; } }
+function saveVendorEmails(map){ try{ localStorage.setItem(LS_VENDOR_EMAILS, JSON.stringify(map)); }catch(e){} }
+
+function emailOne(gk){
+  const [v,a]=gk.split('|');
+  const emails=loadVendorEmails();
+  const cur=emails[v]||'';
+  const input=prompt(`${v} 발주처 이메일 주소\n(자동 저장됩니다. 빈칸으로 두고 확인하면 메일 안 보냄)`, cur);
+  if(input===null) return; // 취소
+  const email=input.trim();
+  if(email!==cur){
+    if(email) emails[v]=email; else delete emails[v];
+    saveVendorEmails(emails);
+  }
+  if(!email){ renderStep3(); return; }
+  if(!/.+@.+\..+/.test(email)){ alert('이메일 형식이 맞지 않아요: '+email); return; }
+  // 1) 엑셀 다운로드
+  dlOne(gk);
+  // 2) Gmail 작성창 새 탭으로
+  const today=new Date().toISOString().slice(0,10);
+  const subject=`[발주서] ${today} ${v}`;
+  const body=
+`안녕하세요. ${v} 담당자님,
+
+${today} 발주 건 송부드립니다.
+첨부된 엑셀 확인 부탁드립니다.
+
+※ 다운로드된 발주서 파일을 이 작성창에 끌어다 놓아 첨부 후 보내주세요.
+
+감사합니다.`;
+  const url=`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.open(url,'_blank');
+  renderStep3();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -5450,6 +5494,34 @@ function reconExportXlsx() {
     <div id="srDinetteInfo" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
   </div>
   <div id="srReport"></div>
+  <div class="card" style="margin-top:14px">
+    <div class="card-title">📖 사용 방법</div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.7">
+      <div><b>1단계 · 파일 준비</b></div>
+      <ul style="margin:4px 0 10px 18px;padding:0">
+        <li>📋 <b>발주서 생성</b> 탭에서 오늘 샵마인 주문 파일을 먼저 업로드 (필수)</li>
+        <li>디네트 박대 발주가 있으면 이 탭의 🐟 <b>디네트 발주서</b> 영역에도 업로드 (선택)</li>
+      </ul>
+      <div><b>2단계 · 보고서 만들기</b></div>
+      <ul style="margin:4px 0 10px 18px;padding:0">
+        <li>보고일자 확인/수정 (빈칸이면 자동으로 오늘 또는 첫 주문일자)</li>
+        <li><b>📊 보고서 생성</b> 클릭 → 자사(로또상회·자꾸가게)·디네트 매출이 한 장에 정리</li>
+      </ul>
+      <div><b>3단계 · 저장 / 공유</b></div>
+      <ul style="margin:4px 0 10px 18px;padding:0">
+        <li><b>🖼 이미지(PNG) 저장</b> 클릭 → 보고서를 그대로 PNG로 다운로드</li>
+      </ul>
+      <div><b>자동 누적</b></div>
+      <ul style="margin:4px 0 10px 18px;padding:0">
+        <li>보고서 생성할 때마다 그날 데이터가 자동으로 저장됨 (브라우저 보관)</li>
+        <li>일주일치 모이면 <b>📆 주간 매출</b> 탭에서 합산 보고서 만들 수 있어요</li>
+      </ul>
+      <div style="font-size:12px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+        💡 상품명이 잘려서 이상하게 나오면 (예: "휴대용 터빈 손") 알려주세요. 상품명 사전에 추가해드려요.<br>
+        💡 다른 컴퓨터로 옮길 때는 코드 관리 탭 → 📤 전체 데이터 내보내기 / 📥 가져오기 활용.
+      </div>
+    </div>
+  </div>
 </div>
 </div><!-- /tab-salesreport -->
 
@@ -5476,6 +5548,32 @@ function reconExportXlsx() {
     <div id="wrHistoryBox" style="display:none;margin-top:10px;font-size:12px"></div>
   </div>
   <div id="wrReport"></div>
+  <div class="card" style="margin-top:14px">
+    <div class="card-title">📖 사용 방법</div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.7">
+      <div><b>1단계 · 일일 누적</b></div>
+      <ul style="margin:4px 0 10px 18px;padding:0">
+        <li>매일 📈 <b>매출 보고용</b> 탭에서 보고서 생성 누르면 그날 데이터가 자동으로 누적</li>
+        <li>월요일에 시작 안 했어도 OK — 그 주에 만든 날만 합산</li>
+      </ul>
+      <div><b>2단계 · 주간 합산</b></div>
+      <ul style="margin:4px 0 10px 18px;padding:0">
+        <li>아무 날짜만 입력 → 그 날이 속한 <b>월~일</b> 주간 자동 계산</li>
+        <li><b>📊 주간 보고서 생성</b> 클릭 → 일자별 요약 + 브랜드별/디네트 누적</li>
+      </ul>
+      <div><b>3단계 · 저장</b></div>
+      <ul style="margin:4px 0 10px 18px;padding:0">
+        <li><b>🖼 이미지(PNG) 저장</b> → 주간 보고서를 PNG로 다운로드</li>
+      </ul>
+      <div><b>누적 관리</b></div>
+      <ul style="margin:4px 0 10px 18px;padding:0">
+        <li><b>📋 누적 이력 보기</b> → 저장된 일일 데이터 확인 / 잘못 들어간 거 삭제</li>
+      </ul>
+      <div style="font-size:12px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+        💡 데이터가 안 보이면 → 매출 보고용 탭에서 그 날의 보고서를 먼저 생성하셔야 누적됩니다.
+      </div>
+    </div>
+  </div>
 </div>
 </div><!-- /tab-weeklyreport -->
 
