@@ -6532,12 +6532,6 @@ function srAggregateDinette(rows){
 function srDinetteSection(agg){
   if (agg.count === 0) return '';
   const DN='#7B4B00', NAVY='#1E3A5F';
-  const rows = Object.entries(agg.byCfg).sort((a,b)=>b[1].sales-a[1].sales).map(([k,v],i)=>`
-    <tr style="background:${i%2===0?'#fff':'#F2F2F2'}">
-      <td style="padding:8px 12px;border-bottom:1px solid #eee">${escHtml(SR_DINETTE_LABEL[k]||k)}</td>
-      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
-      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.sales.toLocaleString()}원</td>
-    </tr>`).join('');
   return `
     <div style="background:${DN};color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">디네트 · 박대</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
@@ -6547,12 +6541,13 @@ function srDinetteSection(agg){
         <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">주문건수</th>
         <th style="padding:7px 12px;text-align:right;color:#fff;font-weight:700">매출액</th>
       </tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr style="background:${NAVY};font-weight:700">
-        <td style="padding:7px 12px;color:#fff">합계</td>
-        <td style="padding:7px 12px;text-align:right;color:#fff">${agg.count.toLocaleString()}건</td>
-        <td style="padding:7px 12px;text-align:right;color:#fff">${agg.sales.toLocaleString()}원</td>
-      </tr></tfoot>
+      <tbody>
+        <tr style="background:#fff">
+          <td style="padding:8px 12px;border-bottom:1px solid #eee">박대</td>
+          <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${agg.count.toLocaleString()}건</td>
+          <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${agg.sales.toLocaleString()}원</td>
+        </tr>
+      </tbody>
     </table>`;
 }
 
