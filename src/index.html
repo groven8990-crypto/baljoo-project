@@ -6956,6 +6956,162 @@ async function manualSync() {
 window.addEventListener('load', () => { setTimeout(manualSync, 200); });
 
 // ══════════════════════════════════════════════════════════
+// 🤖 페이지 내 비서 (로컬 검색, 외부 통신 없음)
+// ══════════════════════════════════════════════════════════
+function asstOpen(){
+  document.getElementById('asstPanel').style.display='flex';
+  setTimeout(()=>document.getElementById('asstInput').focus(), 50);
+}
+function asstClose(){ document.getElementById('asstPanel').style.display='none'; }
+function asstAppend(role, text){
+  const log = document.getElementById('asstLog'); if (!log) return;
+  const bubble = document.createElement('div');
+  bubble.style.cssText = role==='me'
+    ? 'align-self:flex-end;background:#2563eb;color:#fff;padding:8px 12px;border-radius:14px 14px 4px 14px;max-width:80%;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word'
+    : 'align-self:flex-start;background:#f1f5f9;color:#212121;padding:8px 12px;border-radius:14px 14px 14px 4px;max-width:85%;font-size:13px;line-height:1.55;white-space:pre-wrap;word-break:break-word';
+  bubble.textContent = text;
+  log.appendChild(bubble);
+  log.scrollTop = log.scrollHeight;
+}
+function asstSendQuick(text){ const i=document.getElementById('asstInput'); i.value=text; asstSend(); }
+function asstSend(){
+  const i = document.getElementById('asstInput');
+  const q = (i.value||'').trim();
+  if (!q) return;
+  asstAppend('me', q);
+  i.value='';
+  setTimeout(()=>asstAppend('bot', asstAnswer(q)), 80);
+}
+function _fmt(n){ return (Number(n)||0).toLocaleString(); }
+function _findVendor(q, list){
+  if (!list || !list.length) return null;
+  const names = [...new Set(list.map(x => String(x.vendor||x.name||'').trim()).filter(Boolean))];
+  names.sort((a,b)=>b.length-a.length); // 긴 이름 먼저
+  return names.find(n => q.includes(n));
+}
+function asstAnswer(q){
+  q = String(q).trim();
+  // 도움말
+  if (/^(도움말|사용법|help|메뉴|뭐.*할.*있|뭐 할 수)/i.test(q)) return asstHelp();
+  // 계좌
+  if (/(계좌|예금주|입금|은행)/.test(q)) {
+    const banks = (typeof loadBankInfo==='function') ? loadBankInfo() : [];
+    if (!banks.length) return '등록된 계좌가 없어요. 지출결의서 탭 → 🏦 계좌 관리에서 등록할 수 있어요.';
+    const v = _findVendor(q, banks);
+    if (v) {
+      const found = banks.filter(b => b.name === v);
+      return found.map(b =>
+        `• ${b.name}\n  ${b.bank||'-'} ${b.acct||''}\n  예금주: ${b.holder||'-'}${b.tpayType?` · 결제: ${b.tpayType}`:''}`
+      ).join('\n\n');
+    }
+    if (banks.length <= 15) return `등록된 계좌 ${banks.length}개:\n` + banks.map(b => `• ${b.name}`).join('\n');
+    return `등록된 계좌 ${banks.length}개. 거래처 이름을 같이 알려주세요. 예: "해담별 계좌"`;
+  }
+  // 매출
+  if (/매출|판매|sales/i.test(q)) {
+    const today = /오늘/.test(q);
+    const week  = /이번주|주간|일주일/.test(q);
+    if (today || /지금|현재/.test(q) || !week) {
+      if (!Array.isArray(allOrders) || !allOrders.length) return '오늘 발주서 파일을 먼저 올려주세요.';
+      const total = allOrders.reduce((s,o)=>s+(Number(o.order_amt)||0),0);
+      const gr = allOrders.filter(o=>String(o.alias||'').includes('로또상회'));
+      const yb = allOrders.filter(o=>String(o.alias||'').includes('자꾸가게'));
+      const grSum = gr.reduce((s,o)=>s+(Number(o.order_amt)||0),0);
+      const ybSum = yb.reduce((s,o)=>s+(Number(o.order_amt)||0),0);
+      return `오늘 자사 매출\n• 총 ${allOrders.length}건 · ${_fmt(total)}원\n• 로또상회 ${gr.length}건 · ${_fmt(grSum)}원\n• 자꾸가게 ${yb.length}건 · ${_fmt(ybSum)}원`;
+    }
+    if (week && typeof srLoadHistory === 'function') {
+      const hist = srLoadHistory();
+      if (!hist.length) return '저장된 일일 매출 이력이 없어요. 매출 보고용 탭에서 보고서 생성 → 💾 이력에 저장 누르셔야 누적돼요.';
+      const last7 = hist.sort((a,b)=>a.date<b.date?1:-1).slice(0,7);
+      const sum = last7.reduce((s,h)=>s+(h.totalSales||0),0);
+      return `최근 ${last7.length}일 매출 ${_fmt(sum)}원\n` + last7.map(h=>`• ${h.date}: ${_fmt(h.totalSales||0)}원 (${h.totalCnt||0}건)`).join('\n');
+    }
+  }
+  // 코드
+  if (/(코드|등록|상품코드)/.test(q)) {
+    const codes = (typeof loadCodes==='function') ? loadCodes() : [];
+    if (!codes.length) return '등록된 코드가 없어요.';
+    const v = _findVendor(q, codes);
+    if (v) {
+      const filtered = codes.filter(c=>c.vendor===v);
+      return `[${v}] 등록된 코드 ${filtered.length}개:\n` +
+        filtered.slice(0,15).map(c=>`• ${c.code||''} → ${c.product||'(품목없음)'}${c.optKw?` [옵션:${c.optKw}]`:''}`).join('\n') +
+        (filtered.length>15?`\n…외 ${filtered.length-15}개`:'');
+    }
+    // 품목/상품명 매칭
+    const term = q.replace(/(코드|등록된|찾아|뭐|뭐야|뭐였)/g,'').trim();
+    if (term) {
+      const hits = codes.filter(c => (c.product||'').includes(term) || (c.code||'').includes(term));
+      if (hits.length) return `'${term}' 관련 ${hits.length}개:\n` + hits.slice(0,10).map(c=>`• ${c.code} → ${c.product||''} (${c.vendor||'-'})`).join('\n');
+    }
+    return `등록된 코드 ${codes.length}개. 발주처 이름이나 품목으로 검색해보세요. 예: "일비 코드", "박대 코드"`;
+  }
+  // 지출/송금/결의서
+  if (/(지출|송금|결의서|보낸돈|얼마.*보냈)/.test(q)) {
+    const hist = (typeof loadExpHist==='function') ? loadExpHist() : [];
+    if (!hist.length) return '저장된 지출이력이 없어요.';
+    const v = _findVendor(q, hist);
+    if (v) {
+      const filtered = hist.filter(e=>e.vendor===v);
+      const total = filtered.reduce((s,e)=>s+(parseInt(e.total)||0),0);
+      return `[${v}] 송금 ${filtered.length}건 / 합계 ${_fmt(total)}원\n` +
+        filtered.slice(0,8).map(e=>`• ${e.date||''} ${e.desc||''} — ${_fmt(parseInt(e.total)||0)}원 (${e.co||''})`).join('\n') +
+        (filtered.length>8?`\n…외 ${filtered.length-8}건`:'');
+    }
+    // 날짜 검색
+    const m = q.match(/(\d{1,2})월\s*(\d{1,2})/);
+    if (m) {
+      const mm = String(m[1]).padStart(2,'0'), dd = String(m[2]).padStart(2,'0');
+      const matched = hist.filter(e=>(e.date||'').endsWith(`-${mm}-${dd}`));
+      if (matched.length) return `${mm}/${dd} 송금 ${matched.length}건:\n` + matched.map(e=>`• ${e.vendor} ${_fmt(parseInt(e.total)||0)}원 — ${e.desc||''}`).join('\n');
+    }
+    const total = hist.reduce((s,e)=>s+(parseInt(e.total)||0),0);
+    return `저장된 지출이력 ${hist.length}건 / 누적 ${_fmt(total)}원. 거래처 이름이나 날짜(예: "5월 18일")를 알려주세요.`;
+  }
+  // 옵션 변환 규칙
+  if (/(옵션.*규칙|변환규칙|optmap)/.test(q)) {
+    const rules = (typeof loadOptMap==='function') ? loadOptMap() : [];
+    if (!rules.length) return '등록된 옵션 변환 규칙이 없어요.';
+    return `옵션 변환 규칙 ${rules.length}개:\n` + rules.slice(0,10).map(r=>`• ${r.productKw||'(전체)'} + ${r.selectKws||''} → ${r.result}`).join('\n');
+  }
+  // 미인식/미매칭
+  if (/미인식|미매칭|매칭.*안.*돼|왜.*안/.test(q)) {
+    if (!Array.isArray(allOrders) || !allOrders.length) return '발주서 파일을 먼저 올려주세요.';
+    const um = allOrders.filter(o=>o.unmatched);
+    if (!um.length) return '미인식된 주문 없어요. 모두 매칭됐어요. 👍';
+    const codes = [...new Set(um.map(o=>o.vendor_code).filter(Boolean))].slice(0,8);
+    return `미인식 ${um.length}건. 코드 예: ${codes.join(', ')}\n→ 코드 관리 탭에서 등록해주세요.`;
+  }
+  // 합배송
+  if (/합배송/.test(q)) {
+    if (typeof detectMergeGroups !== 'function') return '발주서 파일을 먼저 올려주세요.';
+    const g = detectMergeGroups();
+    if (!g.length) return '오늘 합배송 후보 없어요.';
+    return `합배송 후보 ${g.length}명 (총 ${g.reduce((s,a)=>s+a.length,0)}건). 발주서 생성 2단계에서 확인하실 수 있어요.`;
+  }
+  // 기본 폴백
+  return '이해 못 했어요 😅\n자주 쓰는 질문 예:\n• "일비 계좌"\n• "오늘 매출" / "이번주 매출"\n• "푸드앤 코드" / "박대 코드"\n• "해담별 지출" / "5월 18일 지출"\n• "미인식 코드" / "합배송"\n• "도움말"';
+}
+function asstHelp(){
+  return `🤖 비서가 할 수 있는 것\n\n` +
+    `💳 계좌\n  "해담별 계좌" "일비 계좌번호"\n\n` +
+    `📈 매출\n  "오늘 매출" "이번주 매출"\n\n` +
+    `🔑 코드\n  "일비 코드" "박대 코드" "푸드앤 코드"\n\n` +
+    `📝 지출/송금\n  "푸드앤 지출" "5월 18일 송금"\n\n` +
+    `🔀 옵션 변환 규칙\n  "옵션 규칙"\n\n` +
+    `⚠ 미인식 / 합배송\n  "미인식 코드" "합배송"`;
+}
+window.addEventListener('load', ()=>{
+  // 비서 환영 메시지
+  const log=document.getElementById('asstLog');
+  if (log && !log.dataset.inited){
+    log.dataset.inited='1';
+    setTimeout(()=>asstAppend('bot','안녕하세요! 페이지 안 데이터를 검색해서 답해드려요.\n뭐 찾고 싶으세요? (예: "오늘 매출", "일비 코드", "해담별 계좌")\n자세한 건 "도움말"이라고 쳐보세요.'), 600);
+  }
+});
+
+// ══════════════════════════════════════════════════════════
 // 매출 보고용 (Sales Report — 발주서 파일 기반)
 // ══════════════════════════════════════════════════════════
 const SR_PRODUCT_KEYWORDS = {
@@ -7429,6 +7585,32 @@ function wrDeleteSnap(date){
   wrShowHistory(); wrShowHistory(); // toggle off then on
 }
 </script>
+
+<!-- 🤖 비서 위젯 (어느 탭에서나 호출) -->
+<button id="asstFab" onclick="asstOpen()" title="페이지 내 비서"
+        style="position:fixed;right:20px;bottom:20px;width:56px;height:56px;border-radius:50%;background:#2563eb;color:#fff;border:none;cursor:pointer;font-size:24px;box-shadow:0 6px 16px rgba(0,0,0,0.18);z-index:9998;transition:transform .15s"
+        onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">💬</button>
+<div id="asstPanel" style="display:none;position:fixed;right:20px;bottom:88px;width:370px;max-width:calc(100vw - 40px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,0.22);z-index:9999;flex-direction:column;overflow:hidden">
+  <div style="background:#2563eb;color:#fff;padding:12px 14px;display:flex;align-items:center;gap:8px">
+    <span style="font-size:18px">🤖</span>
+    <span style="font-weight:700;font-size:14px">페이지 비서</span>
+    <span style="font-size:11px;opacity:0.8;margin-left:6px">로컬 검색</span>
+    <button onclick="asstClose()" style="margin-left:auto;background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;padding:2px 6px">✕</button>
+  </div>
+  <div id="asstLog" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;background:#fafafa"></div>
+  <div style="padding:6px 10px;display:flex;gap:4px;flex-wrap:wrap;border-top:1px solid var(--border);background:#fff">
+    <button class="btn btn-sm" style="font-size:11px;padding:3px 8px" onclick="asstSendQuick('오늘 매출')">오늘 매출</button>
+    <button class="btn btn-sm" style="font-size:11px;padding:3px 8px" onclick="asstSendQuick('계좌')">계좌</button>
+    <button class="btn btn-sm" style="font-size:11px;padding:3px 8px" onclick="asstSendQuick('미인식 코드')">미인식</button>
+    <button class="btn btn-sm" style="font-size:11px;padding:3px 8px" onclick="asstSendQuick('합배송')">합배송</button>
+    <button class="btn btn-sm" style="font-size:11px;padding:3px 8px" onclick="asstSendQuick('도움말')">도움말</button>
+  </div>
+  <div style="padding:10px;display:flex;gap:6px;border-top:1px solid var(--border);background:#fff">
+    <input id="asstInput" type="text" placeholder="예: 일비 계좌, 오늘 매출, 박대 코드…" onkeydown="if(event.key==='Enter')asstSend()"
+           style="flex:1;padding:8px 12px;border:1px solid var(--border2);border-radius:18px;font-size:13px;font-family:inherit;outline:none">
+    <button onclick="asstSend()" style="background:#2563eb;color:#fff;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:16px">↑</button>
+  </div>
+</div>
 
 </body>
 </html>
