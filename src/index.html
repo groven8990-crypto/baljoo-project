@@ -7405,45 +7405,45 @@ function srBrandSection(title, color, agg){
   const HEAD_BG='#F1F5F9', HEAD_FG='#334155', FOOT_BG='#E2E8F0';
   const platRows = Object.entries(agg.platMap).sort((a,b)=>b[1].sales-a[1].sales).map(([p,v],i)=>`
     <tr style="background:${i%2===0?'#fff':'#F8FAFC'}">
-      <td style="padding:8px 12px;border-bottom:1px solid #eee">${escHtml(p)}</td>
-      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
-      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.sales.toLocaleString()}원</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #eee">${escHtml(p)}</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${v.sales.toLocaleString()}원</td>
     </tr>`).join('');
   const prodRows = Object.entries(agg.prodMap).sort((a,b)=>b[1].sales-a[1].sales).map(([n,v],i)=>`
     <tr style="background:${i%2===0?'#fff':'#F8FAFC'}">
-      <td style="padding:8px 12px;border-bottom:1px solid #eee">${escHtml(n)}</td>
-      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
-      <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${v.sales.toLocaleString()}원</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #eee">${escHtml(n)}</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
+      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${v.sales.toLocaleString()}원</td>
     </tr>`).join('');
   return `
     <div style="background:${color};color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">${escHtml(title)}</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
-      <colgroup><col style="width:45%"><col style="width:25%"><col style="width:30%"></colgroup>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">
+      <colgroup><col style="width:50%"><col style="width:22%"><col style="width:28%"></colgroup>
       <thead><tr style="background:${HEAD_BG}">
-        <th style="padding:7px 12px;text-align:left;color:${HEAD_FG};font-weight:700">플랫폼</th>
-        <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">주문건수</th>
-        <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">매출액</th>
+        <th style="padding:9px 14px;text-align:left;color:${HEAD_FG};font-weight:700">플랫폼</th>
+        <th style="padding:9px 14px;text-align:right;color:${HEAD_FG};font-weight:700">주문건수</th>
+        <th style="padding:9px 14px;text-align:right;color:${HEAD_FG};font-weight:700">매출액</th>
       </tr></thead>
       <tbody>${platRows}</tbody>
       <tfoot><tr style="background:${FOOT_BG};font-weight:700">
-        <td style="padding:7px 12px;color:${HEAD_FG}">합계</td>
-        <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${agg.count.toLocaleString()}건</td>
-        <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${agg.totalSales.toLocaleString()}원</td>
+        <td style="padding:9px 14px;color:${HEAD_FG}">합계</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.count.toLocaleString()}건</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.totalSales.toLocaleString()}원</td>
       </tr></tfoot>
     </table>
     <div style="height:8px"></div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
-      <colgroup><col style="width:45%"><col style="width:25%"><col style="width:30%"></colgroup>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">
+      <colgroup><col style="width:50%"><col style="width:22%"><col style="width:28%"></colgroup>
       <thead><tr style="background:${HEAD_BG}">
-        <th style="padding:7px 12px;text-align:left;color:${HEAD_FG};font-weight:700">제품</th>
-        <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">주문건수</th>
-        <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">매출액</th>
+        <th style="padding:9px 14px;text-align:left;color:${HEAD_FG};font-weight:700">제품</th>
+        <th style="padding:9px 14px;text-align:right;color:${HEAD_FG};font-weight:700">주문건수</th>
+        <th style="padding:9px 14px;text-align:right;color:${HEAD_FG};font-weight:700">매출액</th>
       </tr></thead>
       <tbody>${prodRows}</tbody>
       <tfoot><tr style="background:${FOOT_BG};font-weight:700">
-        <td style="padding:7px 12px;color:${HEAD_FG}">합계</td>
-        <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${agg.count.toLocaleString()}건</td>
-        <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${agg.totalSales.toLocaleString()}원</td>
+        <td style="padding:9px 14px;color:${HEAD_FG}">합계</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.count.toLocaleString()}건</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.totalSales.toLocaleString()}원</td>
       </tr></tfoot>
     </table>`;
 }
@@ -7517,18 +7517,18 @@ function srDinetteSection(agg){
   const DN='#7B4B00', HEAD_BG='#F1F5F9', HEAD_FG='#334155';
   return `
     <div style="background:${DN};color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">B2B업체 (디네트)</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
-      <colgroup><col style="width:45%"><col style="width:25%"><col style="width:30%"></colgroup>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">
+      <colgroup><col style="width:50%"><col style="width:22%"><col style="width:28%"></colgroup>
       <thead><tr style="background:${HEAD_BG}">
-        <th style="padding:7px 12px;text-align:left;color:${HEAD_FG};font-weight:700">제품</th>
-        <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">주문건수</th>
-        <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">매출액</th>
+        <th style="padding:9px 14px;text-align:left;color:${HEAD_FG};font-weight:700">제품</th>
+        <th style="padding:9px 14px;text-align:right;color:${HEAD_FG};font-weight:700">주문건수</th>
+        <th style="padding:9px 14px;text-align:right;color:${HEAD_FG};font-weight:700">매출액</th>
       </tr></thead>
       <tbody>
         <tr style="background:#fff">
-          <td style="padding:8px 12px;border-bottom:1px solid #eee">박대</td>
-          <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${agg.count.toLocaleString()}건</td>
-          <td style="padding:8px 12px;text-align:right;border-bottom:1px solid #eee">${agg.sales.toLocaleString()}원</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee">박대</td>
+          <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${agg.count.toLocaleString()}건</td>
+          <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${agg.sales.toLocaleString()}원</td>
         </tr>
       </tbody>
     </table>`;
