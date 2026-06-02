@@ -6979,15 +6979,16 @@ function srPlatform(o){
     const sm = String(o.shop_mall).trim();
     if (sm) return sm;
   }
-  // 2순위: 별칭에서 브랜드명을 제외한 부분
+  // 2순위: 별칭에서 브랜드명을 제외한 부분 (다양한 대시 문자 처리: -, –, —, ・, ／)
   const alias = (o && typeof o === 'object') ? o.alias : o;
   const a = String(alias||'').trim();
   if (!a) return '기타';
-  if (!a.includes('-')) {
-    if (a.includes('로또상회') || a.includes('자꾸가게')) return '기타';
+  const DASH = /[-‐-‒–—―‖_/／·•・]/;  // 일반 하이픈, 비-구분(non-breaking), en-dash, em-dash, 언더바, 슬래시, 가운뎃점 등
+  if (!DASH.test(a)) {
+    if (/로또상회|자꾸가게/.test(a)) return '기타';
     return a;
   }
-  const parts = a.split('-').map(s=>s.trim()).filter(Boolean);
+  const parts = a.split(DASH).map(s=>s.trim()).filter(Boolean);
   const plat = parts.find(p => !/로또상회|자꾸가게/.test(p));
   return plat || parts[0];
 }
