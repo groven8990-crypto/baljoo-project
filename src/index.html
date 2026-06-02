@@ -7307,8 +7307,19 @@ function asstAnswer(q){
     if (!g.length) return '오늘 합배송 후보 없어요.';
     return `합배송 후보 ${g.length}명 (총 ${g.reduce((s,a)=>s+a.length,0)}건). 발주서 생성 2단계에서 확인하실 수 있어요.`;
   }
+  // 별칭 진단 (플랫폼 인식 문제 디버그용)
+  if (/^별칭|^alias|쇼핑몰계정/.test(q)) {
+    if (!Array.isArray(allOrders) || !allOrders.length) return '발주서 파일을 먼저 올려주세요.';
+    const uniq = [...new Set(allOrders.map(o => String(o.alias||'')))];
+    const lines = uniq.slice(0,30).map(a => {
+      const p = (typeof srPlatform==='function') ? srPlatform({alias:a, shop_mall:''}) : '?';
+      const b = (typeof srBrand==='function') ? srBrand(a) : '?';
+      return `• "${a}" → 플랫폼:${p}, 브랜드:${b}`;
+    });
+    return `별칭(F열) 고유값 ${uniq.length}개:\n` + lines.join('\n') + (uniq.length>30?`\n…외 ${uniq.length-30}개`:'');
+  }
   // 기본 폴백
-  return '이해 못 했어요 😅\n자주 쓰는 질문 예:\n• "일비 계좌"\n• "오늘 매출" / "이번주 매출"\n• "푸드앤 코드" / "박대 코드"\n• "해담별 지출" / "5월 18일 지출"\n• "미인식 코드" / "합배송"\n• "도움말"';
+  return '이해 못 했어요 😅\n자주 쓰는 질문 예:\n• "일비 계좌"\n• "오늘 매출" / "이번주 매출"\n• "푸드앤 코드" / "박대 코드"\n• "해담별 지출" / "5월 18일 지출"\n• "미인식 코드" / "합배송"\n• "별칭" (F열 진단)\n• "도움말"';
 }
 function asstHelp(){
   return `🤖 비서가 할 수 있는 것\n\n` +
