@@ -4521,11 +4521,12 @@ function _doPreviewExpense(d, attachImgUrl) {
   }
 
   // ── MEMO 구성 ──
-  // 왼쪽(송금내역 MEMO): 공급가액 / 세액 / 합계 (금액 오른쪽 정렬)
+  const _hasVat = Number(d.vat) > 0;
+  // 왼쪽(송금내역 MEMO): 공급가액 / 세액 / 합계 (금액 오른쪽 정렬, 세액 0원이면 행 숨김)
   const leftContent =
     '<table style="width:100%;border-collapse:collapse">' +
       '<tr><td style="font-size:13px;padding:4px 8px 4px 4px;white-space:nowrap">　공급가액 :</td><td style="font-size:13px;padding:4px 0;text-align:right;width:100%">' + fmtNum(d.supply) + '원</td></tr>' +
-      '<tr><td style="font-size:13px;padding:4px 8px 4px 4px;white-space:nowrap">　세　　액 :</td><td style="font-size:13px;padding:4px 0;text-align:right;width:100%">' + fmtNum(d.vat)    + '원</td></tr>' +
+      (_hasVat ? '<tr><td style="font-size:13px;padding:4px 8px 4px 4px;white-space:nowrap">　세　　액 :</td><td style="font-size:13px;padding:4px 0;text-align:right;width:100%">' + fmtNum(d.vat)    + '원</td></tr>' : '') +
       '<tr><td colspan="2" style="padding:0"><hr style="margin:4px 0;border:none;border-top:1px solid #000"></td></tr>' +
       '<tr><td style="font-size:13px;padding:4px 8px 4px 4px;white-space:nowrap;font-weight:700">　합　　계 :</td><td style="font-size:13px;padding:4px 0;text-align:right;width:100%;font-weight:700">' + fmtNum(d.total)  + '원</td></tr>' +
     '</table>';
@@ -4605,7 +4606,7 @@ function _doPreviewExpense(d, attachImgUrl) {
       '<td style="' + B + ';padding:6px 10px;font-weight:600;background:#f5f5f5;font-size:11px">결제조건</td>' +
       '<td style="' + B + ';padding:6px 10px;text-align:center;font-size:12px">' + (d.payType||'즉시결제') + '</td>' +
       '<td style="' + B + ';padding:6px 10px;font-weight:600;background:#f5f5f5;font-size:11px">송금금액</td>' +
-      '<td style="' + B + ';padding:6px 10px;font-size:13px;font-weight:700;text-align:right">' + fmtNum(d.total) + '&nbsp;&nbsp;<span style="font-size:11px;font-weight:400">(VAT포함)</span></td>' +
+      '<td style="' + B + ';padding:6px 10px;font-size:13px;font-weight:700;text-align:right">' + fmtNum(d.total) + (Number(d.vat)>0 ? '&nbsp;&nbsp;<span style="font-size:11px;font-weight:400">(VAT포함)</span>' : '') + '</td>' +
     '</tr>' +
 
     // 증빙자료
@@ -4981,10 +4982,11 @@ function _doPreviewIncome(d, attachImgUrl) {
     const dt = new Date(d.date);
     dateKo = dt.getFullYear()+'년 '+(dt.getMonth()+1)+'월 '+dt.getDate()+'일 '+DAYS_KO[dt.getDay()]+'요일';
   }
+  const _hasVat2 = Number(d.vat) > 0;
   const leftContent =
     '<table style="width:100%;border-collapse:collapse">'+
       '<tr><td style="font-size:13px;padding:4px 8px 4px 4px;white-space:nowrap">　공급가액 :</td><td style="font-size:13px;padding:4px 0;text-align:right;width:100%">'+fmtNum(d.supply)+'원</td></tr>'+
-      '<tr><td style="font-size:13px;padding:4px 8px 4px 4px;white-space:nowrap">　세　　액 :</td><td style="font-size:13px;padding:4px 0;text-align:right;width:100%">'+fmtNum(d.vat)+'원</td></tr>'+
+      (_hasVat2 ? '<tr><td style="font-size:13px;padding:4px 8px 4px 4px;white-space:nowrap">　세　　액 :</td><td style="font-size:13px;padding:4px 0;text-align:right;width:100%">'+fmtNum(d.vat)+'원</td></tr>' : '')+
       '<tr><td colspan="2" style="padding:0"><hr style="margin:4px 0;border:none;border-top:1px solid #000"></td></tr>'+
       '<tr><td style="font-size:13px;padding:4px 8px 4px 4px;white-space:nowrap;font-weight:700">　합　　계 :</td><td style="font-size:13px;padding:4px 0;text-align:right;width:100%;font-weight:700">'+fmtNum(d.total)+'원</td></tr>'+
     '</table>';
@@ -5041,7 +5043,7 @@ function _doPreviewIncome(d, attachImgUrl) {
       '<td style="'+B+';padding:6px 10px;font-weight:600;background:#f5f5f5;font-size:11px">결제조건</td>'+
       '<td style="'+B+';padding:6px 10px;text-align:center;font-size:12px">'+(d.payType||'즉시결제')+'</td>'+
       '<td style="'+B+';padding:6px 10px;font-weight:600;background:#f5f5f5;font-size:11px">입금금액</td>'+
-      '<td style="'+B+';padding:6px 10px;font-size:13px;font-weight:700;text-align:right">'+fmtNum(d.total)+'&nbsp;&nbsp;<span style="font-size:11px;font-weight:400">(VAT포함)</span></td>'+
+      '<td style="'+B+';padding:6px 10px;font-size:13px;font-weight:700;text-align:right">'+fmtNum(d.total)+(Number(d.vat)>0?'&nbsp;&nbsp;<span style="font-size:11px;font-weight:400">(VAT포함)</span>':'')+'</td>'+
     '</tr>'+
     '<tr>'+
       '<td style="'+B+';padding:6px 10px;font-weight:600;background:#f5f5f5;font-size:11px">증빙자료</td>'+
@@ -6979,18 +6981,17 @@ function srPlatform(o){
     const sm = String(o.shop_mall).trim();
     if (sm) return sm;
   }
-  // 2순위: 별칭에서 브랜드명을 제외한 부분 (다양한 대시 문자 처리: -, –, —, ・, ／)
   const alias = (o && typeof o === 'object') ? o.alias : o;
-  const a = String(alias||'').trim();
+  let a = String(alias||'').trim();
   if (!a) return '기타';
-  const DASH = /[-‐-‒–—―‖_/／·•・]/;  // 일반 하이픈, 비-구분(non-breaking), en-dash, em-dash, 언더바, 슬래시, 가운뎃점 등
-  if (!DASH.test(a)) {
-    if (/로또상회|자꾸가게/.test(a)) return '기타';
-    return a;
-  }
-  const parts = a.split(DASH).map(s=>s.trim()).filter(Boolean);
-  const plat = parts.find(p => !/로또상회|자꾸가게/.test(p));
-  return plat || parts[0];
+  // 2순위: 별칭에서 브랜드명(로또상회/자꾸가게)을 빼고 남는 부분을 플랫폼으로
+  //   - 다양한 구분자(하이픈/en-dash/em-dash/언더바/슬래시/가운뎃점/공백/괄호 등)도 같이 제거
+  const stripped = a
+    .replace(/로또상회|자꾸가게/g, '')
+    .replace(/[\s\-‐-‒–—―‖_/／·•・()\[\]【】「」『』]+/g, ' ')
+    .trim();
+  if (stripped) return stripped;
+  return '기타';
 }
 function srFee(plat){return SR_FEE_MAP[plat]||0.10;}
 function srNormalize(name){
