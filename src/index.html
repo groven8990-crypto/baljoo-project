@@ -1659,6 +1659,12 @@ function applyMergeForVendor(orders){
 
 function buildRows(vk,orders,alias){
   orders = applyMergeForVendor(orders);
+  // 택배사 정규화: 발주처 기본 택배사가 있을 때, 파일 값이 비표준('기타택배'·빈칸 등)이면 기본값으로 자동 보정
+  const defCarrier = VENDOR_COURIER_DEFAULT && VENDOR_COURIER_DEFAULT[vk];
+  if (defCarrier) {
+    const isKnown = c => /롯데|cj|대한통운|우체국|한진|로젠|경동/i.test(String(c||'').trim());
+    orders = orders.map(o => isKnown(o.carrier) ? o : {...o, carrier: defCarrier});
+  }
   const s=getSender(alias);
   switch(vk){
     case '일비':case '일해수산':case '충남마른김수협':
