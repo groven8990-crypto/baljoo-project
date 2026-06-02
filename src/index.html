@@ -1369,7 +1369,7 @@ function handleFile(file) {
       if(hr<0){setSt('헤더를 찾을 수 없습니다.',true);return;}
       const H=rows[hr],ci=n=>H.indexOf(n);
       const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시')};
-      groupedOrders={};unmatchedList=[];allOrders=[];totalCount=0;loadedFileNames=[];
+      groupedOrders={};unmatchedList=[];allOrders=[];totalCount=0;loadedFileNames=[];_mergeDecisions=new Set();
       for(let i=hr+1;i<rows.length;i++){
         const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
@@ -1509,9 +1509,20 @@ function renderMergeCandidates(){
         ${rows}
       </div>`;
     }).join('');
+    // 같은 발주처에 2건 이상 있는 경우에만 합치기 가능
+    const hasMergeable = Object.values(byVendor).some(items => items.length > 1);
+    const key = _mergeKey(sample);
+    const checkedAttr = _mergeDecisions.has(key) ? 'checked' : '';
+    const checkbox = hasMergeable
+      ? `<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin-top:6px;padding:6px 10px;background:#fff;border:1px solid #16a34a;border-radius:6px">
+          <input type="checkbox" data-key="${escHtml(key)}" ${checkedAttr} onchange="toggleMergeDecision(this.dataset.key,this.checked)" style="width:14px;height:14px;cursor:pointer">
+          <span style="font-size:12px;font-weight:700;color:#16a34a">✅ 합배송으로 합쳐서 발주서 만들기</span>
+        </label>`
+      : '';
     return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#fff">
       <div style="font-weight:700;font-size:13px">${escHtml(sample.recv_name||'')} <span style="font-size:11px;color:var(--text3);font-weight:400">· 총 ${arr.length}건</span></div>
       <div style="font-size:11px;color:var(--text2);margin-top:2px">${escHtml(sample.addr||'')}</div>
+      ${checkbox}
       ${vendorBlocks}
     </div>`;
   }).join('');
@@ -1602,7 +1613,52 @@ function getSender(alias){
     return {name:'로또상회',phone:'010-5853-8990',addr:'전라북도 군산시 산북로 130-1',zip:'36742'};
   return {name:'자꾸가게',phone:'010-5853-8990',addr:'전라북도 군산시 산북로 130-1',zip:'36742'};
 }
+// ── 합배송 결정 저장 + 적용 ──
+let _mergeDecisions = new Set();
+function _mergeKey(o){
+  return String(o.recv_name||'').trim()+'||'+_addrNorm(o.addr);
+}
+function toggleMergeDecision(key, checked){
+  if (checked) _mergeDecisions.add(key); else _mergeDecisions.delete(key);
+  renderMergeCandidates();
+}
+function applyMergeForVendor(orders){
+  // 같은 (이름+주소) 키가 _mergeDecisions에 있고 같은 발주처 안에서 2건 이상이면 한 줄로 합침
+  const cntByKey = new Map();
+  orders.forEach(o => {
+    const k = _mergeKey(o);
+    if (_mergeDecisions.has(k)) cntByKey.set(k, (cntByKey.get(k)||0)+1);
+  });
+  const result = [], seen = new Set(), groupArr = new Map();
+  orders.forEach(o => {
+    const k = _mergeKey(o);
+    if (_mergeDecisions.has(k) && (cntByKey.get(k)||0) > 1) {
+      if (!groupArr.has(k)) groupArr.set(k, []);
+      groupArr.get(k).push(o);
+    } else {
+      result.push(o);
+    }
+  });
+  groupArr.forEach((arr, k) => {
+    const m = {...arr[0]};
+    const lines = arr.map(it => {
+      const eff = (it.qty||1) * (it.code_qty||1);
+      const part = `${it.item_name||''}${it.option_name?' '+it.option_name:''}${eff>1?' × '+eff:''}`;
+      return part.trim();
+    });
+    m.item_name = lines.join(' + ');
+    m.option_name = '';
+    m.qty = 1;
+    m.code_qty = arr.reduce((s,x)=>s+(x.qty||1)*(x.code_qty||1), 0);
+    m.memo = (m.memo ? m.memo + ' / ' : '') + `합배송 ${arr.length}건`;
+    m._merged = true;
+    result.push(m);
+  });
+  return result;
+}
+
 function buildRows(vk,orders,alias){
+  orders = applyMergeForVendor(orders);
   const s=getSender(alias);
   switch(vk){
     case '일비':case '일해수산':case '충남마른김수협':
@@ -4388,8 +4444,11 @@ function applyBankTemplate(bank) {
     document.getElementById(id).checked = bank['tev'+(i+1)] || false;
   });
   const desc = document.getElementById('expDesc').value || '';
-  document.getElementById('expMemo').value =
-    `* ${desc}\n* 예금주명 : ${bank.holder}\n* ${bank.bank}\n* 계좌번호 : ${bank.acct}`;
+  // 사용자가 메모를 이미 작성했으면 덮어쓰지 않음 (가상계좌 등 수동 편집 보존)
+  const memoEl = document.getElementById('expMemo');
+  if (memoEl && !memoEl.value.trim()) {
+    memoEl.value = `* ${desc}\n* 예금주명 : ${bank.holder}\n* ${bank.bank}\n* 계좌번호 : ${bank.acct}`;
+  }
   if (bank.tnote) document.getElementById('expNote').value = bank.tnote;
 }
 
