@@ -6961,7 +6961,19 @@ const SR_PRODUCT_KEYWORDS = {
   '분리수거함':'분리수거함','쓰레기통':'분리수거함','재활용':'분리수거함'
 };
 const SR_FEE_MAP = {'쿠팡':0.1084,'지마켓':0.12,'옥션':0.12,'11번가':0.12,'네이버':0.02};
-function srPlatform(alias){const a=String(alias||'').trim();return a.includes('-')?a.split('-')[0].trim():a;}
+function srPlatform(alias){
+  const a=String(alias||'').trim();
+  if (!a) return '기타';
+  if (!a.includes('-')) {
+    // '-' 없는 단일 값: 로또상회/자꾸가게 같은 브랜드명만 들어온 경우 → '기타'로 분류
+    if (a.includes('로또상회') || a.includes('자꾸가게')) return '기타';
+    return a;
+  }
+  const parts = a.split('-').map(s=>s.trim()).filter(Boolean);
+  // 브랜드명(로또상회/자꾸가게)이 아닌 첫 토큰을 플랫폼으로
+  const plat = parts.find(p => !/로또상회|자꾸가게/.test(p));
+  return plat || parts[0];
+}
 function srFee(plat){return SR_FEE_MAP[plat]||0.10;}
 function srNormalize(name){
   const n=String(name||'');
