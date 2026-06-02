@@ -7571,7 +7571,7 @@ function srRender(){
   }
   const titleDate=dateStr.replace(/-/g,'.');
   const html=`
-    <div id="srReportContent" class="card" style="background:#fff;padding:24px;max-width:920px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
+    <div id="srReportContent" class="card" style="background:#fff;padding:22px;max-width:680px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
       <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 일일 매출 현황</div>
       <div style="font-size:11px;color:#888;margin-top:2px">발주일자 기준</div>
       <div style="background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
@@ -7718,7 +7718,7 @@ function wrRender(){
       <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.totalSales||0).toLocaleString()}원</td>
     </tr>`).join('');
   const html = `
-    <div id="wrReportContent" class="card" style="background:#fff;padding:24px;max-width:920px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
+    <div id="wrReportContent" class="card" style="background:#fff;padding:22px;max-width:680px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
       <div style="font-size:20px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 주간 매출 현황</div>
       <div style="font-size:11px;color:#888;margin-top:2px">월~일 누적 · 누적된 일일 ${inWeek.length}건</div>
       <div style="background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
