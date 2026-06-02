@@ -151,6 +151,22 @@
       💡 판매자상품코드 형태: <code>발주처]품목명/옵션-수량</code> — 자동으로 품목명·옵션명을 분리합니다.<br>
       코드 미인식 시 <strong>⚙️ 코드 관리 → 코드 등록</strong>, 옵션 변환이 필요하면 <strong>옵션 변환 규칙</strong>에 등록하세요.
     </div>
+    <div class="card">
+      <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('upHistoryBody');var t=document.getElementById('upHistoryToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';renderUploadHistory();}else{b.style.display='none';t.textContent='▼ 펼치기';}">
+        📂 샵마인 파일 업로드 이력
+        <span id="upHistoryToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
+      </div>
+      <div id="upHistoryBody" style="display:none">
+        <div class="alert alert-info" style="margin-bottom:10px;font-size:12px">
+          업로드한 샵마인 파일이 자동 보관돼요. 최근 10개는 <strong>파일 본문</strong>까지 저장돼서 ⬇ 파일 또는 🔄 재처리(다시 분석) 가능.<br>
+          그 이후 항목은 메타정보만 남아요 (용량 관리).
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+          <button class="btn btn-danger btn-sm" style="font-size:11px;padding:3px 8px" onclick="clearUploadHistory()">🗑 전체삭제</button>
+        </div>
+        <div id="upHistoryList"></div>
+      </div>
+    </div>
   </div>
 
   <div class="step" id="step2">
@@ -1409,6 +1425,7 @@ function handleFile(file) {
       saveToHistory(file.name, allOrders);
       saveLastFile(file.name);
       showLastFileCard();
+      logUpload(file, e.target.result, allOrders);
       // 송장입력 탭과 자동 연동: 메모리에 즉시 반영 + 원본 파일 영속화(용량 초과 시 무시)
       try {
         const _sa = Date.now().toString();
@@ -1835,6 +1852,117 @@ function clearDlHistory(){
   if (!confirm('발주서 다운로드 이력을 모두 삭제할까요?')) return;
   saveDlHistory([]); renderDlHistory();
 }
+// ── 샵마인 파일 업로드 이력 ──
+const LS_UPHIST = 'yb_upload_history';
+const UPHIST_MAX_ENTRIES = 30;
+const UPHIST_BYTES_KEEP = 10;
+function loadUploadHistory(){ try{return JSON.parse(localStorage.getItem(LS_UPHIST)||'[]');}catch{return [];} }
+function _saveUploadHistory(a){ try{ localStorage.setItem(LS_UPHIST, JSON.stringify(a)); return true; }catch(e){ return false; } }
+function logUpload(file, arrayBuffer, orders){
+  if (!file || !arrayBuffer) return;
+  const summary = {};
+  (orders||[]).forEach(o => { const v = o.vendor_key || '미매칭'; summary[v] = (summary[v]||0)+1; });
+  let b64 = '';
+  try {
+    const b = new Uint8Array(arrayBuffer); let s='';
+    for (let i=0;i<b.length;i++) s += String.fromCharCode(b[i]);
+    b64 = btoa(s);
+  } catch(e){}
+  const entry = {
+    id: Date.now() + Math.floor(Math.random()*1000),
+    ts: new Date().toISOString(),
+    date: new Date().toISOString().slice(0,10),
+    fileName: file.name,
+    fileBytesB64: b64,
+    size: arrayBuffer.byteLength,
+    orderCount: (orders||[]).length,
+    summary
+  };
+  let hist = loadUploadHistory();
+  // 같은 (날짜+파일명) 중복 제거
+  hist = hist.filter(h => !(h.fileName === file.name && h.date === entry.date));
+  hist.unshift(entry);
+  // 메타는 최대 N개, 본문은 최근 K개만
+  while (hist.length > UPHIST_MAX_ENTRIES) hist.pop();
+  for (let i = UPHIST_BYTES_KEEP; i < hist.length; i++) hist[i].fileBytesB64 = '';
+  if (!_saveUploadHistory(hist)) {
+    // 용량 초과: 본문 더 줄여 재시도
+    for (let keep = UPHIST_BYTES_KEEP - 1; keep >= 1; keep--) {
+      for (let i = keep; i < hist.length; i++) hist[i].fileBytesB64 = '';
+      if (_saveUploadHistory(hist)) break;
+    }
+    // 그래도 실패하면 가장 최근 1개만 본문 보유
+    if (!localStorage.getItem(LS_UPHIST)) {
+      hist = hist.slice(0,1).concat(hist.slice(1).map(h => ({...h, fileBytesB64:''})));
+      _saveUploadHistory(hist);
+    }
+  }
+  renderUploadHistory();
+}
+function downloadUploadHistory(id){
+  const item = loadUploadHistory().find(h => h.id === id);
+  if (!item) { alert('이력을 찾지 못했어요'); return; }
+  if (!item.fileBytesB64) { alert('이 항목은 용량 정리로 파일 본문이 보관되지 않았어요.'); return; }
+  try {
+    const bin = atob(item.fileBytesB64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes.buffer], {type:'application/octet-stream'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = item.fileName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch(e){ alert('파일 복원 실패: '+e.message); }
+}
+function reprocessUpload(id){
+  const item = loadUploadHistory().find(h => h.id === id);
+  if (!item) { alert('이력을 찾지 못했어요'); return; }
+  if (!item.fileBytesB64) { alert('파일 본문이 보관되지 않아 재처리 불가'); return; }
+  if (!confirm(`'${item.fileName}'을(를) 다시 분석할까요? 현재 분석 데이터가 사라져요.`)) return;
+  try {
+    const bin = atob(item.fileBytesB64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    const f = new File([bytes.buffer], item.fileName, {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    handleFile(f);
+  } catch(e){ alert('재처리 실패: '+e.message); }
+}
+function deleteUploadHistory(id){
+  _saveUploadHistory(loadUploadHistory().filter(h=>h.id!==id));
+  renderUploadHistory();
+}
+function clearUploadHistory(){
+  if (!confirm('업로드 이력을 모두 삭제할까요?')) return;
+  _saveUploadHistory([]); renderUploadHistory();
+}
+function renderUploadHistory(){
+  const el = document.getElementById('upHistoryList');
+  if (!el) return;
+  const hist = loadUploadHistory();
+  if (!hist.length) { el.innerHTML = '<p style="font-size:13px;color:var(--text3);text-align:center;padding:14px">아직 저장된 업로드 이력이 없어요.</p>'; return; }
+  // 용량 추정
+  const totalSize = hist.reduce((s,h)=>s+(h.fileBytesB64?h.fileBytesB64.length*0.75:0),0);
+  let html = `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">총 ${hist.length}개 / 본문 보관 ${hist.filter(h=>h.fileBytesB64).length}개 · 약 ${Math.round(totalSize/1024)}KB 사용</div>`;
+  hist.forEach(h => {
+    const tm = h.ts ? h.ts.slice(11,16) : '';
+    const sumText = h.summary ? Object.entries(h.summary).map(([k,v])=>`${k} ${v}`).join(', ') : '';
+    const sizeKB = h.size ? Math.round(h.size/1024) + 'KB' : '';
+    const noBytes = !h.fileBytesB64;
+    html += `<div style="display:grid;grid-template-columns:90px 1fr auto auto auto;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="color:var(--text3);font-size:11px">${escHtml(h.date||'')} ${tm}</span>
+      <div style="min-width:0">
+        <div style="font-weight:600;word-break:break-all">${escHtml(h.fileName||'')} ${noBytes?'<span style="color:var(--warn);font-size:10px;font-weight:400">(메타만)</span>':''}</div>
+        <div style="font-size:11px;color:var(--text3)">${h.orderCount||0}건${sizeKB?' · '+sizeKB:''}${sumText?' · '+escHtml(sumText.slice(0,80)):''}</div>
+      </div>
+      <button class="btn btn-sm" style="font-size:11px;padding:2px 8px" ${noBytes?'disabled':''} onclick="downloadUploadHistory(${h.id})">⬇ 파일</button>
+      <button class="btn btn-sm" style="font-size:11px;padding:2px 8px" ${noBytes?'disabled':''} onclick="reprocessUpload(${h.id})">🔄 재처리</button>
+      <button class="btn btn-danger btn-sm" style="font-size:10px;padding:2px 6px" onclick="deleteUploadHistory(${h.id})">✕</button>
+    </div>`;
+  });
+  el.innerHTML = html;
+}
+
 function renderDlHistory(){
   const el = document.getElementById('dlHistoryList');
   if (!el) return;
