@@ -3387,19 +3387,19 @@ function renderExpHistList() {
     g.items.forEach((d, idx) => {
       const realIdx = hist.indexOf(d);
       const isPaid = !!d.paid;
-      const rowBg  = isPaid ? 'background:rgba(16,185,129,0.08);border-left:3px solid #10b981' : 'background:var(--surface)';
+      const rowBg  = 'background:var(--surface)';
       const paidBtn = isPaid
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" title="클릭하면 미송금으로 변경" onclick="toggleExpPaid(' + realIdx + ')">✅ 완료</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="송금완료로 표시" onclick="toggleExpPaid(' + realIdx + ')">☐ 송금</button>';
       const attachBtn = d.hasAttach
         ? '<button class="btn btn-sm" style="padding:2px 8px;color:var(--primary);border-color:var(--primary)" title="거래내역서 보기" onclick="viewExpAttach(' + (d.id||0) + ')">📎</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3)" title="거래내역서 첨부" onclick="attachToExpHist(' + realIdx + ')">📎+</button>';
-      const descStyle = isPaid ? 'font-size:13px;cursor:pointer;color:var(--text3);text-decoration:line-through' : 'font-size:13px;cursor:pointer';
+      const descStyle = 'font-size:13px;cursor:pointer';
       html += '<div id="exphi_' + realIdx + '" style="display:grid;grid-template-columns:24px 90px 1fr auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;' + rowBg + '">' +
         '<input type="checkbox" class="exp-hist-chk" data-idx="' + realIdx + '" style="width:15px;height:15px;cursor:pointer" onchange="updateExpHistSelCount()">' +
         '<span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="previewHistItem(' + realIdx + ')">' + escHtml(d.date||'') + '</span>' +
         '<span style="' + descStyle + '" onclick="previewHistItem(' + realIdx + ')">' + escHtml(d.desc||'') + '</span>' +
-        '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer' + (isPaid ? ';color:var(--text3)' : '') + '" onclick="previewHistItem(' + realIdx + ')">' + fmtNum(d.total) + '원</span>' +
+        '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer" onclick="previewHistItem(' + realIdx + ')">' + fmtNum(d.total) + '원</span>' +
         paidBtn +
         attachBtn +
         '<button class="btn btn-sm" style="padding:2px 8px" onclick="saveExpImgFromHist(' + realIdx + ')">📷</button>' +
@@ -5501,15 +5501,15 @@ function renderIncHistList() {
     g.items.forEach((d, idx) => {
       const realIdx = hist.indexOf(d);
       const isPaid  = !!d.paid;
-      const rowBg   = isPaid ? 'background:rgba(16,185,129,0.08);border-left:3px solid #10b981' : 'background:var(--surface)';
+      const rowBg   = 'background:var(--surface)';
       const paidBtn = isPaid
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" onclick="toggleIncPaid('+realIdx+')">✅ 확인</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" onclick="toggleIncPaid('+realIdx+')">☐ 확인</button>';
-      const descStyle = isPaid ? 'font-size:13px;color:var(--text3);text-decoration:line-through' : 'font-size:13px';
+      const descStyle = 'font-size:13px';
       html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
         '<span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.date||'')+'</span>'+
         '<span style="'+descStyle+';cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.desc||'')+'</span>'+
-        '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer'+(isPaid?';color:var(--text3)':'')+'" onclick="previewIncHistItem('+realIdx+')">'+fmtNum(d.total)+'원</span>'+
+        '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+fmtNum(d.total)+'원</span>'+
         paidBtn+
         '<button class="btn btn-sm" style="padding:2px 8px" onclick="saveIncImgFromHist('+realIdx+')">📷</button>'+
         '<button class="btn btn-sm" style="padding:2px 8px;color:var(--accent);border-color:var(--accent)" onclick="editIncHist('+realIdx+')">✏️</button>'+
