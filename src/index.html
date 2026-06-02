@@ -1410,7 +1410,7 @@ function handleFile(file) {
         const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
         const order_amt=Math.round(_ab - _ai + _ah);
         const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():'')};
+        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
         allOrders.push(order);
         if(vk){const gk=vk+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
         else unmatchedList.push(order);
@@ -4165,7 +4165,7 @@ function handleFileAdd(file){
         const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
         const order_amt=Math.round(_ab - _ai + _ah);
         const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():'')};
+        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
         allOrders.push(order);
         if(vk){const gk=vk+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
         else unmatchedList.push(order);
@@ -7310,13 +7310,15 @@ function asstAnswer(q){
   // 별칭 진단 (플랫폼 인식 문제 디버그용)
   if (/^별칭|^alias|쇼핑몰계정/.test(q)) {
     if (!Array.isArray(allOrders) || !allOrders.length) return '발주서 파일을 먼저 올려주세요.';
-    const uniq = [...new Set(allOrders.map(o => String(o.alias||'')))];
-    const lines = uniq.slice(0,30).map(a => {
-      const p = (typeof srPlatform==='function') ? srPlatform({alias:a, shop_mall:''}) : '?';
-      const b = (typeof srBrand==='function') ? srBrand(a) : '?';
-      return `• "${a}" → 플랫폼:${p}, 브랜드:${b}`;
+    // 원본 F열 + 가공된 alias 둘 다 표시
+    const uniq = [...new Set(allOrders.map(o => (o.alias_raw||o.alias||'')+'|'+(o.alias||'')))];
+    const lines = uniq.slice(0,30).map(combo => {
+      const [raw, ali] = combo.split('|');
+      const p = (typeof srPlatform==='function') ? srPlatform({alias_raw:raw, alias:ali}) : '?';
+      const b = (typeof srBrand==='function') ? srBrand(raw||ali) : '?';
+      return `• 원본F열="${raw}" / 가공alias="${ali}" → 플랫폼:${p}, 브랜드:${b}`;
     });
-    return `별칭(F열) 고유값 ${uniq.length}개:\n` + lines.join('\n') + (uniq.length>30?`\n…외 ${uniq.length-30}개`:'');
+    return `별칭 진단 ${uniq.length}개:\n` + lines.join('\n') + (uniq.length>30?`\n…외 ${uniq.length-30}개`:'');
   }
   // 기본 폴백
   return '이해 못 했어요 😅\n자주 쓰는 질문 예:\n• "일비 계좌"\n• "오늘 매출" / "이번주 매출"\n• "푸드앤 코드" / "박대 코드"\n• "해담별 지출" / "5월 18일 지출"\n• "미인식 코드" / "합배송"\n• "별칭" (F열 진단)\n• "도움말"';
@@ -7360,16 +7362,17 @@ const SR_PRODUCT_KEYWORDS = {
 };
 const SR_FEE_MAP = {'쿠팡':0.1084,'지마켓':0.12,'옥션':0.12,'11번가':0.12,'네이버':0.02};
 function srPlatform(o){
-  // 1순위: 별도 쇼핑몰/마켓/판매처 컬럼 (예: '쿠팡', '지마켓')
+  // 1순위: 별도 쇼핑몰/마켓/판매처 컬럼
   if (o && typeof o === 'object' && o.shop_mall) {
     const sm = String(o.shop_mall).trim();
     if (sm) return sm;
   }
-  const alias = (o && typeof o === 'object') ? o.alias : o;
-  let a = String(alias||'').trim();
+  // 2순위: 별칭 원본(alias_raw) — extractAlias가 잘라내기 전 'F열' 그대로의 값
+  //          (예: '쿠팡-로또상회'). 없으면 가공된 alias 사용.
+  const aliasSrc = (o && typeof o === 'object') ? (o.alias_raw || o.alias) : o;
+  let a = String(aliasSrc||'').trim();
   if (!a) return '기타';
-  // 2순위: 별칭에서 브랜드명(로또상회/자꾸가게)을 빼고 남는 부분을 플랫폼으로
-  //   - 다양한 구분자(하이픈/en-dash/em-dash/언더바/슬래시/가운뎃점/공백/괄호 등)도 같이 제거
+  // 3순위: 브랜드명(로또상회/자꾸가게)을 빼고 남는 부분을 플랫폼으로
   const stripped = a
     .replace(/로또상회|자꾸가게/g, '')
     .replace(/[\s\-‐-‒–—―‖_/／·•・()\[\]【】「」『』]+/g, ' ')
