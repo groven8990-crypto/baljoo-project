@@ -7956,7 +7956,7 @@ function wrRender(){
   if (dnAgg.sales > 0) _plat['디네트(B2B)'] = (_plat['디네트(B2B)']||0) + dnAgg.sales;
   const platSorted = Object.entries(_plat).sort((a,b)=>b[1]-a[1]);
   const platTotal = platSorted.reduce((s,[,v])=>s+v, 0);
-  const PASTEL = ['#A5C8FF','#FCB1A6','#FCD5B5','#C4B5FD','#A7F3D0','#FDE68A','#BAE6FD','#F9A8D4','#DDD6FE','#BBF7D0','#FECACA','#E9D5FF'];
+  const PASTEL = ['#5B8FD9','#E89090','#F5A977','#9F87E0','#6FCE9F','#F5C547','#76C4E8','#E588B8','#B5A8E5','#8FD68F','#E89B9B','#C49EE0'];
   const platTableRows = platSorted.map(([p,v],i)=>{
     const pct = platTotal>0 ? (v/platTotal*100).toFixed(1) : '0.0';
     return `<tr style="background:${i%2===0?'#fff':'#FAFBFC'}">
@@ -8063,10 +8063,10 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg){
       data: {
         labels,
         datasets: [
-          {type:'bar', label:'로또상회', data:grSales, backgroundColor:'#A5C8FF', borderRadius:4, stack:'s1'},
-          {type:'bar', label:'자꾸가게', data:ybSales, backgroundColor:'#C4B5FD', borderRadius:4, stack:'s1'},
-          {type:'bar', label:'디네트',   data:dnSales, backgroundColor:'#FCD5B5', borderRadius:4, stack:'s1'},
-          {type:'line', label:'총 매출', data:totSales, borderColor:'#6EE7B7', backgroundColor:'rgba(110,231,183,0.15)', tension:0.35, pointRadius:3, pointBackgroundColor:'#6EE7B7', borderWidth:2.5, fill:false}
+          {type:'bar', label:'로또상회', data:grSales, backgroundColor:'#5B8FD9', borderRadius:4, stack:'s1'},
+          {type:'bar', label:'자꾸가게', data:ybSales, backgroundColor:'#9F87E0', borderRadius:4, stack:'s1'},
+          {type:'bar', label:'디네트',   data:dnSales, backgroundColor:'#F5A977', borderRadius:4, stack:'s1'},
+          {type:'line', label:'총 매출', data:totSales, borderColor:'#2E8E64', backgroundColor:'rgba(46,142,100,0.10)', tension:0.35, pointRadius:3, pointBackgroundColor:'#2E8E64', borderWidth:2.5, fill:false}
         ]
       },
       options: {
@@ -8096,7 +8096,7 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg){
     const sorted = Object.entries(platCombined).sort((a,b)=>b[1]-a[1]);
     const labels = sorted.map(([p])=>p);
     const data   = sorted.map(([,v])=>v);
-    const palette = ['#A5C8FF','#FCB1A6','#FCD5B5','#C4B5FD','#A7F3D0','#FDE68A','#BAE6FD','#F9A8D4','#DDD6FE','#BBF7D0','#FECACA','#E9D5FF'];
+    const palette = ['#5B8FD9','#E89090','#F5A977','#9F87E0','#6FCE9F','#F5C547','#76C4E8','#E588B8','#B5A8E5','#8FD68F','#E89B9B','#C49EE0'];
     const bg = labels.map((_,i)=>palette[i%palette.length]);
     _wrChartPlatform = new Chart(c2.getContext('2d'), {
       type:'doughnut',
