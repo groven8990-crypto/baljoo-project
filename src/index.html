@@ -6401,8 +6401,33 @@ function reconExportXlsx() {
     <label style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:8px 12px;background:#fff7ed;border:1px solid #fdba74;border-radius:6px;font-size:13px;cursor:pointer">
       <input type="checkbox" id="srDinetteEventChk" onchange="srToggleDinetteEvent(this.checked)" style="width:14px;height:14px;cursor:pointer">
       <span style="font-weight:600;color:#c2410c">🎉 행사기간 단가 적용</span>
-      <span style="font-size:11px;color:var(--text3)">— 체크 시 4P 15,100 / 3P 17,400 적용 (평소 15,600 / 17,900)</span>
+      <span style="font-size:11px;color:var(--text3)">— 체크 시 4P 15,600 / 3P 17,900 / 2P+ 22,700 적용 (평소 16,100 / 18,400 / 23,200)</span>
     </label>
+  </div>
+  <div class="card">
+    <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('paBody');var t=document.getElementById('paToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';srRenderProductAliases();}else{b.style.display='none';t.textContent='▼ 펼치기';}">
+      🏷️ 상품명 별칭 관리
+      <span id="paToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
+    </div>
+    <div id="paBody" style="display:none">
+      <div class="alert alert-info" style="margin-bottom:10px;font-size:12px">
+        보고서에 상품명이 잘려서 이상하게 나올 때 (예: "남성 기능성 다" → "다이얼 안전화") 직접 등록하세요.<br>
+        <strong>원본 키워드</strong>가 상품명에 포함되면 <strong>표시 이름</strong>으로 바꿔서 집계해요. 이 컴퓨터의 브라우저에만 저장됩니다.
+      </div>
+      <div style="display:grid;grid-template-columns:1.2fr 1.2fr auto;gap:8px;align-items:end;margin-bottom:12px">
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">원본 키워드 (잘린/긴 이름)</label>
+          <input class="inp" id="paKw" placeholder="예: 남성 기능성 다" style="font-size:12px">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">표시할 이름</label>
+          <input class="inp" id="paLabel" placeholder="예: 다이얼 안전화" style="font-size:12px">
+        </div>
+        <button class="btn btn-primary" onclick="srAddProductAlias()" style="height:36px">+ 추가</button>
+      </div>
+      <div id="paErr" style="color:var(--danger);font-size:12px;margin-bottom:8px"></div>
+      <div id="paList"></div>
+    </div>
   </div>
   <div id="srReport"></div>
   <div class="card" style="margin-top:14px">
@@ -6430,7 +6455,7 @@ function reconExportXlsx() {
         <li>이 탭으로 돌아와서 그 날짜로 다시 생성 + 💾 저장 → 자동 덮어쓰기</li>
       </ul>
       <div style="font-size:12px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-        💡 상품명이 잘려서 이상하게 나오면 (예: "휴대용 터빈 손") 알려주세요. 상품명 사전에 추가해드려요.<br>
+        💡 상품명이 잘려서 이상하게 나오면 (예: "휴대용 터빈 손") 위 <strong>🏷️ 상품명 별칭 관리</strong>에서 직접 등록하세요.<br>
         💡 다른 컴퓨터로 옮길 때는 코드 관리 탭 → 📤 전체 데이터 내보내기 / 📥 가져오기 활용.
       </div>
     </div>
@@ -7510,10 +7535,58 @@ function srPlatform(o){
   return '기타';
 }
 function srFee(plat){return SR_FEE_MAP[plat]||0.10;}
+const LS_PRODUCT_ALIASES = 'yb_product_aliases';
+function loadProductAliases(){ try{ return JSON.parse(localStorage.getItem(LS_PRODUCT_ALIASES)||'[]'); }catch{ return []; } }
+function saveProductAliases(arr){ try{ localStorage.setItem(LS_PRODUCT_ALIASES, JSON.stringify(arr)); }catch(e){} }
 function srNormalize(name){
   const n=String(name||'');
+  // 1. 사용자 등록 별칭 우선
+  for(const a of loadProductAliases()){
+    if (a && a.kw && n.includes(a.kw)) return a.label || a.kw;
+  }
+  // 2. 내장 키워드 사전
   for(const k of Object.keys(SR_PRODUCT_KEYWORDS)){if(n.includes(k))return SR_PRODUCT_KEYWORDS[k];}
   return n.slice(0,8) || '미분류';
+}
+function srAddProductAlias(){
+  const kwEl = document.getElementById('paKw');
+  const lbEl = document.getElementById('paLabel');
+  const kw = (kwEl?.value||'').trim();
+  const label = (lbEl?.value||'').trim();
+  const errEl = document.getElementById('paErr');
+  if (errEl) errEl.textContent = '';
+  if (!kw || !label){
+    if (errEl) errEl.textContent = '원본 키워드와 표시 이름을 모두 입력해 주세요.';
+    return;
+  }
+  const arr = loadProductAliases();
+  arr.push({kw, label});
+  saveProductAliases(arr);
+  if (kwEl) kwEl.value = '';
+  if (lbEl) lbEl.value = '';
+  srRenderProductAliases();
+}
+function srRemoveProductAlias(i){
+  const arr = loadProductAliases();
+  arr.splice(i, 1);
+  saveProductAliases(arr);
+  srRenderProductAliases();
+}
+function srRenderProductAliases(){
+  const list = document.getElementById('paList');
+  if (!list) return;
+  const arr = loadProductAliases();
+  if (arr.length === 0){
+    list.innerHTML = '<p style="font-size:12px;color:var(--text3);margin:0">등록된 별칭이 없습니다.</p>';
+    return;
+  }
+  list.innerHTML = arr.map((a,i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-family:monospace">${escHtml(a.kw)}</span>
+      <span style="color:var(--text3)">→</span>
+      <span style="font-weight:600">${escHtml(a.label)}</span>
+      <button class="btn btn-danger btn-sm" style="margin-left:auto;font-size:10px;padding:2px 8px" onclick="srRemoveProductAlias(${i})">삭제</button>
+    </div>`).join('');
 }
 function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회'))return 'grobn';if(a.includes('자꾸가게'))return 'yb';return 'other';}
 function srAggregate(orders){
@@ -7579,15 +7652,15 @@ function srBrandSection(title, color, agg){
 // ─ 디네트 박대 ─
 // 평시(기본) 단가
 const SR_DINETTE_SPEC = {
-  '4p':  {price:15600, ship:4500},
-  '3p':  {price:17900, ship:4500},
-  '2p+': {price:22200, ship:4500}
+  '4p':  {price:16100, ship:4500},
+  '3p':  {price:18400, ship:4500},
+  '2p+': {price:23200, ship:4500}
 };
 // 행사기간 단가 (체크박스 ON 시 적용)
 const SR_DINETTE_SPEC_EVENT = {
-  '4p':  {price:15100, ship:4500},
-  '3p':  {price:17400, ship:4500},
-  '2p+': {price:22200, ship:4500}
+  '4p':  {price:15600, ship:4500},
+  '3p':  {price:17900, ship:4500},
+  '2p+': {price:22700, ship:4500}
 };
 const SR_DINETTE_UNIT = {'4p':2, '3p':2, '2p+':8};
 const SR_DINETTE_DISC = 4000;  // 묶음 추가마다 4000원 할인
