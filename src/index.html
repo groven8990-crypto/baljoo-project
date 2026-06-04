@@ -3348,6 +3348,12 @@ function renderExpHistList() {
     )) return false;
     return true;
   });
+  // 날짜 내림차순 정렬 (최신이 위로, 같은 날짜는 작성시각 늦은 것이 위로)
+  filtered.sort((a,b) => {
+    const ad = (a.date||'') + '|' + (a.savedAt||String(a.id||''));
+    const bd = (b.date||'') + '|' + (b.savedAt||String(b.id||''));
+    return ad < bd ? 1 : ad > bd ? -1 : 0;
+  });
 
   // 합계 요약
   const sumEl = document.getElementById('expHistSummary');
@@ -5474,6 +5480,12 @@ function renderIncHistList() {
     if (_incPaidFilter === 'unpaid' && !!d.paid) return false;
     if (q && !((d.vendor||'').toLowerCase().includes(q)||(d.desc||'').toLowerCase().includes(q)||(d.date||'').includes(q))) return false;
     return true;
+  });
+  // 날짜 내림차순 정렬 (최신이 위로)
+  filtered.sort((a,b) => {
+    const ad = (a.date||'') + '|' + (a.savedAt||String(a.id||''));
+    const bd = (b.date||'') + '|' + (b.savedAt||String(b.id||''));
+    return ad < bd ? 1 : ad > bd ? -1 : 0;
   });
   const sumEl = document.getElementById('incHistSummary');
   if (sumEl && filtered.length) {
