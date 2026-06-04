@@ -1568,19 +1568,34 @@ function renderMergeCandidates(){
 function renderStep3(){
   const today=todayStr();let html='';
   const emails=loadVendorEmails();
+  // 오늘 다운로드 받은 발주서 매핑 (vendor|alias → 가장 최근 시각)
+  const todayDate = new Date().toISOString().slice(0,10);
+  const dlMap = {};
+  loadDlHistory().forEach(h => {
+    if (h.date === todayDate) {
+      const key = (h.vendor||'') + '|' + (h.alias||'');
+      if (!dlMap[key] || h.ts > dlMap[key]) dlMap[key] = h.ts;
+    }
+  });
   for(const gk of Object.keys(groupedOrders).sort()){
     const [v,a]=gk.split('|'),cnt=groupedOrders[gk].length;
     const savedEmail=emails[v]||'';
     const emailTag=savedEmail?`<span style="font-size:11px;color:var(--text3);margin-left:6px" title="저장된 메일">✉ ${escHtml(savedEmail)}</span>`:'';
-    html+=`<div class="gen-card" id="gc_${ekey(gk)}">
+    const dlTs = dlMap[gk];
+    const dlTime = dlTs ? new Date(dlTs).toTimeString().slice(0,5) : '';
+    const dlMarkStyle = dlTs ? '' : 'display:none';
+    const dlMark = `<span class="dl-mark" id="dlm_${ekey(gk)}" title="오늘 ${dlTime} 다운로드 완료" style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#dcfce7;color:#16a34a;border:1px solid #86efac;border-radius:6px;font-size:12px;font-weight:700;${dlMarkStyle}">✅ 다운로드</span>`;
+    const doneCls = dlTs ? ' done' : '';
+    html+=`<div class="gen-card${doneCls}" id="gc_${ekey(gk)}">
       <div style="min-width:0;flex:1">
         <span style="font-size:14px;font-weight:700">${v}</span>
         <span class="badge badge-purple" style="margin-left:6px;vertical-align:middle">${a}</span>
         ${emailTag}
         <div style="font-size:12px;color:var(--text2);margin-top:3px">${makeFileName(v,a)} · ${cnt}건</div>
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0">
+      <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
         <button class="btn btn-sm" onclick="dlOne('${esc(gk)}')">⬇ 다운로드</button>
+        ${dlMark}
         <button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="엑셀 다운로드 + Gmail 작성창 열기">📧 메일</button>
       </div>
     </div>`;
@@ -1805,6 +1820,12 @@ function dlOne(gk){
   const fname = makeFileName(v, a);
   XLSX.writeFile(wb, fname);
   const c=document.getElementById('gc_'+ekey(gk));if(c)c.classList.add('done');
+  const mk=document.getElementById('dlm_'+ekey(gk));
+  if(mk){
+    const nowTime = new Date().toTimeString().slice(0,5);
+    mk.title = `오늘 ${nowTime} 다운로드 완료`;
+    mk.style.display = 'inline-flex';
+  }
   ds_autoCheckOne(v, a); // 개별 다운로드 시에도 일일현황 자동 체크
   logDownload(v, a, orders, fname);  // 다운로드 이력 저장
 }
