@@ -993,6 +993,30 @@ const VENDOR_PREFIXES = {
   '공덕농협':      ['공덕-','공덕_','공덕'],
   '도매꾹':        ['도매꾹]','도매꾹-','도매꾹_'],
 };
+// 발주 마감시간 우선순위 (작을수록 빨리 마감 → 위에 정렬)
+const VENDOR_CUTOFF_PRIORITY = {
+  '늘푸른우리':       1,  // 09:00~09:30
+  '최고집':           2,  // 09:00~09:30
+  '도매꾹':           3,  // 09:00~09:30
+  // 4 = 그 외 (10:00 기본)
+  '농업법인회사 동일': 5,  // 11:00
+  '푸드엔드베스트':    6,  // 12:00
+  '일비':             7,  // 13:00
+};
+function vendorCutoffPriority(vendorName){
+  if (VENDOR_CUTOFF_PRIORITY[vendorName] != null) return VENDOR_CUTOFF_PRIORITY[vendorName];
+  return 4;  // 그 외는 10:00 기본
+}
+// "vendor|alias" 형식 키 배열을 발주 마감 시간순(같으면 가나다순)으로 정렬
+function sortVendorKeys(keys){
+  return [...keys].sort((a,b) => {
+    const va = a.split('|')[0], vb = b.split('|')[0];
+    const pa = vendorCutoffPriority(va), pb = vendorCutoffPriority(vb);
+    if (pa !== pb) return pa - pb;
+    if (va !== vb) return va < vb ? -1 : 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+}
 
 // ══════════════════════════════════════════════════════════
 // localStorage
@@ -1498,7 +1522,7 @@ function renderStep2(){
     <div class="metric"><div class="metric-val" style="color:var(--success)">${mappedCnt}</div><div class="metric-label">옵션 자동변환</div></div>
     <div class="metric"><div class="metric-val ${unmatchedList.length>0?'warn':''}">${unmatchedList.length}</div><div class="metric-label">미매칭</div></div>`;
   let rows='';
-  for(const gk of keys.sort()){
+  for(const gk of sortVendorKeys(keys)){
     const [v,a]=gk.split('|'),orders=groupedOrders[gk],s=orders[0];
     const mappedInGroup=orders.filter(o=>o.opt_mapped).length;
     const checkInGroup=orders.filter(o=>o.opt_needs_check).length;
@@ -1607,7 +1631,7 @@ function renderStep3(){
       if (!dlMap[key] || h.ts > dlMap[key]) dlMap[key] = h.ts;
     }
   });
-  for(const gk of Object.keys(groupedOrders).sort()){
+  for(const gk of sortVendorKeys(Object.keys(groupedOrders))){
     const [v,a]=gk.split('|'),cnt=groupedOrders[gk].length;
     const savedEmail=emails[v]||'';
     const emailTag=savedEmail?`<span style="font-size:11px;color:var(--text3);margin-left:6px" title="저장된 메일">✉ ${escHtml(savedEmail)}</span>`:'';
@@ -2060,7 +2084,7 @@ function ds_autoCheckOne(vk, alias){
 }
 function generateAll(){
   const btn=document.getElementById('genAllBtn');btn.disabled=true;btn.textContent='⏳ 생성 중...';
-  const keys=Object.keys(groupedOrders).sort();
+  const keys=sortVendorKeys(Object.keys(groupedOrders));
   keys.forEach((gk,i)=>setTimeout(()=>{
     dlOne(gk);
     if(i===keys.length-1)setTimeout(()=>{
@@ -2100,7 +2124,7 @@ function ds_autoCheckOrders(){
 }
 function renderStep4(){
   const today=todayStr();let html='';
-  for(const gk of Object.keys(groupedOrders).sort()){
+  for(const gk of sortVendorKeys(Object.keys(groupedOrders))){
     const [v,a]=gk.split('|'),cnt=groupedOrders[gk].length;
     html+=`<div class="result-item">
       <div><strong>${v}</strong> <span class="badge badge-purple">${a}</span>
