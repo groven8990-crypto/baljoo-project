@@ -1044,6 +1044,104 @@ async function loadFromCloud(key) {
   } catch(e) { return null; }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 전체 데이터 클라우드 동기화 (v2)
+// ═══════════════════════════════════════════════════════════════
+const CLOUD_SYNC_KEYS = [
+  'yb_codes',              // 등록 코드
+  'yb_optmap',             // 옵션 변환 규칙
+  'yb_bankinfo',           // 계좌 정보
+  'yb_exphist',            // 지출결의서 작성이력
+  'yb_inchist',            // 입금결의서 작성이력
+  'yb_sales_history',      // 매출 누적 (주간 보고서용)
+  'yb_dl_history',         // 발주서 다운로드 이력
+  'yb_upload_history',     // 샵마인 업로드 이력 (b64 제외)
+  'yb_overrides',          // 직접수정
+  'yb_merge_decisions',    // 합배송 결정
+  'yb_vendor_emails',      // 거래처 이메일
+  'yb_product_aliases',    // 상품명 별칭
+  'yb_dinette_event_mode', // 디네트 행사 모드
+];
+
+// 클라우드에 보낼 때 무거운 파일 본문은 제외
+function _trimForCloud(key, raw) {
+  if (key === 'yb_upload_history') {
+    try {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        // fileB64 / b64 같은 무거운 필드 제거
+        return JSON.stringify(arr.map(item => {
+          const {fileB64, b64, ...rest} = item || {};
+          return rest;
+        }));
+      }
+    } catch(e){}
+  }
+  return raw;
+}
+
+// 모든 추적 키를 한 번에 push
+async function cloudPushAll() {
+  const bulk = {};
+  for (const k of CLOUD_SYNC_KEYS) {
+    const v = localStorage.getItem(k);
+    if (v != null) bulk[k] = _trimForCloud(k, v);
+  }
+  try {
+    await fetch(GSHEET_URL, {
+      method: 'POST',
+      body: JSON.stringify({ bulk }),
+    });
+    return true;
+  } catch(e) { console.warn('cloud push all failed', e); return false; }
+}
+
+// 디바운스: 짧은 시간 안에 여러 push가 모이면 한 번에 묶어서
+let _cloudPushTimer = null;
+function scheduleCloudPush() {
+  if (_cloudPushTimer) clearTimeout(_cloudPushTimer);
+  _cloudPushTimer = setTimeout(() => {
+    _cloudPushTimer = null;
+    cloudPushAll();
+  }, 1500);
+}
+
+// 클라우드에서 전체 데이터 받아서 localStorage 덮어쓰기
+async function cloudPullAll() {
+  try {
+    const res = await fetch(GSHEET_URL);
+    const body = await res.json();
+    if (body && typeof body === 'object' && !body._error) {
+      let cnt = 0;
+      // localStorage.setItem 후 자동 push가 트리거되지 않도록 플래그 켬
+      _suppressCloudPush = true;
+      try {
+        for (const k of CLOUD_SYNC_KEYS) {
+          if (body[k] != null) {
+            const val = typeof body[k] === 'string' ? body[k] : JSON.stringify(body[k]);
+            localStorage.setItem(k, val);
+            cnt++;
+          }
+        }
+      } finally { _suppressCloudPush = false; }
+      return cnt;
+    }
+  } catch(e) { console.warn('cloud pull all failed', e); }
+  return 0;
+}
+
+// localStorage.setItem을 후킹: 추적 키에 쓸 때마다 클라우드 push 예약
+let _suppressCloudPush = false;
+(function hookLocalStorage(){
+  const orig = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = function(k, v) {
+    orig(k, v);
+    if (!_suppressCloudPush && CLOUD_SYNC_KEYS.includes(k)) {
+      scheduleCloudPush();
+    }
+  };
+})();
+
 // 로컬 + 클라우드 동기화
 // ── Cowork 미매칭 코드 보완 (기존 등록 코드 제외, 새로 발견된 것만) ──
 const DEFAULT_CODES = [
@@ -7288,33 +7386,13 @@ async function manualSync() {
   if (status) { status.textContent = '⏳ 동기화 중...'; status.style.color = 'var(--text3)'; }
 
   try {
-    const [cloudCodes, cloudOptMap] = await Promise.all([
-      loadFromCloud('codes'),
-      loadFromCloud('optmap'),
-    ]);
-
-    let codeCnt = 0, omCnt = 0, updated = false;
-
-    if (Array.isArray(cloudCodes) && cloudCodes.length > 0) {
-      const localRaw = localStorage.getItem(LS_CODES);
-      const localArr = localRaw ? (function(){ try{return JSON.parse(localRaw);}catch{return [];} })() : [];
-      // 클라우드에 더 많거나 같으면 클라우드를 신뢰 (다른 PC에서 등록한 내용 받아오기)
-      if (cloudCodes.length >= localArr.length) {
-        localStorage.setItem(LS_CODES, JSON.stringify(cloudCodes));
-        updated = true;
-      }
-      codeCnt = cloudCodes.length;
-    }
-
-    if (Array.isArray(cloudOptMap)) {
-      const localRaw = localStorage.getItem(LS_OPTMAP);
-      const localArr = localRaw ? (function(){ try{return JSON.parse(localRaw);}catch{return [];} })() : [];
-      if (cloudOptMap.length >= localArr.length) {
-        localStorage.setItem(LS_OPTMAP, JSON.stringify(cloudOptMap));
-        updated = true;
-      }
-      omCnt = cloudOptMap.length;
-    }
+    // v2: 전체 데이터 한 번에 받기 (실패하면 v1 단일 키 방식으로 폴백)
+    const pulled = await cloudPullAll();
+    let codeCnt = 0, omCnt = 0, updated = pulled > 0;
+    try { codeCnt = JSON.parse(localStorage.getItem(LS_CODES)||'[]').length; } catch{}
+    try { omCnt   = JSON.parse(localStorage.getItem(LS_OPTMAP)||'[]').length; } catch{}
+    // 동기화 후 변경된 로컬 데이터를 다시 클라우드에 push
+    cloudPushAll();
 
     if (status) {
       const time = new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'});
