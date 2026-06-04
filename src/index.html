@@ -7988,6 +7988,11 @@ function wrRender(){
           <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${totalSales.toLocaleString()}원</td>
         </tr></tfoot>
       </table>
+      <div style="background:#555;color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">📊 일자별 추이 · 플랫폼 구성</div>
+      <div style="background:#fff;border:1px solid #eee;border-radius:0 0 6px 6px;padding:14px;display:grid;grid-template-columns:1.3fr 1fr;gap:14px;align-items:center">
+        <div style="position:relative;height:220px"><canvas id="wrChartDaily"></canvas></div>
+        <div style="position:relative;height:220px"><canvas id="wrChartPlatform"></canvas></div>
+      </div>
       ${srBrandSection('로또상회 (그로븐) — 주간 누적', '#1E3A5F', grAgg, {topProducts:3})}
       ${srBrandSection('자꾸가게 (옐로우브릿지) — 주간 누적', '#3A1E5F', ybAgg, {topProducts:3})}
       ${srDinetteSection(dnAgg)}
@@ -7996,6 +8001,77 @@ function wrRender(){
   document.getElementById('wrReport').innerHTML = html;
   document.getElementById('wrImageBtn').disabled = false;
   status.innerHTML = `<span style="color:var(--success)">✅ 주간 보고서: ${range.start} ~ ${range.end} · ${inWeek.length}일 합산 · 총 ${totalSales.toLocaleString()}원</span>`;
+  // 차트 렌더링
+  wrRenderCharts(byDate, grAgg, ybAgg, dnAgg);
+}
+let _wrChartDaily=null, _wrChartPlatform=null;
+function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg){
+  if (typeof Chart === 'undefined') return;
+  if (_wrChartDaily) { _wrChartDaily.destroy(); _wrChartDaily=null; }
+  if (_wrChartPlatform) { _wrChartPlatform.destroy(); _wrChartPlatform=null; }
+  // 일자별 추이: 막대(자사 매출) + 선(총 매출)
+  const c1 = document.getElementById('wrChartDaily');
+  if (c1) {
+    const labels = byDate.map(s => s.date.slice(5));  // MM-DD
+    const grSales = byDate.map(s => (s.grAgg?.totalSales)||0);
+    const ybSales = byDate.map(s => (s.ybAgg?.totalSales)||0);
+    const dnSales = byDate.map(s => (s.dnAgg?.sales)||0);
+    const totSales = byDate.map(s => (s.totalSales)||0);
+    _wrChartDaily = new Chart(c1.getContext('2d'), {
+      data: {
+        labels,
+        datasets: [
+          {type:'bar', label:'로또상회', data:grSales, backgroundColor:'#1E3A5F', borderRadius:3, stack:'s1'},
+          {type:'bar', label:'자꾸가게', data:ybSales, backgroundColor:'#3A1E5F', borderRadius:3, stack:'s1'},
+          {type:'bar', label:'디네트',   data:dnSales, backgroundColor:'#B45309', borderRadius:3, stack:'s1'},
+          {type:'line', label:'총 매출', data:totSales, borderColor:'#10B981', backgroundColor:'transparent', tension:0.3, pointRadius:3, pointBackgroundColor:'#10B981', borderWidth:2}
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{labels:{font:{size:11}, boxWidth:10}},
+          tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${Number(ctx.raw||0).toLocaleString()}원`}}
+        },
+        scales:{
+          x:{stacked:true, ticks:{font:{size:10}}},
+          y:{stacked:true, beginAtZero:true, ticks:{font:{size:10}, callback:v=>v>=10000?(v/10000)+'만':v}}
+        }
+      }
+    });
+  }
+  // 플랫폼 도넛: 그로븐 + YB + 디네트 합산
+  const c2 = document.getElementById('wrChartPlatform');
+  if (c2) {
+    const platCombined = {};
+    const addPlat = (mp) => { for (const [p,v] of Object.entries(mp||{})) {
+      if (!platCombined[p]) platCombined[p] = 0;
+      platCombined[p] += (v.sales||0);
+    }};
+    addPlat(grAgg.platMap);
+    addPlat(ybAgg.platMap);
+    if (dnAgg.sales > 0) platCombined['디네트(B2B)'] = (platCombined['디네트(B2B)']||0) + dnAgg.sales;
+    const sorted = Object.entries(platCombined).sort((a,b)=>b[1]-a[1]);
+    const labels = sorted.map(([p])=>p);
+    const data   = sorted.map(([,v])=>v);
+    const palette = ['#1A56DB','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#EC4899','#84CC16','#6366F1','#F97316','#14B8A6','#A855F7'];
+    const bg = labels.map((_,i)=>palette[i%palette.length]);
+    _wrChartPlatform = new Chart(c2.getContext('2d'), {
+      type:'doughnut',
+      data:{labels, datasets:[{data, backgroundColor:bg, borderColor:'#fff', borderWidth:2}]},
+      options:{
+        responsive:true, maintainAspectRatio:false, cutout:'58%',
+        plugins:{
+          legend:{position:'right', labels:{font:{size:11}, boxWidth:12, padding:8}},
+          tooltip:{callbacks:{label:(ctx)=>{
+            const tot = data.reduce((s,v)=>s+v,0);
+            const pct = tot>0 ? ((ctx.raw/tot)*100).toFixed(1) : 0;
+            return `${ctx.label}: ${Number(ctx.raw||0).toLocaleString()}원 (${pct}%)`;
+          }}}
+        }
+      }
+    });
+  }
 }
 function wrExportImage(){
   const el = document.getElementById('wrReportContent');
