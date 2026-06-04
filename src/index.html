@@ -125,34 +125,35 @@
      TAB 1: 발주서 생성
 ══════════════════════════════════════════════════════════ -->
 <div class="tab-content active" id="tab-order">
-<aside id="cutoffPanel" style="position:fixed;right:16px;top:88px;width:260px;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);font-size:12px;z-index:50;overflow:hidden">
-  <div style="background:#F1F5F9;color:#334155;padding:8px 12px;font-weight:700;font-size:12px;display:flex;justify-content:space-between;align-items:center">
+<aside id="cutoffPanel" style="position:fixed;right:16px;top:88px;width:420px;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.08);font-size:13px;z-index:50;overflow:hidden">
+  <div style="background:#F1F5F9;color:#334155;padding:10px 14px;font-weight:700;font-size:13px;display:flex;justify-content:space-between;align-items:center">
     <span>⏰ 거래처별 마감시간</span>
-    <button onclick="var b=document.getElementById('cutoffBody');var ic=document.getElementById('cutoffToggle');if(b.style.display==='none'){b.style.display='';ic.textContent='▲';}else{b.style.display='none';ic.textContent='▼';}" style="background:transparent;border:0;cursor:pointer;font-size:11px;color:#334155" title="펼치기/접기"><span id="cutoffToggle">▲</span></button>
+    <button onclick="var b=document.getElementById('cutoffBody');var ic=document.getElementById('cutoffToggle');if(b.style.display==='none'){b.style.display='';ic.textContent='▲';}else{b.style.display='none';ic.textContent='▼';}" style="background:transparent;border:0;cursor:pointer;font-size:12px;color:#334155" title="펼치기/접기"><span id="cutoffToggle">▲</span></button>
   </div>
   <div id="cutoffBody">
-    <table style="width:100%;border-collapse:collapse">
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+      <colgroup><col style="width:46%"><col style="width:32%"><col style="width:22%"></colgroup>
       <thead>
-        <tr style="background:#F8FAFC;color:#64748B;font-size:11px">
-          <th style="text-align:left;padding:6px 10px;font-weight:600">거래처</th>
-          <th style="text-align:center;padding:6px 4px;font-weight:600">발주</th>
-          <th style="text-align:center;padding:6px 10px;font-weight:600">주문</th>
+        <tr style="background:#F8FAFC;color:#64748B;font-size:12px">
+          <th style="text-align:left;padding:8px 12px;font-weight:600">거래처</th>
+          <th style="text-align:center;padding:8px 6px;font-weight:600">발주</th>
+          <th style="text-align:center;padding:8px 12px;font-weight:600">주문</th>
         </tr>
       </thead>
       <tbody>
-        <tr><td style="padding:6px 10px;border-top:1px solid #f1f5f9">늘푸른우리</td><td style="padding:6px 4px;text-align:center;border-top:1px solid #f1f5f9;color:#0369a1">09:00~09:30</td><td style="padding:6px 10px;text-align:center;border-top:1px solid #f1f5f9">10:00</td></tr>
-        <tr style="background:#FAFBFC"><td style="padding:6px 10px">최고집</td><td style="padding:6px 4px;text-align:center;color:#0369a1">09:00~09:30</td><td style="padding:6px 10px;text-align:center">10:00</td></tr>
-        <tr><td style="padding:6px 10px;border-top:1px solid #f1f5f9">도매꾹</td><td style="padding:6px 4px;text-align:center;border-top:1px solid #f1f5f9;color:#0369a1">09:00~09:30</td><td style="padding:6px 10px;text-align:center;border-top:1px solid #f1f5f9">10:00</td></tr>
-        <tr style="background:#FAFBFC"><td style="padding:6px 10px">푸드엔드베스트<div style="font-size:10px;color:var(--text3)">(간고등어)</div></td><td style="padding:6px 4px;text-align:center;color:#0369a1">12:00</td><td style="padding:6px 10px;text-align:center">11:00</td></tr>
-        <tr><td style="padding:6px 10px;border-top:1px solid #f1f5f9">농업법인회사 동일<div style="font-size:10px;color:var(--text3)">(마늘)</div></td><td style="padding:6px 4px;text-align:center;border-top:1px solid #f1f5f9;color:#0369a1">11:00</td><td style="padding:6px 10px;text-align:center;border-top:1px solid #f1f5f9">10:30</td></tr>
-        <tr style="background:#FAFBFC"><td style="padding:6px 10px">일비</td><td style="padding:6px 4px;text-align:center;color:#0369a1">13:00</td><td style="padding:6px 10px;text-align:center">14:00</td></tr>
-        <tr><td style="padding:6px 10px;border-top:1px solid #f1f5f9;color:var(--text2)">그 외 (기본)</td><td style="padding:6px 4px;text-align:center;border-top:1px solid #f1f5f9;color:#0369a1">10:00</td><td style="padding:6px 10px;text-align:center;border-top:1px solid #f1f5f9">10:00</td></tr>
+        <tr><td style="padding:8px 12px;border-top:1px solid #f1f5f9">늘푸른우리</td><td style="padding:8px 6px;text-align:center;border-top:1px solid #f1f5f9;color:#0369a1;white-space:nowrap">09:00~09:30</td><td style="padding:8px 12px;text-align:center;border-top:1px solid #f1f5f9">10:00</td></tr>
+        <tr style="background:#FAFBFC"><td style="padding:8px 12px">최고집</td><td style="padding:8px 6px;text-align:center;color:#0369a1;white-space:nowrap">09:00~09:30</td><td style="padding:8px 12px;text-align:center">10:00</td></tr>
+        <tr><td style="padding:8px 12px;border-top:1px solid #f1f5f9">도매꾹</td><td style="padding:8px 6px;text-align:center;border-top:1px solid #f1f5f9;color:#0369a1;white-space:nowrap">09:00~09:30</td><td style="padding:8px 12px;text-align:center;border-top:1px solid #f1f5f9">10:00</td></tr>
+        <tr style="background:#FAFBFC"><td style="padding:8px 12px">푸드엔드베스트<div style="font-size:11px;color:var(--text3)">(간고등어)</div></td><td style="padding:8px 6px;text-align:center;color:#0369a1">12:00</td><td style="padding:8px 12px;text-align:center">11:00</td></tr>
+        <tr><td style="padding:8px 12px;border-top:1px solid #f1f5f9">농업법인회사 동일<div style="font-size:11px;color:var(--text3)">(마늘)</div></td><td style="padding:8px 6px;text-align:center;border-top:1px solid #f1f5f9;color:#0369a1">11:00</td><td style="padding:8px 12px;text-align:center;border-top:1px solid #f1f5f9">10:30</td></tr>
+        <tr style="background:#FAFBFC"><td style="padding:8px 12px">일비</td><td style="padding:8px 6px;text-align:center;color:#0369a1">13:00</td><td style="padding:8px 12px;text-align:center">14:00</td></tr>
+        <tr><td style="padding:8px 12px;border-top:1px solid #f1f5f9;color:var(--text2)">그 외 (기본)</td><td style="padding:8px 6px;text-align:center;border-top:1px solid #f1f5f9;color:#0369a1">10:00</td><td style="padding:8px 12px;text-align:center;border-top:1px solid #f1f5f9">10:00</td></tr>
       </tbody>
     </table>
   </div>
 </aside>
 <style>
-  @media (max-width: 1320px) { #cutoffPanel { display: none; } }
+  @media (max-width: 1460px) { #cutoffPanel { display: none; } }
 </style>
 <div class="container">
   <div class="progress">
