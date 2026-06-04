@@ -4362,6 +4362,46 @@ function saveBankInfo(a){ localStorage.setItem(LS_BANK, JSON.stringify(a)); }
 function loadExpHist() { try{ return JSON.parse(localStorage.getItem(LS_EXPHIST)||'[]'); }catch{ return []; } }
 function saveExpHist(a){ localStorage.setItem(LS_EXPHIST, JSON.stringify(a)); }
 
+// 거래처명 통합 정규화 — 같은 곳인데 다르게 적힌 이름을 하나로 통일
+const VENDOR_ALIAS_MAP = {
+  '김귀현': '늘푸른우리',
+  '(주) 푸드엔드베스트': '(주)푸드엔드베스트',
+  '주식회사 일비': '일비',
+  '다모아식품': '한마당식품'
+};
+function normalizeVendorName(name){
+  const n = String(name||'').trim();
+  if (!n) return n;
+  if (VENDOR_ALIAS_MAP[n]) return VENDOR_ALIAS_MAP[n];
+  // 공백 정규화 후 재시도 (예: "(주)  푸드엔드베스트" 같은 다중 공백)
+  const normSpace = n.replace(/\s+/g, ' ').trim();
+  if (VENDOR_ALIAS_MAP[normSpace]) return VENDOR_ALIAS_MAP[normSpace];
+  return n;
+}
+// 페이지 로드 시 한 번만 실행 — 기존 이력 거래처명 일괄 통합
+(function migrateVendorNames(){
+  const FLAG = 'yb_vendor_alias_migrated_v1';
+  if (localStorage.getItem(FLAG)) return;
+  try {
+    let changed = 0;
+    for (const k of ['yb_exphist','yb_inchist']) {
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) continue;
+      for (const item of arr) {
+        if (item && item.vendor) {
+          const newV = normalizeVendorName(item.vendor);
+          if (newV !== item.vendor) { item.vendor = newV; changed++; }
+        }
+      }
+      localStorage.setItem(k, JSON.stringify(arr));
+    }
+    localStorage.setItem(FLAG, '1');
+    if (changed > 0) console.log('[vendor alias migrate] '+changed+'건 통합 완료');
+  } catch(e){ console.error('vendor alias migrate failed', e); }
+})();
+
 // ── 옛 양식 지출결의서 일괄 가져오기 ──
 function parseOldExpenseFile(buf, fname) {
   const wb = XLSX.read(buf, {type:'array', cellDates:true});
@@ -4718,7 +4758,7 @@ function getExpFormData() {
     co:       curExpCo,
     date:     document.getElementById('expDate').value,
     writer:   document.getElementById('expWriter').value,
-    vendor:   getExpVendorName(),
+    vendor:   normalizeVendorName(getExpVendorName()),
     desc:     document.getElementById('expDesc').value,
     supply:   document.getElementById('expSupply').value,
     vat:      document.getElementById('expVat').value,
@@ -5187,7 +5227,7 @@ function getIncFormData() {
     co:      curIncCo,
     date:    document.getElementById('incDate').value,
     writer:  document.getElementById('incWriter').value,
-    vendor:  vname,
+    vendor:  normalizeVendorName(vname),
     desc:    document.getElementById('incDesc').value,
     supply:  document.getElementById('incSupply').value,
     vat:     document.getElementById('incVat').value,
