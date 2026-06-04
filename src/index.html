@@ -8076,7 +8076,7 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg){
           tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${Number(ctx.raw||0).toLocaleString()}원`}}
         },
         scales:{
-          x:{stacked:true, ticks:{font:{size:10}}, grid:{display:false}},
+          x:{stacked:true, ticks:{font:{size:10}}, grid:{display:false}, categoryPercentage:0.45, barPercentage:0.9},
           y:{stacked:true, beginAtZero:true, ticks:{font:{size:10}, callback:v=>v>=10000?(v/10000)+'만':v}, grid:{color:'rgba(0,0,0,0.04)'}}
         }
       }
