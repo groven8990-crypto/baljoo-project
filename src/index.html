@@ -7949,54 +7949,96 @@ function wrRender(){
       <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.dnAgg?.count||0).toLocaleString()}건</td>
       <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.totalSales||0).toLocaleString()}원</td>
     </tr>`).join('');
+  // 플랫폼 통합 (브랜드 무관 + 디네트) — 도넛 + 표 공용
+  const _plat = {};
+  const _addP = (mp) => { for (const [p,v] of Object.entries(mp||{})) { _plat[p] = (_plat[p]||0) + (v.sales||0); }};
+  _addP(grAgg.platMap); _addP(ybAgg.platMap);
+  if (dnAgg.sales > 0) _plat['디네트(B2B)'] = (_plat['디네트(B2B)']||0) + dnAgg.sales;
+  const platSorted = Object.entries(_plat).sort((a,b)=>b[1]-a[1]);
+  const platTotal = platSorted.reduce((s,[,v])=>s+v, 0);
+  const PASTEL = ['#A5C8FF','#FCB1A6','#FCD5B5','#C4B5FD','#A7F3D0','#FDE68A','#BAE6FD','#F9A8D4','#DDD6FE','#BBF7D0','#FECACA','#E9D5FF'];
+  const platTableRows = platSorted.map(([p,v],i)=>{
+    const pct = platTotal>0 ? (v/platTotal*100).toFixed(1) : '0.0';
+    return `<tr style="background:${i%2===0?'#fff':'#FAFBFC'}">
+      <td style="padding:6px 10px;border-bottom:1px solid #eee"><span style="display:inline-block;width:10px;height:10px;background:${PASTEL[i%PASTEL.length]};border-radius:2px;margin-right:6px;vertical-align:middle"></span>${escHtml(p)}</td>
+      <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #eee;font-variant-numeric:tabular-nums">${v.toLocaleString()}원</td>
+      <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #eee;color:#64748B;font-variant-numeric:tabular-nums">${pct}%</td>
+    </tr>`;
+  }).join('');
   const html = `
-    <div id="wrReportContent" class="card" style="background:#fff;padding:22px;max-width:680px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
-      <div style="font-size:20px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 주간 매출 현황</div>
-      <div style="font-size:11px;color:#888;margin-top:2px">월~일 누적 · 누적된 일일 ${inWeek.length}건</div>
-      <div style="background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
-        <div>
-          <div style="font-size:11px;color:#888">총 매출액</div>
-          <div style="font-size:22px;font-weight:700;color:#1A56DB;margin-top:2px">${totalSales.toLocaleString()}원</div>
-          <div style="font-size:11px;color:#888;margin-top:2px">총 ${totalCnt.toLocaleString()}건</div>
+    <div id="wrReportContent" style="background:transparent;max-width:680px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
+      <div class="wr-page" data-page="1" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06)">
+        <div style="font-size:20px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 주간 매출 현황 <span style="font-size:11px;color:#888;font-weight:400">[1/3]</span></div>
+        <div style="font-size:11px;color:#888;margin-top:2px">월~일 누적 · 누적된 일일 ${inWeek.length}건</div>
+        <div style="background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
+          <div>
+            <div style="font-size:11px;color:#888">총 매출액</div>
+            <div style="font-size:22px;font-weight:700;color:#1A56DB;margin-top:2px">${totalSales.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">총 ${totalCnt.toLocaleString()}건</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#888">자사 매출액</div>
+            <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px">${selfSales.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#888">디네트 매출액</div>
+            <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${dnAgg.sales.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">${dnAgg.count.toLocaleString()}건</div>
+          </div>
         </div>
-        <div>
-          <div style="font-size:11px;color:#888">자사 매출액</div>
-          <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px">${selfSales.toLocaleString()}원</div>
-          <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
+        <div style="background:#94A3B8;color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">일자별 요약</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:${HEAD_BG}">
+            <th style="padding:7px 12px;text-align:left;color:${HEAD_FG};font-weight:700">일자</th>
+            <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">로또상회</th>
+            <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">자꾸가게</th>
+            <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">디네트</th>
+            <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">매출 합계</th>
+          </tr></thead>
+          <tbody>${dailyRows}</tbody>
+          <tfoot><tr style="background:${FOOT_BG};font-weight:700">
+            <td style="padding:7px 12px;color:${HEAD_FG}">합계</td>
+            <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${grAgg.count.toLocaleString()}건</td>
+            <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${ybAgg.count.toLocaleString()}건</td>
+            <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${dnAgg.count.toLocaleString()}건</td>
+            <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${totalSales.toLocaleString()}원</td>
+          </tr></tfoot>
+        </table>
+        <div style="background:#94A3B8;color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">📊 일자별 추이</div>
+        <div style="background:#fff;border:1px solid #eee;border-radius:0 0 6px 6px;padding:14px">
+          <div style="position:relative;height:240px"><canvas id="wrChartDaily"></canvas></div>
         </div>
-        <div>
-          <div style="font-size:11px;color:#888">디네트 매출액</div>
-          <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${dnAgg.sales.toLocaleString()}원</div>
-          <div style="font-size:11px;color:#888;margin-top:2px">${dnAgg.count.toLocaleString()}건</div>
+        <div style="background:#94A3B8;color:#fff;padding:8px 14px;margin-top:14px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">🥯 플랫폼 구성</div>
+        <div style="background:#fff;border:1px solid #eee;border-radius:0 0 6px 6px;padding:14px;display:grid;grid-template-columns:1fr 1.1fr;gap:14px;align-items:center">
+          <div style="position:relative;height:220px"><canvas id="wrChartPlatform"></canvas></div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:${HEAD_BG}">
+              <th style="padding:6px 10px;text-align:left;color:${HEAD_FG};font-weight:700">플랫폼</th>
+              <th style="padding:6px 10px;text-align:right;color:${HEAD_FG};font-weight:700">매출액</th>
+              <th style="padding:6px 10px;text-align:right;color:${HEAD_FG};font-weight:700">비중</th>
+            </tr></thead>
+            <tbody>${platTableRows}</tbody>
+            <tfoot><tr style="background:${FOOT_BG};font-weight:700">
+              <td style="padding:6px 10px;color:${HEAD_FG}">합계</td>
+              <td style="padding:6px 10px;text-align:right;color:${HEAD_FG};font-variant-numeric:tabular-nums">${platTotal.toLocaleString()}원</td>
+              <td style="padding:6px 10px;text-align:right;color:${HEAD_FG}">100%</td>
+            </tr></tfoot>
+          </table>
         </div>
+        <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 1/3</div>
       </div>
-      <div style="background:#555;color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">일자별 요약</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:${HEAD_BG}">
-          <th style="padding:7px 12px;text-align:left;color:${HEAD_FG};font-weight:700">일자</th>
-          <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">로또상회</th>
-          <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">자꾸가게</th>
-          <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">디네트</th>
-          <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">매출 합계</th>
-        </tr></thead>
-        <tbody>${dailyRows}</tbody>
-        <tfoot><tr style="background:${FOOT_BG};font-weight:700">
-          <td style="padding:7px 12px;color:${HEAD_FG}">합계</td>
-          <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${grAgg.count.toLocaleString()}건</td>
-          <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${ybAgg.count.toLocaleString()}건</td>
-          <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${dnAgg.count.toLocaleString()}건</td>
-          <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${totalSales.toLocaleString()}원</td>
-        </tr></tfoot>
-      </table>
-      <div style="background:#555;color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">📊 일자별 추이 · 플랫폼 구성</div>
-      <div style="background:#fff;border:1px solid #eee;border-radius:0 0 6px 6px;padding:14px;display:grid;grid-template-columns:1.3fr 1fr;gap:14px;align-items:center">
-        <div style="position:relative;height:220px"><canvas id="wrChartDaily"></canvas></div>
-        <div style="position:relative;height:220px"><canvas id="wrChartPlatform"></canvas></div>
+      <div class="wr-page" data-page="2" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06);margin-top:14px">
+        <div style="font-size:16px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 브랜드별 누적 <span style="font-size:11px;color:#888;font-weight:400">[2/3]</span></div>
+        ${srBrandSection('로또상회 (그로븐) — 주간 누적', '#1E3A5F', grAgg, {topProducts:3})}
+        ${srBrandSection('자꾸가게 (옐로우브릿지) — 주간 누적', '#3A1E5F', ybAgg, {topProducts:3})}
+        <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 2/3</div>
       </div>
-      ${srBrandSection('로또상회 (그로븐) — 주간 누적', '#1E3A5F', grAgg, {topProducts:3})}
-      ${srBrandSection('자꾸가게 (옐로우브릿지) — 주간 누적', '#3A1E5F', ybAgg, {topProducts:3})}
-      ${srDinetteSection(dnAgg)}
-      <div style="margin-top:18px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템</div>
+      <div class="wr-page" data-page="3" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06);margin-top:14px">
+        <div style="font-size:16px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 디네트 B2B <span style="font-size:11px;color:#888;font-weight:400">[3/3]</span></div>
+        ${srDinetteSection(dnAgg) || '<div style="padding:30px 0;text-align:center;color:#888;font-size:13px">디네트 발주 없음</div>'}
+        <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 3/3</div>
+      </div>
     </div>`;
   document.getElementById('wrReport').innerHTML = html;
   document.getElementById('wrImageBtn').disabled = false;
@@ -8021,26 +8063,26 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg){
       data: {
         labels,
         datasets: [
-          {type:'bar', label:'로또상회', data:grSales, backgroundColor:'#1E3A5F', borderRadius:3, stack:'s1'},
-          {type:'bar', label:'자꾸가게', data:ybSales, backgroundColor:'#3A1E5F', borderRadius:3, stack:'s1'},
-          {type:'bar', label:'디네트',   data:dnSales, backgroundColor:'#B45309', borderRadius:3, stack:'s1'},
-          {type:'line', label:'총 매출', data:totSales, borderColor:'#10B981', backgroundColor:'transparent', tension:0.3, pointRadius:3, pointBackgroundColor:'#10B981', borderWidth:2}
+          {type:'bar', label:'로또상회', data:grSales, backgroundColor:'#A5C8FF', borderRadius:4, stack:'s1'},
+          {type:'bar', label:'자꾸가게', data:ybSales, backgroundColor:'#C4B5FD', borderRadius:4, stack:'s1'},
+          {type:'bar', label:'디네트',   data:dnSales, backgroundColor:'#FCD5B5', borderRadius:4, stack:'s1'},
+          {type:'line', label:'총 매출', data:totSales, borderColor:'#6EE7B7', backgroundColor:'rgba(110,231,183,0.15)', tension:0.35, pointRadius:3, pointBackgroundColor:'#6EE7B7', borderWidth:2.5, fill:false}
         ]
       },
       options: {
         responsive:true, maintainAspectRatio:false,
         plugins:{
-          legend:{labels:{font:{size:11}, boxWidth:10}},
+          legend:{labels:{font:{size:11}, boxWidth:12, padding:10}},
           tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${Number(ctx.raw||0).toLocaleString()}원`}}
         },
         scales:{
-          x:{stacked:true, ticks:{font:{size:10}}},
-          y:{stacked:true, beginAtZero:true, ticks:{font:{size:10}, callback:v=>v>=10000?(v/10000)+'만':v}}
+          x:{stacked:true, ticks:{font:{size:10}}, grid:{display:false}},
+          y:{stacked:true, beginAtZero:true, ticks:{font:{size:10}, callback:v=>v>=10000?(v/10000)+'만':v}, grid:{color:'rgba(0,0,0,0.04)'}}
         }
       }
     });
   }
-  // 플랫폼 도넛: 그로븐 + YB + 디네트 합산
+  // 플랫폼 도넛: 그로븐 + YB + 디네트 합산 (옆 표와 동일 색상)
   const c2 = document.getElementById('wrChartPlatform');
   if (c2) {
     const platCombined = {};
@@ -8054,15 +8096,15 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg){
     const sorted = Object.entries(platCombined).sort((a,b)=>b[1]-a[1]);
     const labels = sorted.map(([p])=>p);
     const data   = sorted.map(([,v])=>v);
-    const palette = ['#1A56DB','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#EC4899','#84CC16','#6366F1','#F97316','#14B8A6','#A855F7'];
+    const palette = ['#A5C8FF','#FCB1A6','#FCD5B5','#C4B5FD','#A7F3D0','#FDE68A','#BAE6FD','#F9A8D4','#DDD6FE','#BBF7D0','#FECACA','#E9D5FF'];
     const bg = labels.map((_,i)=>palette[i%palette.length]);
     _wrChartPlatform = new Chart(c2.getContext('2d'), {
       type:'doughnut',
       data:{labels, datasets:[{data, backgroundColor:bg, borderColor:'#fff', borderWidth:2}]},
       options:{
-        responsive:true, maintainAspectRatio:false, cutout:'58%',
+        responsive:true, maintainAspectRatio:false, cutout:'55%',
         plugins:{
-          legend:{position:'right', labels:{font:{size:11}, boxWidth:12, padding:8}},
+          legend:{display:false},
           tooltip:{callbacks:{label:(ctx)=>{
             const tot = data.reduce((s,v)=>s+v,0);
             const pct = tot>0 ? ((ctx.raw/tot)*100).toFixed(1) : 0;
@@ -8073,18 +8115,37 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg){
     });
   }
 }
-function wrExportImage(){
+async function wrExportImage(){
   const el = document.getElementById('wrReportContent');
   if (!el) { alert('먼저 주간 보고서를 생성해주세요'); return; }
   if (typeof html2canvas !== 'function') { alert('html2canvas 없음'); return; }
-  html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
-    const link = document.createElement('a');
-    const range = wrWeekRange(document.getElementById('wrAnyDate').value || new Date().toISOString().slice(0,10));
-    const tag = range ? (range.start+'_'+range.end).replace(/-/g,'') : new Date().toISOString().slice(0,10).replace(/-/g,'');
-    link.download = `주간매출보고_${tag}.png`;
-    link.href = canvas.toDataURL('image/png');
-    document.body.appendChild(link);link.click();document.body.removeChild(link);
-  }).catch(e=>alert('이미지 저장 실패: '+e.message));
+  const pages = el.querySelectorAll('.wr-page');
+  const range = wrWeekRange(document.getElementById('wrAnyDate').value || new Date().toISOString().slice(0,10));
+  const tag = range ? (range.start+'_'+range.end).replace(/-/g,'') : new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const btn = document.getElementById('wrImageBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 저장 중...'; }
+  try {
+    if (pages.length === 0) {
+      const canvas = await html2canvas(el, {backgroundColor:'#ffffff', scale:2, useCORS:true});
+      _wrDownloadCanvas(canvas, `주간매출보고_${tag}.png`);
+    } else {
+      for (let i = 0; i < pages.length; i++) {
+        const canvas = await html2canvas(pages[i], {backgroundColor:'#ffffff', scale:2, useCORS:true});
+        _wrDownloadCanvas(canvas, `주간매출보고_${tag}_${i+1}of${pages.length}.png`);
+        await new Promise(r => setTimeout(r, 250));  // 브라우저가 연속 다운로드 차단하지 않도록 살짝 텀
+      }
+    }
+  } catch(e) {
+    alert('이미지 저장 실패: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🖼 이미지(PNG) 저장'; }
+  }
+}
+function _wrDownloadCanvas(canvas, fname){
+  const link = document.createElement('a');
+  link.download = fname;
+  link.href = canvas.toDataURL('image/png');
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
 function wrShowHistory(){
   const box = document.getElementById('wrHistoryBox');
