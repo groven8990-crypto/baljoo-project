@@ -2917,6 +2917,19 @@ function invRestoreOrder() {
   } catch(e) { console.warn('주문파일 복원 실패:', e); }
 }
 
+// 택배사 이름 정규화 — 약식 표기를 풀네임으로 통일 (드롭다운 옵션과 일치)
+function normalizeCourier(raw) {
+  const s = String(raw||'').replace(/\s/g,'').toLowerCase();
+  if (!s) return '';
+  if (/우체국/.test(s)) return '우체국택배';
+  if (/cj|대한통운/.test(s)) return 'CJ대한통운';
+  if (/롯데/.test(s)) return '롯데택배';
+  if (/한진/.test(s)) return '한진택배';
+  if (/로젠/.test(s)) return '로젠택배';
+  if (/경동/.test(s)) return '경동택배';
+  return String(raw||'').trim();
+}
+
 function invLoadTracks(files) {
   Array.from(files).forEach(file => {
     const reader = new FileReader();
@@ -2960,7 +2973,7 @@ function invLoadTracks(files) {
           const name = String(row[nameIdx]||'').trim();
           const no   = String(row[trackIdx]||'').trim();
           if (name && no) {
-            const courier = courierIdx >= 0 ? String(row[courierIdx]||'').trim() : '';
+            const courier = courierIdx >= 0 ? normalizeCourier(row[courierIdx]) : '';
             const addr    = addrIdx    >= 0 ? String(row[addrIdx]||'').trim()    : '';
             (map[name] || (map[name] = [])).push({no, courier, addr});
           }
@@ -3116,7 +3129,7 @@ function invProcess() {
         const trackNo = entry.no;
         // 우선순위: ① 운송장파일 택배사컬럼 ② 사용자가 고른 거래처별 택배사(파일별) ③ 발주처명 기반 매핑
         const trackCourier = entry.courier || '';
-        const courier = trackCourier || tf.courierName || vendorCourierDefault;
+        const courier = normalizeCourier(trackCourier || tf.courierName || vendorCourierDefault);
         newRow[trackCol]   = trackNo;
         newRow[courierCol] = courier;
         found = true;
@@ -3125,7 +3138,7 @@ function invProcess() {
       }
       if (!found && name) {
         // 미매칭이어도 거래처명 매핑이 있으면 택배사 기입
-        const fallbackCourier = vendorCourierDefault || '';
+        const fallbackCourier = normalizeCourier(vendorCourierDefault || '');
         if (fallbackCourier) newRow[courierCol] = fallbackCourier;
         invPreviewRows.push({rowIdx, name, vendor, courier: fallbackCourier, track:'', prod: String(row[prodCol]||'').slice(0,30), status: ambiguous ? 'dup' : 'unmatch', oAddr});
       }
