@@ -1744,7 +1744,7 @@ function buildRows(vk,orders,alias){
         ...orders.map(o=>[s.name,s.phone,'',s.zip,s.addr,o.recv_name,o.recv_phone,'',o.zip,o.addr,combined(o),effQty(o),o.memo,o.order_no])];
     case '해담별':
       return [['주문번호','주문일','주문자명','주문자연락처','수령인명','수령인연락처','우편번호','주소','상품코드','판매사상품명','주문수량','배송시 요청사항','택배사**','배송번호','판매사','판매사연락처','보내는주소'],
-        ...orders.map(o=>[o.order_no,'',s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,'',o.item_name,effQty(o),o.memo,'','',s.name,s.phone,s.addr])];
+        ...orders.map(o=>[o.order_no,'',s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,'',combined(o),effQty(o),o.memo,'','',s.name,s.phone,s.addr])];
     case '도매꾹': {
       // 형식: 도매꾹]상품번호/옵션코드:옵션명-수량
       //  - ] 없으면 전체 코드가 상품번호
