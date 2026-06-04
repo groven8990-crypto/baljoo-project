@@ -8059,13 +8059,14 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg){
     const ybSales = byDate.map(s => (s.ybAgg?.totalSales)||0);
     const dnSales = byDate.map(s => (s.dnAgg?.sales)||0);
     const totSales = byDate.map(s => (s.totalSales)||0);
+    const BAR_BASE = {type:'bar', borderRadius:4, stack:'s1', barPercentage:0.6, categoryPercentage:0.5, maxBarThickness:28};
     _wrChartDaily = new Chart(c1.getContext('2d'), {
       data: {
         labels,
         datasets: [
-          {type:'bar', label:'로또상회', data:grSales, backgroundColor:'#5B8FD9', borderRadius:4, stack:'s1'},
-          {type:'bar', label:'자꾸가게', data:ybSales, backgroundColor:'#9F87E0', borderRadius:4, stack:'s1'},
-          {type:'bar', label:'디네트',   data:dnSales, backgroundColor:'#F5A977', borderRadius:4, stack:'s1'},
+          {...BAR_BASE, label:'로또상회', data:grSales, backgroundColor:'#5B8FD9'},
+          {...BAR_BASE, label:'자꾸가게', data:ybSales, backgroundColor:'#9F87E0'},
+          {...BAR_BASE, label:'디네트',   data:dnSales, backgroundColor:'#F5A977'},
           {type:'line', label:'총 매출', data:totSales, borderColor:'#2E8E64', backgroundColor:'rgba(46,142,100,0.10)', tension:0.35, pointRadius:3, pointBackgroundColor:'#2E8E64', borderWidth:2.5, fill:false}
         ]
       },
@@ -8076,7 +8077,7 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg){
           tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${Number(ctx.raw||0).toLocaleString()}원`}}
         },
         scales:{
-          x:{stacked:true, ticks:{font:{size:10}}, grid:{display:false}, categoryPercentage:0.45, barPercentage:0.9},
+          x:{stacked:true, ticks:{font:{size:10}}, grid:{display:false}},
           y:{stacked:true, beginAtZero:true, ticks:{font:{size:10}, callback:v=>v>=10000?(v/10000)+'만':v}, grid:{color:'rgba(0,0,0,0.04)'}}
         }
       }
