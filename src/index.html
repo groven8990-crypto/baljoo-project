@@ -6398,6 +6398,11 @@ function reconExportXlsx() {
       <input type="file" id="srDinetteFile" accept=".xls,.xlsx" style="display:none" onchange="srLoadDinette(this.files[0]); this.value='';">
     </div>
     <div id="srDinetteInfo" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+    <label style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:8px 12px;background:#fff7ed;border:1px solid #fdba74;border-radius:6px;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="srDinetteEventChk" onchange="srToggleDinetteEvent(this.checked)" style="width:14px;height:14px;cursor:pointer">
+      <span style="font-weight:600;color:#c2410c">🎉 행사기간 단가 적용</span>
+      <span style="font-size:11px;color:var(--text3)">— 체크 시 4P 15,100 / 3P 17,400 적용 (평소 15,600 / 17,900)</span>
+    </label>
   </div>
   <div id="srReport"></div>
   <div class="card" style="margin-top:14px">
@@ -7456,6 +7461,9 @@ window.addEventListener('load', ()=>{
     log.dataset.inited='1';
     setTimeout(()=>asstAppend('bot','안녕하세요! 페이지 안 데이터를 검색해서 답해드려요.\n뭐 찾고 싶으세요? (예: "오늘 매출", "일비 코드", "해담별 계좌")\n자세한 건 "도움말"이라고 쳐보세요.'), 600);
   }
+  // 디네트 행사기간 체크박스 상태 복원
+  const dEvtChk = document.getElementById('srDinetteEventChk');
+  if (dEvtChk) dEvtChk.checked = srIsDinetteEvent();
 });
 
 // ══════════════════════════════════════════════════════════
@@ -7569,14 +7577,31 @@ function srBrandSection(title, color, agg){
     </table>`;
 }
 // ─ 디네트 박대 ─
+// 평시(기본) 단가
 const SR_DINETTE_SPEC = {
+  '4p':  {price:15600, ship:4500},
+  '3p':  {price:17900, ship:4500},
+  '2p+': {price:22200, ship:4500}
+};
+// 행사기간 단가 (체크박스 ON 시 적용)
+const SR_DINETTE_SPEC_EVENT = {
   '4p':  {price:15100, ship:4500},
   '3p':  {price:17400, ship:4500},
   '2p+': {price:22200, ship:4500}
 };
 const SR_DINETTE_UNIT = {'4p':2, '3p':2, '2p+':8};
-const SR_DINETTE_DISC = 4000;  // 행사기간 단가 (수량 ×2 추가마다 4000원 할인)
+const SR_DINETTE_DISC = 4000;  // 묶음 추가마다 4000원 할인
 const SR_DINETTE_LABEL = {'4p':'박대 4P','3p':'박대 3P','2p+':'박대 2P+'};
+const LS_DINETTE_EVENT = 'yb_dinette_event_mode';
+function srIsDinetteEvent(){ return localStorage.getItem(LS_DINETTE_EVENT) === '1'; }
+function srToggleDinetteEvent(checked){
+  if (checked) localStorage.setItem(LS_DINETTE_EVENT, '1');
+  else localStorage.removeItem(LS_DINETTE_EVENT);
+  // 토글 시 보고서가 떠 있으면 다시 그려서 금액 반영
+  if (typeof srRenderReport === 'function' && document.getElementById('srReport') && document.getElementById('srReport').innerHTML.trim()) {
+    srRenderReport();
+  }
+}
 let srDinetteRows = null;
 let srDinetteFileName = '';
 function srDropDinette(e){
@@ -7610,7 +7635,8 @@ function srClearDinette(){
 }
 function srDinettePrice(spec, qty){
   const unit = SR_DINETTE_UNIT[spec] || 2;
-  const price = (SR_DINETTE_SPEC[spec]||{}).price || 0;
+  const specTable = srIsDinetteEvent() ? SR_DINETTE_SPEC_EVENT : SR_DINETTE_SPEC;
+  const price = (specTable[spec]||{}).price || 0;
   if (!price) return 0;
   const bundles = Math.floor(qty / unit);
   if (bundles === 0) return price;
