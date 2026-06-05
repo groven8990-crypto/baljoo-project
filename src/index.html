@@ -5598,6 +5598,12 @@ function saveIncome() {
     if (file) updated.hasAttach = true;
     hist[_editingIncIdx] = updated;
     saveIncHist(hist);
+    if (file && existing.id) {
+      const reader = new FileReader();
+      reader.onload = async e => { await _idbPutAttach(existing.id, { name: file.name, type: file.type, data: e.target.result }); };
+      reader.readAsDataURL(file);
+      clearIncAttach();
+    }
     _editingIncIdx = -1;
     document.getElementById('incEditBanner').style.display    = 'none';
     document.getElementById('incSaveBtn').textContent         = '💾 이력 저장';
@@ -5613,6 +5619,12 @@ function saveIncome() {
   hist.unshift(record);
   if (hist.length > 200) hist.splice(200);
   saveIncHist(hist);
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = async e => { await _idbPutAttach(newId, { name: file.name, type: file.type, data: e.target.result }); };
+    reader.readAsDataURL(file);
+    clearIncAttach();
+  }
   alert('저장됐어요!');
   renderIncHistList();
 }
@@ -5686,8 +5698,10 @@ function toggleIncPaid(i) {
 function deleteIncHist(i) {
   if (!confirm('이 항목을 삭제할까요?')) return;
   const hist = loadIncHist();
+  const item = hist[i];
   hist.splice(i, 1);
   saveIncHist(hist);
+  if (item && item.id && item.hasAttach) _idbDelAttach(item.id);
   renderIncHistList();
 }
 
@@ -5770,14 +5784,24 @@ async function previewIncHistItem(i) {
   const hist = loadIncHist();
   const d = hist[i];
   if (!d) return;
-  _doPreviewIncome(d, null);
+  let attachImgUrl = null;
+  if (d.hasAttach && d.id) {
+    const attach = await _idbGetAttach(d.id);
+    if (attach && (attach.type||'').startsWith('image/')) attachImgUrl = attach.data;
+  }
+  _doPreviewIncome(d, attachImgUrl);
 }
 
 async function saveIncImgFromHist(i) {
   const hist = loadIncHist();
   const d = hist[i];
   if (!d) return;
-  _doPreviewIncome(d, null);
+  let attachImgUrl = null;
+  if (d.hasAttach && d.id) {
+    const attach = await _idbGetAttach(d.id);
+    if (attach && (attach.type||'').startsWith('image/')) attachImgUrl = attach.data;
+  }
+  _doPreviewIncome(d, attachImgUrl);
   await new Promise(r => setTimeout(r, 300));
   saveIncImg();
 }
