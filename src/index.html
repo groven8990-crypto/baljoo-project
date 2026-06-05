@@ -4288,6 +4288,7 @@ function switchTab(name){
     if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}}
     if(name==='recon'){try{reconInitIfNeeded();}catch(e){console.error(e);}}
     if(name==='report'){try{const d=document.getElementById('rptDate');if(d&&!d.value)d.value=new Date().toISOString().slice(0,10);}catch(e){console.error(e);}}
+    if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=new Date().toISOString().slice(0,10);}catch(e){console.error(e);}}
   }catch(e){console.error('switchTab 오류:',e);}
 }
 function switchSubTab(name){
@@ -7621,6 +7622,9 @@ window.addEventListener('load', ()=>{
   // 디네트 행사기간 체크박스 상태 복원
   const dEvtChk = document.getElementById('srDinetteEventChk');
   if (dEvtChk) dEvtChk.checked = srIsDinetteEvent();
+  // 매출 보고용 보고일자 — 오늘 날짜로 자동 세팅
+  const srDate = document.getElementById('srReportDate');
+  if (srDate) srDate.value = new Date().toISOString().slice(0,10);
 });
 
 // ══════════════════════════════════════════════════════════
