@@ -5716,10 +5716,16 @@ function renderIncHistList() {
   });
   const sumEl = document.getElementById('incHistSummary');
   if (sumEl && filtered.length) {
-    const totalAmt = filtered.reduce((s,d)=>s+(Number(d.total)||0),0);
-    sumEl.innerHTML = '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:13px">'+
-      '<span>📊 <b>'+filtered.length+'건</b></span>'+
-      '<span style="color:var(--primary)">총 합계 <b>'+totalAmt.toLocaleString()+'원</b></span></div>';
+    const totalSupply = filtered.reduce((s,d) => s + (Number(d.supply)||0), 0);
+    const totalVat    = filtered.reduce((s,d) => s + (Number(d.vat)||0), 0);
+    const totalAmt    = filtered.reduce((s,d) => s + (Number(d.total)||0), 0);
+    sumEl.innerHTML =
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:13px">' +
+      '<span>📊 <b>' + filtered.length + '건</b></span>' +
+      '<span>공급가액 합계 <b>' + totalSupply.toLocaleString() + '원</b></span>' +
+      '<span>세액 합계 <b>' + totalVat.toLocaleString() + '원</b></span>' +
+      '<span style="color:var(--primary)">총 합계 <b>' + totalAmt.toLocaleString() + '원</b></span>' +
+      '</div>';
   } else if (sumEl) { sumEl.innerHTML=''; }
   if (!filtered.length) { el.innerHTML='<p style="font-size:13px;color:var(--text3)">검색 결과가 없습니다.</p>'; return; }
   const groups = {};
@@ -5745,7 +5751,7 @@ function renderIncHistList() {
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" onclick="toggleIncPaid('+realIdx+')">✅ 확인</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" onclick="toggleIncPaid('+realIdx+')">☐ 확인</button>';
       const descStyle = 'font-size:13px';
-      html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
+      html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
         '<span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.date||'')+'</span>'+
         '<span style="'+descStyle+';cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.desc||'')+'</span>'+
         '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+fmtNum(d.total)+'원</span>'+
