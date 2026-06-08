@@ -943,6 +943,10 @@
         <button class="btn btn-green btn-sm" style="margin-left:auto" onclick="exportIncHistXlsx()">📥 Excel 내보내기</button>
         <button class="btn btn-sm" onclick="if(confirm('전체 이력을 삭제할까요?')){localStorage.removeItem('yb_inchist');renderIncHistList();}">🗑 전체삭제</button>
       </div>
+      <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-bottom:10px">
+        <span id="incSaveFolderName" style="font-size:11px;color:var(--text3);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
+        <button class="btn btn-sm" onclick="pickIncSaveFolder()" title="저장할 폴더를 선택합니다">📁 폴더 설정</button>
+      </div>
       <div id="incHistSummary" style="margin-bottom:12px"></div>
       <div id="incHistList"><p style="font-size:13px;color:var(--text3)">저장된 이력이 없습니다.</p></div>
     </div>
@@ -2622,20 +2626,25 @@ function renderDirectEdit(){
   _directCombos = [...seen.entries()].map(([k,o])=>({k,o}));
   const ovs = loadOverrides();
   const q = (document.getElementById('directEditSearch')?.value||'').trim().toLowerCase();
+  const showDone = !!document.getElementById('directEditShowDone')?.checked;
   const G = 'display:grid;grid-template-columns:1.7fr 1.3fr 1fr 60px auto;gap:8px;align-items:center';
-  const searchBox = `<div style="margin-bottom:10px;display:flex;gap:8px;align-items:center">
-    <input id="directEditSearch" class="inp" type="text" placeholder="🔍 코드 / 상품명 / 품목 / 옵션 / 선택사항 검색..." value="${escHtml(q)}" oninput="renderDirectEdit()" style="flex:1;font-size:12px">
+  const searchBox = `<div style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <input id="directEditSearch" class="inp" type="text" placeholder="🔍 코드 / 상품명 / 품목 / 옵션 / 선택사항 검색..." value="${escHtml(q)}" oninput="renderDirectEdit()" style="flex:1;min-width:180px;font-size:12px">
     ${q?`<button class="btn btn-sm" onclick="document.getElementById('directEditSearch').value='';renderDirectEdit()">✕ 초기화</button>`:''}
+    <label style="font-size:12px;display:flex;align-items:center;gap:4px;white-space:nowrap;color:var(--text2)">
+      <input type="checkbox" id="directEditShowDone" ${showDone?'checked':''} onchange="renderDirectEdit()" style="width:14px;height:14px"> 수정 완료 표시
+    </label>
   </div>`;
   let html = searchBox + `<div style="${G};padding-bottom:6px;border-bottom:2px solid var(--border);font-size:11px;font-weight:500;color:var(--text2)"><span>코드 / 상품명</span><span>품목명</span><span>옵션</span><span>수량</span><span></span></div>`;
-  let shown = 0;
+  let shown = 0, hiddenDone = 0;
   _directCombos.forEach(({k,o},i)=>{
+    const hasOv = ovs.some(x=>x.key===k);
+    if (!showDone && hasOv) { hiddenDone++; return; }
     if (q) {
       const hay = [o.vendor_code, o.product, o.item_name, o.option_name, o.select_opt].map(v => String(v||'').toLowerCase()).join(' ');
       if (!hay.includes(q)) return;
     }
     shown++;
-    const hasOv = ovs.some(x=>x.key===k);
     const dot = hasOv ? '<span title="직접수정 저장됨" style="color:var(--purple)">● </span>' : '';
     const soText = o.select_opt ? `<div style="margin-top:3px;font-size:10px;color:var(--text3)"><span style="color:var(--warn)">선택사항(Q):</span> <span style="color:var(--text2)">${escHtml(o.select_opt)}</span></div>` : '';
     const codeCell = `<div style="font-size:11px;color:var(--text3);word-break:break-word">${dot}${escHtml(o.vendor_code||'')}<div style="color:var(--text2);margin-top:2px;line-height:1.4">${escHtml(o.product||'')}</div>${soText}</div>`;
@@ -2654,7 +2663,9 @@ function renderDirectEdit(){
     }
   });
   if (q && shown === 0) html += '<div style="padding:18px;text-align:center;color:var(--text3);font-size:13px">검색 결과가 없어요</div>';
-  else if (q) html += `<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:right">${shown}건 표시 / 전체 ${_directCombos.length}건</div>`;
+  else if (!q && shown === 0 && hiddenDone > 0) html += `<div style="padding:18px;text-align:center;color:var(--text3);font-size:13px">수정 완료된 ${hiddenDone}건은 숨겨졌어요. 위 "수정 완료 표시" 체크하면 보입니다.</div>`;
+  else if (q) html += `<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:right">${shown}건 표시 / 전체 ${_directCombos.length}건${hiddenDone>0?` (수정 완료 ${hiddenDone}건 숨김)`:''}</div>`;
+  else if (hiddenDone > 0) html += `<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:right">${shown}건 표시 (수정 완료 ${hiddenDone}건 숨김)</div>`;
   listEl.innerHTML = html;
   // 검색 후 포커스 유지
   const sEl = document.getElementById('directEditSearch');
@@ -2672,6 +2683,7 @@ function saveDirectEdit(){
   _editingOvIdx = -1;
   rematchAllOrders();
   renderStep2(); renderUnmatchedHints(); renderOmPreview();
+  renderDirectEdit();  // 저장 후 패널 즉시 갱신 (● 표시 반영)
 }
 function clearDirectEdit(i){
   const c = _directCombos[i]; if(!c) return;
@@ -3938,6 +3950,67 @@ async function _getSubDirHandle(co) {
     return await _expSaveDirHandle.getDirectoryHandle(subName, { create: true });
   } catch(e) {
     console.warn('서브폴더 접근 실패:', e);
+    return null;
+  }
+}
+
+// ── 입금결의서 저장 폴더 (지출과 동일 패턴) ──
+let _incSaveDirHandle = null;
+async function _updateIncFolderLabel() {
+  const nameEl = document.getElementById('incSaveFolderName');
+  if (!nameEl) return;
+  if (_incSaveDirHandle) {
+    nameEl.textContent = '📂 ' + _incSaveDirHandle.name + ' (옐로우브릿지·그로븐 서브폴더 자동 생성)';
+    nameEl.style.color = 'var(--primary)';
+  } else {
+    nameEl.textContent = '저장 폴더 미설정';
+    nameEl.style.color = '';
+  }
+}
+async function _restoreIncSaveFolder() {
+  try {
+    const handle = await _idbGet('incSaveDirHandle');
+    if (!handle) return;
+    const perm = await handle.queryPermission({ mode: 'readwrite' });
+    _incSaveDirHandle = handle;
+    const nameEl = document.getElementById('incSaveFolderName');
+    if (nameEl) {
+      if (perm === 'granted') {
+        nameEl.textContent = '📂 ' + handle.name + ' (옐로우브릿지·그로븐 서브폴더 자동 생성)';
+        nameEl.style.color = 'var(--success)';
+      } else {
+        nameEl.textContent = '📂 ' + handle.name + ' (재실행 시 승인 필요 — 저장 버튼 클릭 시 자동 요청)';
+        nameEl.style.color = 'var(--warn)';
+      }
+    }
+  } catch(e) { /* 무시 */ }
+}
+async function pickIncSaveFolder() {
+  try {
+    if (!window.showDirectoryPicker) {
+      alert('이 브라우저는 폴더 직접 저장을 지원하지 않습니다.\n파일이 Downloads 폴더에 저장됩니다.');
+      return;
+    }
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite', startIn: 'desktop' });
+    _incSaveDirHandle = handle;
+    await _idbPut('incSaveDirHandle', handle);
+    await _updateIncFolderLabel();
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('폴더 선택 오류: ' + e.message);
+  }
+}
+async function _getIncSubDirHandle(co) {
+  if (!_incSaveDirHandle) return null;
+  try {
+    const perm = await _incSaveDirHandle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'prompt') {
+      const granted = await _incSaveDirHandle.requestPermission({ mode: 'readwrite' });
+      if (granted !== 'granted') return null;
+    } else if (perm !== 'granted') return null;
+    const subName = co === '그로븐' ? '그로븐' : '옐로우브릿지';
+    return await _incSaveDirHandle.getDirectoryHandle(subName, { create: true });
+  } catch(e) {
+    console.warn('입금 서브폴더 접근 실패:', e);
     return null;
   }
 }
@@ -5635,6 +5708,7 @@ function loadIncHist() { try{ return JSON.parse(localStorage.getItem(LS_INCHIST)
 function saveIncHist(a){ localStorage.setItem(LS_INCHIST, JSON.stringify(a)); }
 
 function initIncomeTab() {
+  _restoreIncSaveFolder(); // 저장된 폴더 핸들 복원
   document.getElementById('incDate').value = new Date().toISOString().slice(0,10);
   const savedWriter = localStorage.getItem('yb_default_writer') || '';
   if (savedWriter) document.getElementById('incWriter').value = savedWriter;
@@ -5901,11 +5975,25 @@ function _doPreviewIncome(d, attachImgUrl) {
 function saveIncImg() {
   const el = document.getElementById('incPrintArea');
   const d  = _incModalData || getIncFormData();
-  html2canvas(el, { scale:2, backgroundColor:'#fff', useCORS:true }).then(canvas => {
+  html2canvas(el, { scale:2, backgroundColor:'#fff', useCORS:true }).then(async canvas => {
     const dateStr = (d.date||'').replace(/-/g,'');
-    const fname2  = `${dateStr}-입금결의서-${d.vendor||'미지정'}_${d.co||''}.png`;
-    const a = document.createElement('a');
-    a.download = fname2; a.href = canvas.toDataURL('image/png'); a.click();
+    const amtStr  = (Number(d.total)||0).toLocaleString() + '원';
+    const fname2  = `${dateStr}-입금결의서-${d.vendor||'미지정'}_${d.co||''}_${amtStr}.png`;
+    const subDir2 = await _getIncSubDirHandle(d.co);
+    if (subDir2) {
+      try {
+        const fh2 = await subDir2.getFileHandle(fname2, { create: true });
+        const wr2 = await fh2.createWritable();
+        const blob2 = await new Promise(res => canvas.toBlob(res, 'image/png'));
+        await wr2.write(blob2); await wr2.close();
+      } catch(fe) {
+        const a = document.createElement('a');
+        a.download = fname2; a.href = canvas.toDataURL('image/png'); a.click();
+      }
+    } else {
+      const a = document.createElement('a');
+      a.download = fname2; a.href = canvas.toDataURL('image/png'); a.click();
+    }
   });
 }
 
@@ -8280,12 +8368,7 @@ function srAggregateDinette(rows){
 function srDinetteSection(agg){
   if (agg.count === 0) return '';
   const DN='#7B4B00', HEAD_BG='#F1F5F9', HEAD_FG='#334155';
-  const discRow = (agg.mergeDisc>0)
-    ? `<tr style="background:#FFF7ED">
-         <td style="padding:8px 14px;border-bottom:1px solid #eee;color:#9A3412;font-size:12px">└ 합배송 배송비 차감 <span style="color:#888;font-size:11px">(${agg.mergeGroups}건 묶음)</span></td>
-         <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #eee;color:#9A3412"></td>
-         <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #eee;color:#9A3412">- ${agg.mergeDisc.toLocaleString()}원</td>
-       </tr>` : '';
+  // 합배송 배송비 차감은 매출에 이미 반영(차감)되어 있음 — 보고서에는 별도 표시 없이 깔끔하게
   return `
     <div style="background:${DN};color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">B2B업체 (디네트)</div>
     <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">
@@ -8299,15 +8382,9 @@ function srDinetteSection(agg){
         <tr style="background:#fff">
           <td style="padding:10px 14px;border-bottom:1px solid #eee">박대</td>
           <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${agg.count.toLocaleString()}건</td>
-          <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${(agg.sales + (agg.mergeDisc||0)).toLocaleString()}원</td>
+          <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${agg.sales.toLocaleString()}원</td>
         </tr>
-        ${discRow}
       </tbody>
-      <tfoot><tr style="background:#E2E8F0;font-weight:700">
-        <td style="padding:9px 14px;color:${HEAD_FG}">합 계</td>
-        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.count.toLocaleString()}건</td>
-        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.sales.toLocaleString()}원</td>
-      </tr></tfoot>
     </table>`;
 }
 
