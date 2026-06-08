@@ -5475,11 +5475,13 @@ function saveExpImg() {
 
 let _editingExpIdx = -1;
 
+let _editingExpItemId = null;
 function editExpHist(i) {
   const hist = loadExpHist();
   const d = hist[i];
   if (!d) return;
   _editingExpIdx = i;
+  _editingExpItemId = d.id != null ? d.id : null;
   // 회사 선택
   selectExpCo(d.co || '옐로우브릿지');
   // 폼 채우기
@@ -5525,6 +5527,7 @@ function editExpHist(i) {
 
 function cancelExpEdit() {
   _editingExpIdx = -1;
+  _editingExpItemId = null;
   const banner   = document.getElementById('expEditBanner');
   const saveBtn  = document.getElementById('expSaveBtn');
   const cancelBtn= document.getElementById('expCancelEditBtn');
@@ -5543,10 +5546,17 @@ function saveExpense() {
 
   if (_editingExpIdx >= 0) {
     // ── 수정 모드: 기존 레코드 업데이트 ──
-    const existing = hist[_editingExpIdx] || {};
+    // ID로 우선 매칭(인덱스만으로는 hist 재정렬 시 어긋날 수 있음)
+    let targetIdx = _editingExpIdx;
+    const expectedId = _editingExpItemId;
+    if (expectedId != null) {
+      const byId = hist.findIndex(x => x && x.id === expectedId);
+      if (byId >= 0) targetIdx = byId;
+    }
+    const existing = hist[targetIdx] || {};
     const updated  = { ...existing, ...d, savedAt: new Date().toISOString() };
     if (file) updated.hasAttach = true;
-    hist[_editingExpIdx] = updated;
+    hist[targetIdx] = updated;
     saveExpHist(hist);
     if (file && existing.id) {
       const reader = new FileReader();
@@ -5555,13 +5565,14 @@ function saveExpense() {
       clearExpAttach();
     }
     _editingExpIdx = -1;
+    _editingExpItemId = null;
     const banner   = document.getElementById('expEditBanner');
     const saveBtn  = document.getElementById('expSaveBtn');
     const cancelBtn= document.getElementById('expCancelEditBtn');
     if (banner)    banner.style.display    = 'none';
     if (saveBtn)   saveBtn.textContent     = '💾 이력 저장';
     if (cancelBtn) cancelBtn.style.display = 'none';
-    alert('수정됐어요!');
+    alert('수정됐어요! (날짜: ' + (updated.date||'-') + ')');
     switchExpSubTab('list');
     renderExpHistList();
     return;
