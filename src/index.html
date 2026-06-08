@@ -1303,10 +1303,12 @@ function _parsePartsRaw(vc, voc, productName, selectOpt, displayOpt) {
   // optKw 있는 것 중 현재 옵션과 일치하는 것 우선, 그 다음 optKw 없는 것
   const custom = _allMatched.find(cc => cc.optKw && _optSrc.toLowerCase().includes(cc.optKw.toLowerCase()))
               || _allMatched.find(cc => !cc.optKw);
+  // 등록한 '변경할 상품코드'를 후속 빌드 단계가 쓸 수 있도록 노출
+  const _mappedCode = (custom && custom.code) ? custom.code : '';
   // custom.product가 비어있거나 '/'를 포함하면 잘못 저장된 코드 → 일반 파싱으로 폴백
   if (custom && custom.product && !custom.product.includes('/')) {
     const optStr = mapped ? mapped.result : (cleanSelectOpt(selectOpt) || cleanSelectOpt(displayOpt) || '');
-    return { itemName: custom.product, optionName: optStr, optMapped: !!mapped, optNeedsCheck: !mapped && !optStr };
+    return { itemName: custom.product, optionName: optStr, optMapped: !!mapped, optNeedsCheck: !mapped && !optStr, mappedCode: _mappedCode };
   }
   // custom 매칭됐는데 product가 깨끗하지 않으면 → 등록된 '변경할 상품코드(cc.code)' 자체를 파싱해 사용
   // (예: m202603185dea835d4 → 일비]박대/대-37cm 10미-1 으로 등록 시, 일비]뒤 박대/대-37cm 10미 추출)
@@ -1322,11 +1324,11 @@ function _parsePartsRaw(vc, voc, productName, selectOpt, displayOpt) {
         const cOpt = stripCodeQty(cRawOpt).replace(/_/g, ' ').trim();
         if (cItem) {
           const optStr = mapped ? mapped.result : (cOpt || cleanSelectOpt(selectOpt) || cleanSelectOpt(displayOpt) || '');
-          return { itemName: cItem, optionName: optStr, codeQty: cQty, optMapped: !!mapped };
+          return { itemName: cItem, optionName: optStr, codeQty: cQty, optMapped: !!mapped, mappedCode: _mappedCode };
         }
       } else if (cAfter.trim()) {
         const optStr = mapped ? mapped.result : (cleanSelectOpt(selectOpt) || cleanSelectOpt(displayOpt) || '');
-        return { itemName: cAfter.trim(), optionName: optStr, optMapped: !!mapped };
+        return { itemName: cAfter.trim(), optionName: optStr, optMapped: !!mapped, mappedCode: _mappedCode };
       }
     }
   }
@@ -1563,7 +1565,7 @@ function handleFile(file) {
         const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
         const order_amt=Math.round(_ab - _ai + _ah);
         const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
+        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
         allOrders.push(order);
         if(vk){const gk=vk+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
         else unmatchedList.push(order);
@@ -1898,17 +1900,19 @@ function buildRows(vk,orders,alias){
       return [['주문번호','주문일','주문자명','주문자연락처','수령인명','수령인연락처','우편번호','주소','상품코드','판매사상품명','주문수량','배송시 요청사항','택배사**','배송번호','판매사','판매사연락처','보내는주소'],
         ...orders.map(o=>[o.order_no,'',s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,'',combined(o),effQty(o),o.memo,'','',s.name,s.phone,s.addr])];
     case '도매꾹': {
-      // 형식: 도매꾹]상품번호/옵션코드:옵션명-수량
-      //  - ] 없으면 전체 코드가 상품번호
+      // 형식: 도매꾹]상품번호/옵션코드:옵션명-수량  또는  상품번호:옵션명-수량
+      //  - ] 없으면 전체 코드가 상품번호 후보
       //  - 옵션코드: 숫자만 (: 이전)
       //  - 옵션명: : 이후 (또는 / 이후가 한글이면 바로 옵션명)
+      //  - 사용자가 코드 등록한 경우(mapped_code) 그 코드를 우선 사용
       const h = ['마켓','상품번호','옵션코드','옵션명','수량','수령자명','우편번호','배송주소','배송 상세주소\n(선택입력)','휴대전화','추가연락처\n(선택입력)','쇼핑몰명\n(도매매 전용)','전달사항','배송요청사항\n(도매매 전용)','통관고유번호\n(해외직배송 전용)'];
       return [h, ...orders.map(o => {
-        const vc = String(o.vendor_code || '');
-        // 상품번호는 vendor_code의 ] 뒤 / 앞 부분
+        const vc = String(o.mapped_code || o.vendor_code || '');
+        // 상품번호는 vendor_code의 ] 뒤, '/' 또는 ':' 앞 부분
         const afterBracket = vc.includes(']') ? vc.split(']')[1] : vc;
-        const slashIdx = afterBracket.indexOf('/');
-        const productNo = (slashIdx >= 0 ? afterBracket.slice(0, slashIdx) : afterBracket).trim();
+        let sepIdx = afterBracket.indexOf('/');
+        if (sepIdx < 0) sepIdx = afterBracket.indexOf(':');
+        const productNo = (sepIdx >= 0 ? afterBracket.slice(0, sepIdx) : afterBracket).trim();
         // 옵션은 o.option_name(직접수정/규칙/파싱 결과)을 기준으로 — vendor_code 재파싱 X
         let optCode = '', optName = '';
         const raw = String(o.option_name || '').trim().replace(/-\d+$/, '').replace(/_\d+$/, '').trim();
@@ -2587,6 +2591,7 @@ function rematchAllOrders(){
     o.code_qty=parsed.codeQty||1;
     o.opt_mapped=parsed.optMapped||false;
     o.opt_needs_check=parsed.optNeedsCheck||false;
+    o.mapped_code=parsed.mappedCode||'';
     o.unmatched=!vk;
     if(vk){const gk=vk+'|'+o.alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(o);}
     else unmatchedList.push(o);
@@ -4360,7 +4365,7 @@ function handleFileAdd(file){
         const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
         const order_amt=Math.round(_ab - _ai + _ah);
         const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
+        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
         allOrders.push(order);
         if(vk){const gk=vk+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
         else unmatchedList.push(order);
