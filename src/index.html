@@ -4366,20 +4366,28 @@ function poStmtUpload(input){
     const byVendor = {};
     for (const p of parsedAll) {
       const v = p.vendor || '미지정';
-      if (!byVendor[v]) byVendor[v] = {vendor:v, items:new Map(), files:[]};
+      if (!byVendor[v]) byVendor[v] = {vendor:v, items:new Map(), files:[], dates:[]};
       byVendor[v].files.push(p.fileName);
+      if (p.inferredDate) byVendor[v].dates.push(p.inferredDate);
       for (const it of p.items) {
         const key = it.item + '||' + (it.option||'');
-        if (!byVendor[v].items.has(key)) byVendor[v].items.set(key, {item:it.item, option:it.option||'', qty:0});
+        if (!byVendor[v].items.has(key)) byVendor[v].items.set(key, {item:it.item, option:it.option||'', qty:0, date: p.inferredDate||''});
         byVendor[v].items.get(key).qty += it.qty;
+        // 같은 품목이 여러 파일에 나오면 가장 이른 날짜 유지
+        const cur = byVendor[v].items.get(key);
+        if (p.inferredDate && (!cur.date || p.inferredDate < cur.date)) cur.date = p.inferredDate;
       }
     }
     const groups = Object.values(byVendor).map(g => ({
       vendor: g.vendor,
       files: g.files,
-      items: [...g.items.values()]
+      items: [...g.items.values()],
+      defaultDate: g.dates.length ? g.dates.sort()[0] : ''
     }));
-    _poStmtState = {groups, date: new Date().toISOString().slice(0,10)};
+    // 전체 기본일자: 추출된 날짜 중 가장 이른 것, 없으면 오늘
+    const allDates = parsedAll.map(p => p.inferredDate).filter(Boolean).sort();
+    const defaultDate = allDates[0] || new Date().toISOString().slice(0,10);
+    _poStmtState = {groups, date: defaultDate};
     poStmtShowModal();
   });
 }
@@ -4414,7 +4422,18 @@ function poStmtParseRows(rows, fileName){
   const m = fileName.match(/^\d+[-_]?([^_\-]+?)[-_]?(?:발주|order)/i)
         || fileName.match(/^\d+[-_]?([^_\-]+)/);
   if (m) vendor = m[1].trim();
-  if (hdrIdx < 0) return {vendor, fileName, items:[]};
+  // 파일명에서 발주일자 추출: "260506-..." → 2026-05-06
+  // 6자리 yymmdd가 맨 앞에 있으면 사용 (yymmdd 범위는 "260506-0515"처럼 시작일만)
+  let inferredDate = '';
+  const dm = fileName.match(/^(\d{2})(\d{2})(\d{2})/);
+  if (dm) {
+    const yy = parseInt(dm[1]), mm = parseInt(dm[2]), dd = parseInt(dm[3]);
+    if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+      const yyyy = (yy < 50 ? 2000 : 1900) + yy;
+      inferredDate = `${yyyy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+    }
+  }
+  if (hdrIdx < 0) return {vendor, fileName, inferredDate, items:[]};
   const map = new Map();
   for (let i = hdrIdx + 1; i < rows.length; i++) {
     const r = rows[i];
@@ -4427,7 +4446,7 @@ function poStmtParseRows(rows, fileName){
     if (!map.has(key)) map.set(key, {item, option:opt, qty:0});
     map.get(key).qty += qty;
   }
-  return {vendor, fileName, items:[...map.values()]};
+  return {vendor, fileName, inferredDate, items:[...map.values()]};
 }
 
 function poStmtShowModal(){
@@ -4440,8 +4459,9 @@ function poStmtShowModal(){
     const rows = g.items.map((it, ii) => {
       const saved = getUnitPrice(g.vendor, it.item, it.option);
       const price = saved ? saved.price : '';
+      const rowDate = it.date || g.defaultDate || date;
       return `<tr data-gi="${gi}" data-ii="${ii}">
-        <td style="padding:4px 6px;border-bottom:1px solid #eee"><input class="pos-date" type="date" value="${escHtml(date)}" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #ddd;border-radius:3px"></td>
+        <td style="padding:4px 6px;border-bottom:1px solid #eee"><input class="pos-date" type="date" value="${escHtml(rowDate)}" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #ddd;border-radius:3px"></td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px">${escHtml(it.item)}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666">${escHtml(it.option||'')}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right">${it.qty.toLocaleString()}</td>
