@@ -4370,18 +4370,21 @@ function poStmtUpload(input){
       byVendor[v].files.push(p.fileName);
       if (p.inferredDate) byVendor[v].dates.push(p.inferredDate);
       for (const it of p.items) {
-        const key = it.item + '||' + (it.option||'');
-        if (!byVendor[v].items.has(key)) byVendor[v].items.set(key, {item:it.item, option:it.option||'', qty:0, date: p.inferredDate||''});
+        // 일자가 다르면 별도 행으로 유지 (파일 안에 일자 컬럼이 있을 때 같은 품목도 일자별로 분리)
+        const itemDate = it.date || p.inferredDate || '';
+        const key = it.item + '||' + (it.option||'') + '||' + itemDate;
+        if (!byVendor[v].items.has(key)) byVendor[v].items.set(key, {item:it.item, option:it.option||'', qty:0, date: itemDate});
         byVendor[v].items.get(key).qty += it.qty;
-        // 같은 품목이 여러 파일에 나오면 가장 이른 날짜 유지
-        const cur = byVendor[v].items.get(key);
-        if (p.inferredDate && (!cur.date || p.inferredDate < cur.date)) cur.date = p.inferredDate;
       }
     }
     const groups = Object.values(byVendor).map(g => ({
       vendor: g.vendor,
       files: g.files,
-      items: [...g.items.values()],
+      items: [...g.items.values()].sort((a,b) => {
+        const ad = a.date||'', bd = b.date||'';
+        if (ad !== bd) return ad < bd ? -1 : 1;
+        return a.item < b.item ? -1 : a.item > b.item ? 1 : 0;
+      }),
       defaultDate: g.dates.length ? g.dates.sort()[0] : ''
     }));
     // 전체 기본일자: 추출된 날짜 중 가장 이른 것, 없으면 오늘
@@ -4394,7 +4397,7 @@ function poStmtUpload(input){
 
 function poStmtParseRows(rows, fileName){
   const norm = s => String(s||'').replace(/\s/g,'').toLowerCase();
-  let hdrIdx = -1, itemIdx = -1, qtyIdx = -1, optIdx = -1;
+  let hdrIdx = -1, itemIdx = -1, qtyIdx = -1, optIdx = -1, dateIdx = -1;
   for (let i = 0; i < Math.min(8, rows.length); i++) {
     const r = rows[i];
     if (!r) continue;
@@ -4403,6 +4406,7 @@ function poStmtParseRows(rows, fileName){
     if (ii >= 0 && qi >= 0) {
       hdrIdx = i; itemIdx = ii; qtyIdx = qi;
       optIdx = r.findIndex(c => /^옵션명|고객선택옵션/.test(norm(c)));
+      dateIdx = r.findIndex(c => /^주문일|^발주일|^거래일|^일자|^날짜/.test(norm(c)));
       break;
     }
   }
@@ -4414,7 +4418,11 @@ function poStmtParseRows(rows, fileName){
       const ii = r.findIndex(c => /^상품번호/.test(norm(c)));
       const oi = r.findIndex(c => /^옵션명/.test(norm(c)));
       const qi = r.findIndex(c => /^수량/.test(norm(c)));
-      if (ii >= 0 && qi >= 0) { hdrIdx = i; itemIdx = ii; optIdx = oi; qtyIdx = qi; break; }
+      if (ii >= 0 && qi >= 0) {
+        hdrIdx = i; itemIdx = ii; optIdx = oi; qtyIdx = qi;
+        dateIdx = r.findIndex(c => /^주문일|^발주일|^거래일|^일자|^날짜/.test(norm(c)));
+        break;
+      }
     }
   }
   let vendor = '';
@@ -4434,6 +4442,28 @@ function poStmtParseRows(rows, fileName){
     }
   }
   if (hdrIdx < 0) return {vendor, fileName, inferredDate, items:[]};
+  // 셀 값(date 객체 / 'YYYY-MM-DD' / 'YYMMDD' / 엑셀 serial 등)에서 YYYY-MM-DD 추출
+  const parseCellDate = (v) => {
+    if (v == null || v === '') return '';
+    if (v instanceof Date && !isNaN(v)) {
+      const y = v.getFullYear(), m = String(v.getMonth()+1).padStart(2,'0'), d = String(v.getDate()).padStart(2,'0');
+      return `${y}-${m}-${d}`;
+    }
+    const s = String(v).trim();
+    let m = s.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+    if (m) return `${m[1]}-${String(+m[2]).padStart(2,'0')}-${String(+m[3]).padStart(2,'0')}`;
+    m = s.match(/^(\d{2})(\d{2})(\d{2})$/);
+    if (m) {
+      const yy = +m[1]; const yyyy = (yy < 50 ? 2000 : 1900) + yy;
+      return `${yyyy}-${m[2]}-${m[3]}`;
+    }
+    if (/^\d+$/.test(s) && +s > 30000 && +s < 80000) {
+      // 엑셀 serial 추정 — 1900-01-01 기준
+      const d = new Date(Date.UTC(1899,11,30) + (+s) * 86400000);
+      if (!isNaN(d)) return d.toISOString().slice(0,10);
+    }
+    return '';
+  };
   const map = new Map();
   for (let i = hdrIdx + 1; i < rows.length; i++) {
     const r = rows[i];
@@ -4442,8 +4472,9 @@ function poStmtParseRows(rows, fileName){
     const qty = Number(r[qtyIdx]) || 0;
     const opt = optIdx >= 0 ? String(r[optIdx]||'').trim() : '';
     if (!item || qty <= 0) continue;
-    const key = item + '||' + opt;
-    if (!map.has(key)) map.set(key, {item, option:opt, qty:0});
+    const rowDate = dateIdx >= 0 ? parseCellDate(r[dateIdx]) : '';
+    const key = item + '||' + opt + '||' + rowDate;  // 일자가 다르면 별도 행
+    if (!map.has(key)) map.set(key, {item, option:opt, qty:0, date: rowDate});
     map.get(key).qty += qty;
   }
   return {vendor, fileName, inferredDate, items:[...map.values()]};
