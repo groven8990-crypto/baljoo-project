@@ -2617,9 +2617,20 @@ function renderDirectEdit(){
   for(const o of allOrders){ const k=ovKey(o.vendor_code,o.select_opt); if(!seen.has(k)) seen.set(k,o); }
   _directCombos = [...seen.entries()].map(([k,o])=>({k,o}));
   const ovs = loadOverrides();
+  const q = (document.getElementById('directEditSearch')?.value||'').trim().toLowerCase();
   const G = 'display:grid;grid-template-columns:1.7fr 1.3fr 1fr 60px auto;gap:8px;align-items:center';
-  let html = `<div style="${G};padding-bottom:6px;border-bottom:2px solid var(--border);font-size:11px;font-weight:500;color:var(--text2)"><span>코드 / 상품명</span><span>품목명</span><span>옵션</span><span>수량</span><span></span></div>`;
+  const searchBox = `<div style="margin-bottom:10px;display:flex;gap:8px;align-items:center">
+    <input id="directEditSearch" class="inp" type="text" placeholder="🔍 코드 / 상품명 / 품목 / 옵션 / 선택사항 검색..." value="${escHtml(q)}" oninput="renderDirectEdit()" style="flex:1;font-size:12px">
+    ${q?`<button class="btn btn-sm" onclick="document.getElementById('directEditSearch').value='';renderDirectEdit()">✕ 초기화</button>`:''}
+  </div>`;
+  let html = searchBox + `<div style="${G};padding-bottom:6px;border-bottom:2px solid var(--border);font-size:11px;font-weight:500;color:var(--text2)"><span>코드 / 상품명</span><span>품목명</span><span>옵션</span><span>수량</span><span></span></div>`;
+  let shown = 0;
   _directCombos.forEach(({k,o},i)=>{
+    if (q) {
+      const hay = [o.vendor_code, o.product, o.item_name, o.option_name, o.select_opt].map(v => String(v||'').toLowerCase()).join(' ');
+      if (!hay.includes(q)) return;
+    }
+    shown++;
     const hasOv = ovs.some(x=>x.key===k);
     const dot = hasOv ? '<span title="직접수정 저장됨" style="color:var(--purple)">● </span>' : '';
     const soText = o.select_opt ? `<div style="margin-top:3px;font-size:10px;color:var(--text3)"><span style="color:var(--warn)">선택사항(Q):</span> <span style="color:var(--text2)">${escHtml(o.select_opt)}</span></div>` : '';
@@ -2638,7 +2649,12 @@ function renderDirectEdit(){
         <span style="display:flex;gap:4px"><button class="btn btn-sm" onclick="startDirectEdit(${i})">✏️ 수정</button>${hasOv?`<button class="btn btn-danger btn-sm" onclick="clearDirectEdit(${i})">초기화</button>`:''}</span></div>`;
     }
   });
+  if (q && shown === 0) html += '<div style="padding:18px;text-align:center;color:var(--text3);font-size:13px">검색 결과가 없어요</div>';
+  else if (q) html += `<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:right">${shown}건 표시 / 전체 ${_directCombos.length}건</div>`;
   listEl.innerHTML = html;
+  // 검색 후 포커스 유지
+  const sEl = document.getElementById('directEditSearch');
+  if (sEl && q) { sEl.focus(); sEl.setSelectionRange(q.length, q.length); }
 }
 function startDirectEdit(i){ _editingOvIdx=i; renderDirectEdit(); }
 function saveDirectEdit(){
