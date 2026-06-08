@@ -4123,13 +4123,13 @@ function buildStatement(){
 }
 
 const STMT_ISSUER_INFO = {
-  '옐로우브릿지': { bizNo: '333-02-01903', email: 'groven89@naver.com', addr: '전북 군산시 축동로 34, 501동 1102호' },
-  '그로븐':       { bizNo: '180-98-01957', email: 'groven89@naver.com', addr: '전북 군산시 산북로 130-1' }
+  '옐로우브릿지': { bizNo: '333-02-01903', rep: '배지연', email: 'groven89@naver.com', addr: '전북 군산시 축동로 34, 501동 1102호' },
+  '그로븐':       { bizNo: '180-98-01957', rep: '배지연', email: 'groven89@naver.com', addr: '전북 군산시 산북로 130-1' }
 };
 // 거래처(공급자) 사업자 정보 — 발주서로 거래내역서 만들 때 공급자 영역에 자동 노출
 const STMT_VENDOR_INFO = {
-  '거풍푸드': { fullName:'주식회사 거풍푸드', bizNo:'417-81-29126', rep:'백봉준', addr:'전남 여수시 망양로 455 (만흥동)', tel:'061-653-8859', email:'gatkimchi@gmail.com' },
-  '거풍':    { fullName:'주식회사 거풍푸드', bizNo:'417-81-29126', rep:'백봉준', addr:'전남 여수시 망양로 455 (만흥동)', tel:'061-653-8859', email:'gatkimchi@gmail.com' }
+  '거풍푸드': { fullName:'주식회사 거풍푸드', bizNo:'417-81-29126', rep:'백봉준', addr:'전남 여수시 망양로 455 (만흥동)', email:'gatkimchi@gmail.com' },
+  '거풍':    { fullName:'주식회사 거풍푸드', bizNo:'417-81-29126', rep:'백봉준', addr:'전남 여수시 망양로 455 (만흥동)', email:'gatkimchi@gmail.com' }
 };
 function lookupVendorInfo(name){
   const n = String(name||'').trim();
@@ -4193,6 +4193,7 @@ function showStatementModal({byVendor, vendors, issuer, period, selected}){
             <div style="font-size:13px;font-weight:700;color:#212121">${escHtml(co)}</div>
             <div style="font-size:11px;color:#555;margin-top:6px;line-height:1.6">
               ${issuerInfo.bizNo?`<div>사업자번호: <b>${escHtml(issuerInfo.bizNo)}</b></div>`:''}
+              ${issuerInfo.rep?`<div>대표자: ${escHtml(issuerInfo.rep)}</div>`:''}
               ${issuerInfo.email?`<div>메일: ${escHtml(issuerInfo.email)}</div>`:''}
               ${issuerInfo.addr?`<div>주소: ${escHtml(issuerInfo.addr)}</div>`:''}
             </div>
@@ -4670,7 +4671,6 @@ function poStmtGenerate(){
           <div style="font-size:11px;color:#555;margin-top:6px;line-height:1.6">
             ${vendorInfo.bizNo?`<div>사업자번호: <b>${escHtml(vendorInfo.bizNo)}</b></div>`:''}
             ${vendorInfo.rep?`<div>대표자: ${escHtml(vendorInfo.rep)}</div>`:''}
-            ${vendorInfo.tel?`<div>TEL: ${escHtml(vendorInfo.tel)}</div>`:''}
             ${vendorInfo.email?`<div>메일: ${escHtml(vendorInfo.email)}</div>`:''}
             ${vendorInfo.addr?`<div>주소: ${escHtml(vendorInfo.addr)}</div>`:''}
           </div>
@@ -4680,6 +4680,7 @@ function poStmtGenerate(){
           <div style="font-size:13px;font-weight:700;color:#212121">${escHtml(s.co)}</div>
           <div style="font-size:11px;color:#555;margin-top:6px;line-height:1.6">
             ${issuerInfo.bizNo?`<div>사업자번호: <b>${escHtml(issuerInfo.bizNo)}</b></div>`:''}
+            ${issuerInfo.rep?`<div>대표자: ${escHtml(issuerInfo.rep)}</div>`:''}
             ${issuerInfo.email?`<div>메일: ${escHtml(issuerInfo.email)}</div>`:''}
             ${issuerInfo.addr?`<div>주소: ${escHtml(issuerInfo.addr)}</div>`:''}
           </div>
