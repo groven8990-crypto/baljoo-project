@@ -733,6 +733,9 @@
           <button class="btn btn-sm"        id="expPaidFilter-paid"   onclick="setExpPaidFilter('paid')"   style="white-space:nowrap">✅ 송금완료</button>
         </div>
         <button class="btn btn-green btn-sm" style="margin-left:auto" onclick="exportExpHistXlsx()">📥 Excel 내보내기</button>
+        <button class="btn btn-sm" style="background:#1A56DB;color:#fff;border:none" onclick="exportExpHistJson()" title="이 컴퓨터의 지출결의서 작성이력을 JSON 백업 파일로 받기">📦 JSON 백업</button>
+        <button class="btn btn-sm" onclick="document.getElementById('expHistJsonFile').click()" title="다른 컴퓨터에서 받은 JSON 백업을 불러오기">📤 JSON 가져오기</button>
+        <input type="file" id="expHistJsonFile" accept=".json" style="display:none" onchange="importExpHistJson(this)">
         <button class="btn btn-sm" onclick="if(confirm('전체 이력을 삭제할까요?')){localStorage.removeItem('yb_exphist');renderExpHistList();}">🗑 전체삭제</button>
       </div>
       <!-- 선택 다운로드 툴바 -->
@@ -3668,6 +3671,64 @@ function deleteExpHist(i) {
   // 첨부파일도 같이 삭제
   if (item && item.id && item.hasAttach) _idbDelAttach(item.id);
   renderExpHistList();
+}
+
+// ─── 지출결의서 작성이력 JSON 백업 / 가져오기 (집·회사 이동용) ───
+function exportExpHistJson() {
+  const hist = loadExpHist();
+  if (!hist.length) { alert('저장된 이력이 없습니다.'); return; }
+  const payload = {
+    _type: 'baljoo-exphist-backup',
+    _version: 1,
+    _exportedAt: new Date().toISOString(),
+    count: hist.length,
+    data: hist
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '지출결의서_백업_' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function importExpHistJson(input) {
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      let arr;
+      if (Array.isArray(parsed)) arr = parsed;
+      else if (parsed && parsed.data && Array.isArray(parsed.data)) arr = parsed.data;
+      else if (parsed && parsed.yb_exphist) arr = JSON.parse(parsed.yb_exphist);
+      else { alert('지출결의서 백업 파일 형식이 아닙니다.'); return; }
+      const cur = loadExpHist();
+      const choice = confirm(
+        '가져오기 옵션 선택\n\n' +
+        '🟢 [확인] = 현재 ' + cur.length + '건에 + ' + arr.length + '건 합치기 (중복 자동 제외)\n' +
+        '🔴 [취소] = 현재 데이터 ' + cur.length + '건을 모두 지우고 ' + arr.length + '건으로 교체'
+      );
+      let merged;
+      if (choice) {
+        const seen = new Set(cur.map(x => x.id).filter(Boolean));
+        const fresh = arr.filter(x => !x.id || !seen.has(x.id));
+        merged = [...fresh, ...cur];
+        alert('✅ ' + fresh.length + '건 추가 (' + (arr.length - fresh.length) + '건 중복 제외). 총 ' + merged.length + '건');
+      } else {
+        merged = arr.slice();
+        alert('✅ ' + merged.length + '건으로 교체됐어요.');
+      }
+      saveExpHist(merged);
+      renderExpHistList();
+    } catch(err) {
+      alert('가져오기 실패: ' + err.message);
+    } finally {
+      input.value = '';
+    }
+  };
+  reader.readAsText(file);
 }
 
 function exportExpHistXlsx() {
