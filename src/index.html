@@ -715,7 +715,9 @@
       <!-- 필터/검색 -->
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
         <input id="expHistSearch" class="inp" type="text" placeholder="거래처·송금내역 검색..." oninput="renderExpHistList()" style="flex:1;min-width:160px;max-width:260px">
-        <input id="expHistMonth" class="inp" type="month" oninput="setExpMonthFilter(this.value)" style="width:140px">
+        <input id="expHistDateFrom" class="inp" type="date" oninput="setExpDateRangeFilter()" style="width:140px" title="시작일">
+        <span style="font-size:12px;color:var(--text3)">~</span>
+        <input id="expHistDateTo" class="inp" type="date" oninput="setExpDateRangeFilter()" style="width:140px" title="종료일">
         <button class="btn btn-sm" id="expTodayBtn" onclick="setExpTodayFilter()" style="white-space:nowrap">📅 금일</button>
         <div style="display:flex;gap:6px">
           <button class="sub-tab-btn active" id="expCoFilter-all"   onclick="setExpCoFilter('all')">전체</button>
@@ -924,7 +926,9 @@
       <div class="card-title">📋 입금결의서 작성 이력</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
         <input id="incHistSearch" class="inp" type="text" placeholder="거래처·입금내역 검색..." oninput="renderIncHistList()" style="flex:1;min-width:160px;max-width:260px">
-        <input id="incHistMonth" class="inp" type="month" oninput="setIncMonthFilter(this.value)" style="width:140px">
+        <input id="incHistDateFrom" class="inp" type="date" oninput="setIncDateRangeFilter()" style="width:140px" title="시작일">
+        <span style="font-size:12px;color:var(--text3)">~</span>
+        <input id="incHistDateTo" class="inp" type="date" oninput="setIncDateRangeFilter()" style="width:140px" title="종료일">
         <button class="btn btn-sm" id="incTodayBtn" onclick="setIncTodayFilter()" style="white-space:nowrap">📅 금일</button>
         <div style="display:flex;gap:6px">
           <button class="sub-tab-btn active" id="incCoFilter-all"   onclick="setIncCoFilter('all')">전체</button>
@@ -3534,6 +3538,12 @@ function setExpMonthFilter(val) {
   if (val) { _expTodayOnly = false; const tb=document.getElementById('expTodayBtn'); if(tb){tb.style.background='';tb.style.color='';} }
   renderExpHistList();
 }
+function setExpDateRangeFilter() {
+  const f = (document.getElementById('expHistDateFrom')||{}).value || '';
+  const t = (document.getElementById('expHistDateTo')||{}).value || '';
+  if (f || t) { _expTodayOnly = false; const tb=document.getElementById('expTodayBtn'); if(tb){tb.style.background='';tb.style.color='';} }
+  renderExpHistList();
+}
 
 function renderExpHistList() {
   const el = document.getElementById('expHistList');
@@ -3543,7 +3553,8 @@ function renderExpHistList() {
 
   const q = (document.getElementById('expHistSearch')||{}).value?.trim().toLowerCase() || '';
 
-  const monthVal = (document.getElementById('expHistMonth')||{}).value || '';
+  const dateFrom = (document.getElementById('expHistDateFrom')||{}).value || '';
+  const dateTo   = (document.getElementById('expHistDateTo')  ||{}).value || '';
 
   const todayIso = new Date().toISOString().slice(0,10);
 
@@ -3551,7 +3562,8 @@ function renderExpHistList() {
   let filtered = hist.filter(d => {
     if (_expCoFilter !== 'all' && d.co !== _expCoFilter) return false;
     if (_expTodayOnly && (d.date||'') !== todayIso) return false;
-    if (!_expTodayOnly && monthVal && !(d.date||'').startsWith(monthVal)) return false;
+    if (!_expTodayOnly && dateFrom && (d.date||'') < dateFrom) return false;
+    if (!_expTodayOnly && dateTo   && (d.date||'') > dateTo)   return false;
     if (_expPaidFilter === 'paid'   &&  !d.paid) return false;
     if (_expPaidFilter === 'unpaid' && !!d.paid) return false;
     if (q && !(
@@ -3648,13 +3660,15 @@ function exportExpHistXlsx() {
   if (!hist.length) { alert('저장된 이력이 없습니다.'); return; }
 
   const q        = (document.getElementById('expHistSearch')||{}).value?.trim().toLowerCase() || '';
-  const monthVal = (document.getElementById('expHistMonth')||{}).value || '';
+  const dateFrom = (document.getElementById('expHistDateFrom')||{}).value || '';
+  const dateTo   = (document.getElementById('expHistDateTo')  ||{}).value || '';
 
   const todayIso2 = new Date().toISOString().slice(0,10);
   let filtered = hist.filter(d => {
     if (_expCoFilter !== 'all' && d.co !== _expCoFilter) return false;
     if (_expTodayOnly && (d.date||'') !== todayIso2) return false;
-    if (!_expTodayOnly && monthVal && !(d.date||'').startsWith(monthVal)) return false;
+    if (!_expTodayOnly && dateFrom && (d.date||'') < dateFrom) return false;
+    if (!_expTodayOnly && dateTo   && (d.date||'') > dateTo)   return false;
     if (q && !((d.vendor||'').toLowerCase().includes(q)||(d.desc||'').toLowerCase().includes(q)||(d.date||'').includes(q))) return false;
     return true;
   });
@@ -3665,7 +3679,7 @@ function exportExpHistXlsx() {
 
   // ── 장부 매입 시트 형식 그대로 ──
   // 행1: 제목
-  const titleYear = monthVal ? monthVal.slice(0,4) : new Date().getFullYear();
+  const titleYear = (dateFrom || dateTo || '').slice(0,4) || new Date().getFullYear();
   const titleRow  = [titleYear + '년 ' + coLabel + ' 매입현황'];
 
   // 행2: 합계 공식 행
@@ -3730,7 +3744,8 @@ function exportExpHistXlsx() {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '매입');
-  const label = coLabel + (monthVal?'_'+monthVal:'');
+  const dateLabel = (dateFrom && dateTo) ? `_${dateFrom}_${dateTo}` : (dateFrom?'_'+dateFrom:(dateTo?'_-'+dateTo:''));
+  const label = coLabel + dateLabel;
   XLSX.writeFile(wb, '장부_매입내역_' + label + '.xlsx');
 }
 
@@ -6036,6 +6051,12 @@ function setIncMonthFilter(val) {
   if (val) { _incTodayOnly=false; const tb=document.getElementById('incTodayBtn'); if(tb){tb.style.background='';tb.style.color='';} }
   renderIncHistList();
 }
+function setIncDateRangeFilter() {
+  const f = (document.getElementById('incHistDateFrom')||{}).value || '';
+  const t = (document.getElementById('incHistDateTo')||{}).value || '';
+  if (f || t) { _incTodayOnly=false; const tb=document.getElementById('incTodayBtn'); if(tb){tb.style.background='';tb.style.color='';} }
+  renderIncHistList();
+}
 
 function toggleIncPaid(i) {
   const hist = loadIncHist();
@@ -6060,12 +6081,14 @@ function renderIncHistList() {
   const hist = loadIncHist();
   if (!hist.length) { el.innerHTML='<p style="font-size:13px;color:var(--text3)">저장된 이력이 없습니다.</p>'; return; }
   const q        = (document.getElementById('incHistSearch')||{}).value?.trim().toLowerCase() || '';
-  const monthVal = (document.getElementById('incHistMonth')||{}).value || '';
+  const dateFrom = (document.getElementById('incHistDateFrom')||{}).value || '';
+  const dateTo   = (document.getElementById('incHistDateTo')  ||{}).value || '';
   const todayIso = new Date().toISOString().slice(0,10);
   let filtered = hist.filter(d => {
     if (_incCoFilter !== 'all' && d.co !== _incCoFilter) return false;
     if (_incTodayOnly && (d.date||'') !== todayIso) return false;
-    if (!_incTodayOnly && monthVal && !(d.date||'').startsWith(monthVal)) return false;
+    if (!_incTodayOnly && dateFrom && (d.date||'') < dateFrom) return false;
+    if (!_incTodayOnly && dateTo   && (d.date||'') > dateTo)   return false;
     if (_incPaidFilter === 'paid'   &&  !d.paid) return false;
     if (_incPaidFilter === 'unpaid' && !!d.paid) return false;
     if (q && !((d.vendor||'').toLowerCase().includes(q)||(d.desc||'').toLowerCase().includes(q)||(d.date||'').includes(q))) return false;
