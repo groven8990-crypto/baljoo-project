@@ -4990,8 +4990,19 @@ function normalizeVendorName(name){
 // ── 옛 양식 지출결의서 일괄 가져오기 ──
 function parseOldExpenseFile(buf, fname) {
   const wb = XLSX.read(buf, {type:'array', cellDates:true});
-  const sheetName = wb.SheetNames.find(n => /송금|지출/.test(n)) || wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
+  // 송금/지출이 들어간 시트 모두 처리 (그로븐 송금 / 그로븐 송금 (2) 등 다중 시트 지원)
+  const matchSheets = wb.SheetNames.filter(n => /송금|지출/.test(n));
+  const targets = matchSheets.length ? matchSheets : [wb.SheetNames[0]];
+  const entries = [];
+  for (const sheetName of targets) {
+    const ws = wb.Sheets[sheetName];
+    if (!ws) continue;
+    const entry = _parseOldExpenseSheet(ws, sheetName, fname);
+    if (entry && entry.vendor && entry.total && Number(entry.total) > 0) entries.push(entry);
+  }
+  return entries;
+}
+function _parseOldExpenseSheet(ws, sheetName, fname) {
   const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
   const get = (r,c) => (rows[r] && rows[r][c] !== undefined) ? rows[r][c] : '';
 
@@ -5113,8 +5124,14 @@ function expBulkImport(files) {
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        const entry = parseOldExpenseFile(e.target.result, file.name);
-        results.push({ok:true, file: file.name, entry});
+        const entriesArr = parseOldExpenseFile(e.target.result, file.name);
+        if (!entriesArr || !entriesArr.length) {
+          results.push({ok:false, file: file.name, error:'유효한 시트 없음'});
+        } else {
+          entriesArr.forEach((entry, sIdx) => {
+            results.push({ok:true, file: file.name + (entriesArr.length>1 ? ` [시트 ${sIdx+1}/${entriesArr.length}]` : ''), entry});
+          });
+        }
       } catch(err) {
         results.push({ok:false, file: file.name, error: err.message});
       }
