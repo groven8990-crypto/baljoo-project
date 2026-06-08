@@ -8238,9 +8238,10 @@ function srDinettePrice(spec, qty){
   return price * bundles - SR_DINETTE_DISC * (bundles - 1);
 }
 function srAggregateDinette(rows){
-  if (!rows || !rows.length) return {count:0, sales:0, byCfg:{}};
+  if (!rows || !rows.length) return {count:0, sales:0, byCfg:{}, mergeDisc:0, mergeGroups:0};
   let sales = 0;
   const byCfg = {};
+  // 1) 기본 매출 합계 + 규격별 집계
   for (const r of rows) {
     const spec = String(r[3]||'').trim();
     if (!(spec in SR_DINETTE_SPEC)) continue;
@@ -8252,11 +8253,39 @@ function srAggregateDinette(rows){
     byCfg[spec].sales += price;
     byCfg[spec].qty += qty;
   }
-  return {count: rows.length, sales, byCfg};
+  // 2) 합배송 할인: (이름+주소) 같은 행이 N건이면 (N-1) × 배송비 차감
+  //    평시 5000원, 행사기간 4500원
+  const SHIP_FEE = srIsDinetteEvent() ? 4500 : 5000;
+  const grpCount = {};
+  for (const r of rows) {
+    const spec = String(r[3]||'').trim();
+    if (!(spec in SR_DINETTE_SPEC)) continue;
+    const name = String(r[0]||'').trim();
+    const addr = _addrNorm(r[2]);
+    if (!name || !addr) continue;
+    const k = name + '||' + addr;
+    grpCount[k] = (grpCount[k]||0) + 1;
+  }
+  let mergeDisc = 0, mergeGroups = 0;
+  for (const k of Object.keys(grpCount)) {
+    const n = grpCount[k];
+    if (n >= 2) {
+      mergeDisc += (n-1) * SHIP_FEE;
+      mergeGroups++;
+    }
+  }
+  sales -= mergeDisc;
+  return {count: rows.length, sales, byCfg, mergeDisc, mergeGroups};
 }
 function srDinetteSection(agg){
   if (agg.count === 0) return '';
   const DN='#7B4B00', HEAD_BG='#F1F5F9', HEAD_FG='#334155';
+  const discRow = (agg.mergeDisc>0)
+    ? `<tr style="background:#FFF7ED">
+         <td style="padding:8px 14px;border-bottom:1px solid #eee;color:#9A3412;font-size:12px">└ 합배송 배송비 차감 <span style="color:#888;font-size:11px">(${agg.mergeGroups}건 묶음)</span></td>
+         <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #eee;color:#9A3412"></td>
+         <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #eee;color:#9A3412">- ${agg.mergeDisc.toLocaleString()}원</td>
+       </tr>` : '';
   return `
     <div style="background:${DN};color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">B2B업체 (디네트)</div>
     <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">
@@ -8270,9 +8299,15 @@ function srDinetteSection(agg){
         <tr style="background:#fff">
           <td style="padding:10px 14px;border-bottom:1px solid #eee">박대</td>
           <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${agg.count.toLocaleString()}건</td>
-          <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${agg.sales.toLocaleString()}원</td>
+          <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${(agg.sales + (agg.mergeDisc||0)).toLocaleString()}원</td>
         </tr>
+        ${discRow}
       </tbody>
+      <tfoot><tr style="background:#E2E8F0;font-weight:700">
+        <td style="padding:9px 14px;color:${HEAD_FG}">합 계</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.count.toLocaleString()}건</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.sales.toLocaleString()}원</td>
+      </tr></tfoot>
     </table>`;
 }
 
