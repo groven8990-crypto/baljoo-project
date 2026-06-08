@@ -4562,7 +4562,8 @@ function poStmtCalc(){
       const qty = parseInt(tr.children[3].textContent.replace(/,/g,'')) || 0;
       const price = parseFloat(tr.querySelector('.pos-price').value) || 0;
       const ship  = parseFloat(tr.querySelector('.pos-ship').value)  || 0;
-      const amt = qty * price + ship;
+      // 배송비는 건별(qty 배) — 같은 품목·일자라도 각 건이 별도 배송
+      const amt = qty * (price + ship);
       sumSupply += amt;
       tr.querySelector('.pos-amount').textContent = amt.toLocaleString();
     });
@@ -4603,7 +4604,7 @@ function poStmtGenerate(){
       const shipRaw = tr.querySelector('.pos-ship').value;
       const ship = shipRaw === '' ? null : (parseFloat(shipRaw) || 0);
       if (price > 0) setUnitPrice(g.vendor, it.item, it.option, price);
-      const amt = it.qty * price + (ship||0);
+      const amt = it.qty * (price + (ship||0));
       supply += amt;
       rows.push({...it, date:rowDate, price, ship, amt});
     });
@@ -4617,14 +4618,17 @@ function poStmtGenerate(){
   const sectionsHtml = sections.filter(s => s.supply > 0).map(s => {
     const issuerInfo = STMT_ISSUER_INFO[s.co] || {};
     const showShip = s.showShip;
-    const rowsHtml = s.rows.map(r => `<tr>
+    const rowsHtml = s.rows.map(r => {
+      const rowShipTotal = (r.ship||0) * r.qty;
+      return `<tr>
       <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555">${escHtml(r.date||'')}</td>
       <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px">${escHtml(r.item)}${r.option?` <span style="color:#888;font-size:11px">(${escHtml(r.option)})</span>`:''}</td>
       <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666;text-align:right">${r.qty.toLocaleString()}</td>
       <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666;text-align:right">${r.price.toLocaleString()}</td>
-      ${showShip ? `<td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666;text-align:right">${(r.ship||0).toLocaleString()}</td>` : ''}
+      ${showShip ? `<td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666;text-align:right">${rowShipTotal.toLocaleString()}</td>` : ''}
       <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right;font-weight:600">${r.amt.toLocaleString()}</td>
-    </tr>`).join('');
+    </tr>`;
+    }).join('');
     const cols = showShip
       ? '<col style="width:14%"><col style="width:30%"><col style="width:10%"><col style="width:14%"><col style="width:14%"><col style="width:18%">'
       : '<col style="width:14%"><col style="width:36%"><col style="width:12%"><col style="width:16%"><col style="width:22%">';
