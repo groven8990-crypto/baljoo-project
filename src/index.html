@@ -4126,6 +4126,21 @@ const STMT_ISSUER_INFO = {
   '옐로우브릿지': { bizNo: '333-02-01903', email: 'groven89@naver.com', addr: '전북 군산시 축동로 34, 501동 1102호' },
   '그로븐':       { bizNo: '180-98-01957', email: 'groven89@naver.com', addr: '전북 군산시 산북로 130-1' }
 };
+// 거래처(공급자) 사업자 정보 — 발주서로 거래내역서 만들 때 공급자 영역에 자동 노출
+const STMT_VENDOR_INFO = {
+  '거풍푸드': { fullName:'주식회사 거풍푸드', bizNo:'417-81-29126', rep:'백봉준', addr:'전남 여수시 망양로 455 (만흥동)', tel:'061-653-8859', email:'gatkimchi@gmail.com' },
+  '거풍':    { fullName:'주식회사 거풍푸드', bizNo:'417-81-29126', rep:'백봉준', addr:'전남 여수시 망양로 455 (만흥동)', tel:'061-653-8859', email:'gatkimchi@gmail.com' }
+};
+function lookupVendorInfo(name){
+  const n = String(name||'').trim();
+  if (!n) return null;
+  if (STMT_VENDOR_INFO[n]) return STMT_VENDOR_INFO[n];
+  // 부분 매칭
+  for (const k of Object.keys(STMT_VENDOR_INFO)) {
+    if (n.includes(k) || k.includes(n)) return STMT_VENDOR_INFO[k];
+  }
+  return null;
+}
 
 let _stmtData = null;
 function showStatementModal({byVendor, vendors, issuer, period, selected}){
@@ -4426,10 +4441,23 @@ function poStmtParseRows(rows, fileName){
     }
   }
   let vendor = '';
-  // 파일명 패턴: "260604-일비-발주서_그로븐.xlsx" → 일비
-  const m = fileName.match(/^\d+[-_]?([^_\-]+?)[-_]?(?:발주|order)/i)
-        || fileName.match(/^\d+[-_]?([^_\-]+)/);
-  if (m) vendor = m[1].trim();
+  // 파일명에서 거래처명 추출
+  // 패턴 예시:
+  //   260604-일비-발주서_그로븐.xlsx      → 일비
+  //   260506-0515_거풍푸드-발주서통합_옐로우브릿지.xlsx → 거풍푸드
+  //   260606-도매꾹-발주서_옐로우브릿지.xlsx → 도매꾹
+  const baseName = fileName.replace(/\.(xlsx|xls)$/i, '');
+  const parts = baseName.split(/[-_]/).map(p => p.trim()).filter(Boolean);
+  // 거래처 제외 키워드 (날짜·문서종류·자사 브랜드)
+  const SKIP_RE = /^\d+$|^발주서?|통합|일괄|회신|옐로우브릿지|그로븐|order|po/i;
+  const vendorPart = parts.find(p => !SKIP_RE.test(p) && /[가-힣]/.test(p));
+  if (vendorPart) vendor = vendorPart;
+  // 폴백: 기존 패턴
+  if (!vendor) {
+    const m = fileName.match(/^\d+[-_]?([^_\-]+?)[-_]?(?:발주|order)/i)
+          || fileName.match(/^\d+[-_]?([^_\-]+)/);
+    if (m) vendor = m[1].trim();
+  }
   // 파일명에서 발주일자 추출: "260506-..." → 2026-05-06
   // 6자리 yymmdd가 맨 앞에 있으면 사용 (yymmdd 범위는 "260506-0515"처럼 시작일만)
   let inferredDate = '';
@@ -4617,6 +4645,7 @@ function poStmtGenerate(){
 
   const sectionsHtml = sections.filter(s => s.supply > 0).map(s => {
     const issuerInfo = STMT_ISSUER_INFO[s.co] || {};
+    const vendorInfo = lookupVendorInfo(s.vendor) || {};
     const showShip = s.showShip;
     const rowsHtml = s.rows.map(r => {
       const rowShipTotal = (r.ship||0) * r.qty;
@@ -4637,7 +4666,14 @@ function poStmtGenerate(){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;background:#fafafa;border-bottom:1px solid #ddd">
         <div style="padding:10px 14px;border-right:1px solid #ddd">
           <div style="font-size:10px;color:#888;font-weight:700;margin-bottom:4px">공급자</div>
-          <div style="font-size:13px;font-weight:700;color:#212121">${escHtml(s.vendor)}</div>
+          <div style="font-size:13px;font-weight:700;color:#212121">${escHtml(vendorInfo.fullName || s.vendor)}</div>
+          <div style="font-size:11px;color:#555;margin-top:6px;line-height:1.6">
+            ${vendorInfo.bizNo?`<div>사업자번호: <b>${escHtml(vendorInfo.bizNo)}</b></div>`:''}
+            ${vendorInfo.rep?`<div>대표자: ${escHtml(vendorInfo.rep)}</div>`:''}
+            ${vendorInfo.tel?`<div>TEL: ${escHtml(vendorInfo.tel)}</div>`:''}
+            ${vendorInfo.email?`<div>메일: ${escHtml(vendorInfo.email)}</div>`:''}
+            ${vendorInfo.addr?`<div>주소: ${escHtml(vendorInfo.addr)}</div>`:''}
+          </div>
         </div>
         <div style="padding:10px 14px">
           <div style="font-size:10px;color:#888;font-weight:700;margin-bottom:4px">공급받는자</div>
@@ -4681,7 +4717,7 @@ function poStmtGenerate(){
       <div id="poStmtBody" style="background:#fff;border-radius:8px;padding:18px">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid ${NAVY};padding-bottom:8px;margin-bottom:6px">
           <div style="font-size:18px;font-weight:700;color:${NAVY}">거 래 내 역 서</div>
-          <div style="font-size:11px;color:#666">발행일: ${date}</div>
+          <div style="font-size:11px;color:#666">발행일: ${new Date().toISOString().slice(0,10)}</div>
         </div>
         ${sectionsHtml}
       </div>
