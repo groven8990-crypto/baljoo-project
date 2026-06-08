@@ -4441,10 +4441,12 @@ function poStmtShowModal(){
       const saved = getUnitPrice(g.vendor, it.item, it.option);
       const price = saved ? saved.price : '';
       return `<tr data-gi="${gi}" data-ii="${ii}">
+        <td style="padding:4px 6px;border-bottom:1px solid #eee"><input class="pos-date" type="date" value="${escHtml(date)}" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #ddd;border-radius:3px"></td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px">${escHtml(it.item)}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666">${escHtml(it.option||'')}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right">${it.qty.toLocaleString()}</td>
         <td style="padding:4px 6px;border-bottom:1px solid #eee"><input class="pos-price" type="number" min="0" value="${price}" placeholder="0" style="width:100%;padding:4px 6px;font-size:12px;text-align:right;border:1px solid #ddd;border-radius:3px" oninput="poStmtCalc()"></td>
+        <td style="padding:4px 6px;border-bottom:1px solid #eee"><input class="pos-ship" type="number" min="0" value="" placeholder="0" style="width:100%;padding:4px 6px;font-size:12px;text-align:right;border:1px solid #ddd;border-radius:3px" oninput="poStmtCalc()"></td>
         <td class="pos-amount" style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right;color:#1A56DB;font-weight:600">0</td>
       </tr>`;
     }).join('');
@@ -4455,19 +4457,22 @@ function poStmtShowModal(){
           <select class="pos-co" style="padding:3px 6px;font-size:12px;margin-left:4px"><option value="옐로우브릿지">옐로우브릿지</option><option value="그로븐">그로븐</option></select>
         </label>
         <label><input type="checkbox" class="pos-vat" onchange="poStmtCalc()" style="vertical-align:middle"> 부가세 별도(10% 추가)</label>
+        <span style="color:var(--text3);font-size:11px;margin-left:auto">💡 배송비 비워두면 거래내역서에 안 나옴</span>
       </div>
       <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-        <colgroup><col style="width:32%"><col style="width:22%"><col style="width:10%"><col style="width:18%"><col style="width:18%"></colgroup>
+        <colgroup><col style="width:13%"><col style="width:24%"><col style="width:17%"><col style="width:8%"><col style="width:13%"><col style="width:11%"><col style="width:14%"></colgroup>
         <thead><tr style="background:#fff">
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:#555;border-bottom:1px solid #ddd">일자</th>
           <th style="padding:7px 10px;text-align:left;font-size:11px;color:#555;border-bottom:1px solid #ddd">품목</th>
           <th style="padding:7px 10px;text-align:left;font-size:11px;color:#555;border-bottom:1px solid #ddd">옵션</th>
           <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">수량</th>
           <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">단가(원)</th>
+          <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">배송비(원)</th>
           <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">금액(원)</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr style="background:#fafafa;font-weight:700">
-          <td colspan="3" style="padding:8px 10px;font-size:12px">합 계</td>
+          <td colspan="5" style="padding:8px 10px;font-size:12px">합 계</td>
           <td style="padding:8px 10px;font-size:11px;text-align:right" class="pos-sum-supply-label">공급가:</td>
           <td style="padding:8px 10px;text-align:right;font-size:13px;color:#1A56DB" class="pos-sum">0원</td>
         </tr></tfoot>
@@ -4476,11 +4481,11 @@ function poStmtShowModal(){
   }).join('');
 
   const overlayHTML = `<div id="poStmtOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;overflow:auto;padding:24px">
-    <div style="max-width:920px;margin:0 auto">
+    <div style="max-width:1080px;margin:0 auto">
       <div style="background:#fff;border-radius:8px;padding:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
         <span style="font-weight:700">📦 발주서 → 거래내역서</span>
-        <span style="font-size:12px;color:var(--text3)">${groups.length}개 거래처 · 단가 입력 후 생성</span>
-        <label style="font-size:12px;margin-left:auto">거래일자: <input type="date" id="poStmtDate" value="${date}" style="padding:3px 6px;font-size:12px"></label>
+        <span style="font-size:12px;color:var(--text3)">${groups.length}개 거래처 · 일자·단가·배송비 입력 후 생성</span>
+        <label style="font-size:12px;margin-left:auto">기본 거래일자: <input type="date" id="poStmtDate" value="${date}" style="padding:3px 6px;font-size:12px" onchange="poStmtApplyDateAll(this.value)"></label>
         <button class="btn btn-primary btn-sm" onclick="poStmtGenerate()">📋 거래내역서 생성</button>
         <button class="btn btn-sm" onclick="document.getElementById('poStmtOverlay').remove()">✕ 닫기</button>
       </div>
@@ -4491,6 +4496,11 @@ function poStmtShowModal(){
   poStmtCalc();
 }
 
+function poStmtApplyDateAll(val){
+  if (!val) return;
+  document.querySelectorAll('#poStmtOverlay .pos-date').forEach(inp => { inp.value = val; });
+}
+
 function poStmtCalc(){
   const overlay = document.getElementById('poStmtOverlay');
   if (!overlay) return;
@@ -4498,9 +4508,10 @@ function poStmtCalc(){
     const vatChk = sec.querySelector('.pos-vat')?.checked;
     let sumSupply = 0;
     sec.querySelectorAll('tbody tr').forEach(tr => {
-      const qty = parseInt(tr.children[2].textContent.replace(/,/g,'')) || 0;
+      const qty = parseInt(tr.children[3].textContent.replace(/,/g,'')) || 0;
       const price = parseFloat(tr.querySelector('.pos-price').value) || 0;
-      const amt = qty * price;
+      const ship  = parseFloat(tr.querySelector('.pos-ship').value)  || 0;
+      const amt = qty * price + ship;
       sumSupply += amt;
       tr.querySelector('.pos-amount').textContent = amt.toLocaleString();
     });
@@ -4536,28 +4547,38 @@ function poStmtGenerate(){
     const rows = [];
     sec.querySelectorAll('tbody tr').forEach((tr, ii) => {
       const it = g.items[ii];
+      const rowDate = tr.querySelector('.pos-date')?.value || date;
       const price = parseFloat(tr.querySelector('.pos-price').value) || 0;
+      const shipRaw = tr.querySelector('.pos-ship').value;
+      const ship = shipRaw === '' ? null : (parseFloat(shipRaw) || 0);
       if (price > 0) setUnitPrice(g.vendor, it.item, it.option, price);
-      const amt = it.qty * price;
+      const amt = it.qty * price + (ship||0);
       supply += amt;
-      rows.push({...it, price, amt});
+      rows.push({...it, date:rowDate, price, ship, amt});
     });
     if (supply > 0) anyAmount = true;
     const vat = vatChk ? Math.round(supply * 0.1) : 0;
-    sections.push({vendor:g.vendor, co, rows, supply, vat, total:supply+vat, vatChk});
+    const showShip = rows.some(r => r.ship !== null && r.ship > 0);
+    sections.push({vendor:g.vendor, co, rows, supply, vat, total:supply+vat, vatChk, showShip});
   });
   if (!anyAmount) { alert('단가를 하나라도 입력해주세요.'); return; }
 
   const sectionsHtml = sections.filter(s => s.supply > 0).map(s => {
     const issuerInfo = STMT_ISSUER_INFO[s.co] || {};
+    const showShip = s.showShip;
     const rowsHtml = s.rows.map(r => `<tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#555">${escHtml(r.date||'')}</td>
       <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px">${escHtml(r.item)}${r.option?` <span style="color:#888;font-size:11px">(${escHtml(r.option)})</span>`:''}</td>
       <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666;text-align:right">${r.qty.toLocaleString()}</td>
       <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666;text-align:right">${r.price.toLocaleString()}</td>
+      ${showShip ? `<td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666;text-align:right">${(r.ship||0).toLocaleString()}</td>` : ''}
       <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right;font-weight:600">${r.amt.toLocaleString()}</td>
     </tr>`).join('');
+    const cols = showShip
+      ? '<col style="width:14%"><col style="width:30%"><col style="width:10%"><col style="width:14%"><col style="width:14%"><col style="width:18%">'
+      : '<col style="width:14%"><col style="width:36%"><col style="width:12%"><col style="width:16%"><col style="width:22%">';
     return `<div style="margin-top:18px;page-break-inside:avoid;border:1px solid #ddd;border-radius:6px;overflow:hidden">
-      <div style="background:${NAVY};color:#fff;padding:8px 14px;font-weight:700;font-size:13px">${escHtml(s.vendor)} <span style="font-weight:400;font-size:11px;opacity:0.85;margin-left:6px">· ${s.rows.length}품목 · ${date}</span></div>
+      <div style="background:${NAVY};color:#fff;padding:8px 14px;font-weight:700;font-size:13px">${escHtml(s.vendor)} <span style="font-weight:400;font-size:11px;opacity:0.85;margin-left:6px">· ${s.rows.length}품목</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;background:#fafafa;border-bottom:1px solid #ddd">
         <div style="padding:10px 14px;border-right:1px solid #ddd">
           <div style="font-size:10px;color:#888;font-weight:700;margin-bottom:4px">공급자</div>
@@ -4574,17 +4595,19 @@ function poStmtGenerate(){
         </div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
-        <colgroup><col style="width:46%"><col style="width:14%"><col style="width:18%"><col style="width:22%"></colgroup>
+        <colgroup>${cols}</colgroup>
         <thead><tr style="background:#fff">
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:#555;border-bottom:1px solid #ddd">일자</th>
           <th style="padding:7px 10px;text-align:left;font-size:11px;color:#555;border-bottom:1px solid #ddd">품목</th>
           <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">수량</th>
           <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">단가</th>
+          ${showShip ? '<th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">배송비</th>' : ''}
           <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">금액</th>
         </tr></thead>
         <tbody>${rowsHtml}</tbody>
         <tfoot><tr style="background:#fafafa;font-weight:700">
           <td style="padding:8px 10px;font-size:12px">공급가</td>
-          <td colspan="2" style="padding:8px 10px;font-size:11px;color:#555;text-align:right">${s.vatChk?`+ 부가세 ${s.vat.toLocaleString()}`:''}</td>
+          <td colspan="${showShip?4:3}" style="padding:8px 10px;font-size:11px;color:#555;text-align:right">${s.vatChk?`+ 부가세 ${s.vat.toLocaleString()}`:''}</td>
           <td style="padding:8px 10px;text-align:right;font-size:13px;color:#1A56DB">${s.total.toLocaleString()}원</td>
         </tr></tfoot>
       </table>
