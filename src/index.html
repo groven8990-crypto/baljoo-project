@@ -545,7 +545,10 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div>
           <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">작성일자</label>
-          <input class="inp" type="date" id="expDate">
+          <div style="display:flex;gap:6px;align-items:center">
+            <input class="inp" type="date" id="expDate" style="flex:1;min-width:0">
+            <button class="btn btn-sm" type="button" onclick="document.getElementById('expDate').value=new Date().toISOString().slice(0,10)" style="white-space:nowrap;padding:6px 12px">📅 금일</button>
+          </div>
         </div>
         <div>
           <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">작성자</label>
@@ -4486,7 +4489,8 @@ async function downloadSelectedExpImg() {
       if (!el) { fail++; continue; }
       const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#fff', useCORS: true });
       const dateStr = (d.date||'').replace(/-/g,'');
-      const fname   = dateStr + '-지출결의서-' + (d.vendor||'거래처') + '_' + (d.co||'') + '.png';
+      const amtStr  = (Number(d.total)||0).toLocaleString() + '원';
+      const fname   = dateStr + '-지출결의서-' + (d.vendor||'거래처') + '_' + (d.co||'') + '_' + amtStr + '.png';
 
       const subDir = await _getSubDirHandle(d.co);
       if (subDir) {
@@ -4559,7 +4563,8 @@ async function saveExpImgFromHist(i) {
     if (!el) return;
     html2canvas(el, { scale: 2, backgroundColor: '#fff', useCORS: true }).then(async canvas => {
       const dateStr = (d.date||'').replace(/-/g,'');
-      const fname   = dateStr + '-지출결의서-' + (d.vendor||'') + '_' + (d.co||'') + '.png';
+      const amtStr  = (Number(d.total)||0).toLocaleString() + '원';
+      const fname   = dateStr + '-지출결의서-' + (d.vendor||'') + '_' + (d.co||'') + '_' + amtStr + '.png';
       const subDir  = await _getSubDirHandle(d.co);
       if (subDir) {
         try {
@@ -5432,7 +5437,8 @@ function saveExpImg() {
   const d = _expModalData || getExpFormData();
   html2canvas(el, { scale: 2, backgroundColor: '#fff', useCORS: true }).then(async canvas => {
     const dateStr = (d.date||'').replace(/-/g,'');
-    const fname2  = `${dateStr}-지출결의서-${d.vendor||'미지정'}_${d.co||''}.png`;
+    const amtStr  = (Number(d.total)||0).toLocaleString() + '원';
+    const fname2  = `${dateStr}-지출결의서-${d.vendor||'미지정'}_${d.co||''}_${amtStr}.png`;
     const subDir2 = await _getSubDirHandle(d.co);
     if (subDir2) {
       try {
