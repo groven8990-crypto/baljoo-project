@@ -735,6 +735,8 @@
         <span id="expHistSelCount" style="font-size:12px;color:var(--text3)">0건 선택됨</span>
         <button class="btn btn-sm" style="background:#7c3aed;color:#fff;border:none" onclick="downloadSelectedExpImg()">📷 선택 다운로드</button>
         <button class="btn btn-sm" style="background:#0ea5e9;color:#fff;border:none" onclick="buildStatement()">📋 거래내역서 만들기</button>
+        <button class="btn btn-sm" style="background:#16a34a;color:#fff;border:none" onclick="document.getElementById('poStmtFile').click()">📦 발주서로 거래내역서</button>
+        <input type="file" id="poStmtFile" accept=".xlsx,.xls" multiple style="display:none" onchange="poStmtUpload(this)">
         <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
           <span id="expSaveFolderName" style="font-size:11px;color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
           <button class="btn btn-sm" onclick="pickExpSaveFolder()" title="저장할 폴더를 선택합니다">📁 폴더 설정</button>
@@ -4147,6 +4149,308 @@ function exportStatementXlsx(){
     XLSX.utils.book_append_sheet(wb, wsAll, '통합');
   }
   XLSX.writeFile(wb, _stmtFileBase() + '.xlsx');
+}
+
+// ══════════════════════════════════════════════════════════
+// 발주서 파일 → 거래내역서 생성 (공급처에 줄 거래내역서)
+// ══════════════════════════════════════════════════════════
+const LS_UNIT_PRICES = 'yb_unit_prices';
+function loadUnitPrices(){ try{return JSON.parse(localStorage.getItem(LS_UNIT_PRICES)||'[]');}catch{return [];}}
+function saveUnitPrices(arr){ try{localStorage.setItem(LS_UNIT_PRICES, JSON.stringify(arr));}catch(e){}}
+function getUnitPrice(vendor, item, option){
+  const arr = loadUnitPrices();
+  return arr.find(p => p.vendor===vendor && p.item===item && (p.option||'')===(option||''));
+}
+function setUnitPrice(vendor, item, option, price){
+  const arr = loadUnitPrices();
+  const i = arr.findIndex(p => p.vendor===vendor && p.item===item && (p.option||'')===(option||''));
+  const e = {vendor, item, option:option||'', price: Number(price)||0};
+  if (i >= 0) arr[i] = e; else arr.push(e);
+  saveUnitPrices(arr);
+}
+
+let _poStmtState = null;
+function poStmtUpload(input){
+  const files = Array.from(input.files||[]);
+  input.value = '';
+  if (!files.length) return;
+  Promise.all(files.map(f => new Promise((res,rej) => {
+    const r = new FileReader();
+    r.onload = e => res({file:f, buf:e.target.result});
+    r.onerror = e => rej(e);
+    r.readAsArrayBuffer(f);
+  }))).then(loaded => {
+    const parsedAll = [];
+    for (const {file, buf} of loaded) {
+      try {
+        const wb = XLSX.read(buf, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+        const parsed = poStmtParseRows(rows, file.name);
+        if (parsed.items.length) parsedAll.push(parsed);
+      } catch(err) { console.error('parse failed for', file.name, err); }
+    }
+    if (!parsedAll.length) { alert('업로드한 파일에서 품목/수량을 찾지 못했어요.'); return; }
+    // 여러 파일이면 같은 거래처끼리 통합
+    const byVendor = {};
+    for (const p of parsedAll) {
+      const v = p.vendor || '미지정';
+      if (!byVendor[v]) byVendor[v] = {vendor:v, items:new Map(), files:[]};
+      byVendor[v].files.push(p.fileName);
+      for (const it of p.items) {
+        const key = it.item + '||' + (it.option||'');
+        if (!byVendor[v].items.has(key)) byVendor[v].items.set(key, {item:it.item, option:it.option||'', qty:0});
+        byVendor[v].items.get(key).qty += it.qty;
+      }
+    }
+    const groups = Object.values(byVendor).map(g => ({
+      vendor: g.vendor,
+      files: g.files,
+      items: [...g.items.values()]
+    }));
+    _poStmtState = {groups, date: new Date().toISOString().slice(0,10)};
+    poStmtShowModal();
+  });
+}
+
+function poStmtParseRows(rows, fileName){
+  const norm = s => String(s||'').replace(/\s/g,'').toLowerCase();
+  let hdrIdx = -1, itemIdx = -1, qtyIdx = -1, optIdx = -1;
+  for (let i = 0; i < Math.min(8, rows.length); i++) {
+    const r = rows[i];
+    if (!r) continue;
+    const ii = r.findIndex(c => /품목명|상품명|제품명|노출상품명/.test(norm(c)));
+    const qi = r.findIndex(c => /^수량|^박스수량|^주문수량/.test(norm(c)));
+    if (ii >= 0 && qi >= 0) {
+      hdrIdx = i; itemIdx = ii; qtyIdx = qi;
+      optIdx = r.findIndex(c => /^옵션명|고객선택옵션/.test(norm(c)));
+      break;
+    }
+  }
+  // 도매꾹: 상품번호/옵션명/수량 헤더 — 품목명 컬럼이 없음
+  if (hdrIdx < 0) {
+    for (let i = 0; i < Math.min(8, rows.length); i++) {
+      const r = rows[i];
+      if (!r) continue;
+      const ii = r.findIndex(c => /^상품번호/.test(norm(c)));
+      const oi = r.findIndex(c => /^옵션명/.test(norm(c)));
+      const qi = r.findIndex(c => /^수량/.test(norm(c)));
+      if (ii >= 0 && qi >= 0) { hdrIdx = i; itemIdx = ii; optIdx = oi; qtyIdx = qi; break; }
+    }
+  }
+  let vendor = '';
+  // 파일명 패턴: "260604-일비-발주서_그로븐.xlsx" → 일비
+  const m = fileName.match(/^\d+[-_]?([^_\-]+?)[-_]?(?:발주|order)/i)
+        || fileName.match(/^\d+[-_]?([^_\-]+)/);
+  if (m) vendor = m[1].trim();
+  if (hdrIdx < 0) return {vendor, fileName, items:[]};
+  const map = new Map();
+  for (let i = hdrIdx + 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.every(c => c === '')) continue;
+    const item = String(r[itemIdx]||'').trim();
+    const qty = Number(r[qtyIdx]) || 0;
+    const opt = optIdx >= 0 ? String(r[optIdx]||'').trim() : '';
+    if (!item || qty <= 0) continue;
+    const key = item + '||' + opt;
+    if (!map.has(key)) map.set(key, {item, option:opt, qty:0});
+    map.get(key).qty += qty;
+  }
+  return {vendor, fileName, items:[...map.values()]};
+}
+
+function poStmtShowModal(){
+  if (!_poStmtState) return;
+  document.getElementById('poStmtOverlay')?.remove();
+  const {groups, date} = _poStmtState;
+  const NAVY = '#1E3A5F';
+  const sections = groups.map((g, gi) => {
+    const fileTag = g.files.length ? `<span style="font-size:11px;color:var(--text3);margin-left:6px">${escHtml(g.files.join(' / '))}</span>` : '';
+    const rows = g.items.map((it, ii) => {
+      const saved = getUnitPrice(g.vendor, it.item, it.option);
+      const price = saved ? saved.price : '';
+      return `<tr data-gi="${gi}" data-ii="${ii}">
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px">${escHtml(it.item)}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666">${escHtml(it.option||'')}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right">${it.qty.toLocaleString()}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #eee"><input class="pos-price" type="number" min="0" value="${price}" placeholder="0" style="width:100%;padding:4px 6px;font-size:12px;text-align:right;border:1px solid #ddd;border-radius:3px" oninput="poStmtCalc()"></td>
+        <td class="pos-amount" style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right;color:#1A56DB;font-weight:600">0</td>
+      </tr>`;
+    }).join('');
+    return `<div data-vendor-section="${gi}" style="margin-top:14px;border:1px solid #ddd;border-radius:6px;overflow:hidden">
+      <div style="background:${NAVY};color:#fff;padding:8px 14px;font-weight:700;font-size:13px">${escHtml(g.vendor)} <span style="font-weight:400;font-size:11px;opacity:0.85;margin-left:6px">· ${g.items.length}개 품목</span>${fileTag}</div>
+      <div style="padding:10px 14px;background:#fafafa;font-size:12px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <label>공급받는자(자사):
+          <select class="pos-co" style="padding:3px 6px;font-size:12px;margin-left:4px"><option value="옐로우브릿지">옐로우브릿지</option><option value="그로븐">그로븐</option></select>
+        </label>
+        <label><input type="checkbox" class="pos-vat" onchange="poStmtCalc()" style="vertical-align:middle"> 부가세 별도(10% 추가)</label>
+      </div>
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+        <colgroup><col style="width:32%"><col style="width:22%"><col style="width:10%"><col style="width:18%"><col style="width:18%"></colgroup>
+        <thead><tr style="background:#fff">
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:#555;border-bottom:1px solid #ddd">품목</th>
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:#555;border-bottom:1px solid #ddd">옵션</th>
+          <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">수량</th>
+          <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">단가(원)</th>
+          <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">금액(원)</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr style="background:#fafafa;font-weight:700">
+          <td colspan="3" style="padding:8px 10px;font-size:12px">합 계</td>
+          <td style="padding:8px 10px;font-size:11px;text-align:right" class="pos-sum-supply-label">공급가:</td>
+          <td style="padding:8px 10px;text-align:right;font-size:13px;color:#1A56DB" class="pos-sum">0원</td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+  }).join('');
+
+  const overlayHTML = `<div id="poStmtOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;overflow:auto;padding:24px">
+    <div style="max-width:920px;margin:0 auto">
+      <div style="background:#fff;border-radius:8px;padding:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <span style="font-weight:700">📦 발주서 → 거래내역서</span>
+        <span style="font-size:12px;color:var(--text3)">${groups.length}개 거래처 · 단가 입력 후 생성</span>
+        <label style="font-size:12px;margin-left:auto">거래일자: <input type="date" id="poStmtDate" value="${date}" style="padding:3px 6px;font-size:12px"></label>
+        <button class="btn btn-primary btn-sm" onclick="poStmtGenerate()">📋 거래내역서 생성</button>
+        <button class="btn btn-sm" onclick="document.getElementById('poStmtOverlay').remove()">✕ 닫기</button>
+      </div>
+      <div style="background:#fff;border-radius:8px;padding:14px;max-height:75vh;overflow:auto">${sections}</div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', overlayHTML);
+  poStmtCalc();
+}
+
+function poStmtCalc(){
+  const overlay = document.getElementById('poStmtOverlay');
+  if (!overlay) return;
+  overlay.querySelectorAll('[data-vendor-section]').forEach(sec => {
+    const vatChk = sec.querySelector('.pos-vat')?.checked;
+    let sumSupply = 0;
+    sec.querySelectorAll('tbody tr').forEach(tr => {
+      const qty = parseInt(tr.children[2].textContent.replace(/,/g,'')) || 0;
+      const price = parseFloat(tr.querySelector('.pos-price').value) || 0;
+      const amt = qty * price;
+      sumSupply += amt;
+      tr.querySelector('.pos-amount').textContent = amt.toLocaleString();
+    });
+    const vat = vatChk ? Math.round(sumSupply * 0.1) : 0;
+    const total = sumSupply + vat;
+    const lbl = sec.querySelector('.pos-sum-supply-label');
+    const sum = sec.querySelector('.pos-sum');
+    if (vatChk) {
+      lbl.textContent = `공급가 ${sumSupply.toLocaleString()} + 부가세 ${vat.toLocaleString()}:`;
+      sum.textContent = total.toLocaleString() + '원';
+    } else {
+      lbl.textContent = '합계:';
+      sum.textContent = sumSupply.toLocaleString() + '원';
+    }
+  });
+}
+
+function poStmtGenerate(){
+  if (!_poStmtState) return;
+  const overlay = document.getElementById('poStmtOverlay');
+  if (!overlay) return;
+  const date = document.getElementById('poStmtDate')?.value || new Date().toISOString().slice(0,10);
+  const NAVY = '#1E3A5F';
+  // 입력값 수집 + 단가 저장
+  const sections = [];
+  let anyAmount = false;
+  overlay.querySelectorAll('[data-vendor-section]').forEach(sec => {
+    const gi = parseInt(sec.getAttribute('data-vendor-section'));
+    const g = _poStmtState.groups[gi];
+    const vatChk = !!sec.querySelector('.pos-vat')?.checked;
+    const co = sec.querySelector('.pos-co')?.value || '옐로우브릿지';
+    let supply = 0;
+    const rows = [];
+    sec.querySelectorAll('tbody tr').forEach((tr, ii) => {
+      const it = g.items[ii];
+      const price = parseFloat(tr.querySelector('.pos-price').value) || 0;
+      if (price > 0) setUnitPrice(g.vendor, it.item, it.option, price);
+      const amt = it.qty * price;
+      supply += amt;
+      rows.push({...it, price, amt});
+    });
+    if (supply > 0) anyAmount = true;
+    const vat = vatChk ? Math.round(supply * 0.1) : 0;
+    sections.push({vendor:g.vendor, co, rows, supply, vat, total:supply+vat, vatChk});
+  });
+  if (!anyAmount) { alert('단가를 하나라도 입력해주세요.'); return; }
+
+  const sectionsHtml = sections.filter(s => s.supply > 0).map(s => {
+    const issuerInfo = STMT_ISSUER_INFO[s.co] || {};
+    const rowsHtml = s.rows.map(r => `<tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px">${escHtml(r.item)}${r.option?` <span style="color:#888;font-size:11px">(${escHtml(r.option)})</span>`:''}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666;text-align:right">${r.qty.toLocaleString()}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666;text-align:right">${r.price.toLocaleString()}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right;font-weight:600">${r.amt.toLocaleString()}</td>
+    </tr>`).join('');
+    return `<div style="margin-top:18px;page-break-inside:avoid;border:1px solid #ddd;border-radius:6px;overflow:hidden">
+      <div style="background:${NAVY};color:#fff;padding:8px 14px;font-weight:700;font-size:13px">${escHtml(s.vendor)} <span style="font-weight:400;font-size:11px;opacity:0.85;margin-left:6px">· ${s.rows.length}품목 · ${date}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;background:#fafafa;border-bottom:1px solid #ddd">
+        <div style="padding:10px 14px;border-right:1px solid #ddd">
+          <div style="font-size:10px;color:#888;font-weight:700;margin-bottom:4px">공급자</div>
+          <div style="font-size:13px;font-weight:700;color:#212121">${escHtml(s.vendor)}</div>
+        </div>
+        <div style="padding:10px 14px">
+          <div style="font-size:10px;color:#888;font-weight:700;margin-bottom:4px">공급받는자</div>
+          <div style="font-size:13px;font-weight:700;color:#212121">${escHtml(s.co)}</div>
+          <div style="font-size:11px;color:#555;margin-top:6px;line-height:1.6">
+            ${issuerInfo.bizNo?`<div>사업자번호: <b>${escHtml(issuerInfo.bizNo)}</b></div>`:''}
+            ${issuerInfo.email?`<div>메일: ${escHtml(issuerInfo.email)}</div>`:''}
+            ${issuerInfo.addr?`<div>주소: ${escHtml(issuerInfo.addr)}</div>`:''}
+          </div>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+        <colgroup><col style="width:46%"><col style="width:14%"><col style="width:18%"><col style="width:22%"></colgroup>
+        <thead><tr style="background:#fff">
+          <th style="padding:7px 10px;text-align:left;font-size:11px;color:#555;border-bottom:1px solid #ddd">품목</th>
+          <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">수량</th>
+          <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">단가</th>
+          <th style="padding:7px 10px;text-align:right;font-size:11px;color:#555;border-bottom:1px solid #ddd">금액</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+        <tfoot><tr style="background:#fafafa;font-weight:700">
+          <td style="padding:8px 10px;font-size:12px">공급가</td>
+          <td colspan="2" style="padding:8px 10px;font-size:11px;color:#555;text-align:right">${s.vatChk?`+ 부가세 ${s.vat.toLocaleString()}`:''}</td>
+          <td style="padding:8px 10px;text-align:right;font-size:13px;color:#1A56DB">${s.total.toLocaleString()}원</td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+  }).join('');
+
+  const grandTotal = sections.reduce((s,x)=>s+x.total,0);
+  const resultOverlay = `<div id="poStmtResultOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10001;overflow:auto;padding:24px">
+    <div style="max-width:920px;margin:0 auto">
+      <div style="background:#fff;border-radius:8px;padding:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <span style="font-weight:700">📋 거래내역서</span>
+        <span style="font-size:12px;color:var(--text3)">${sections.filter(s=>s.supply>0).length}개 구간 · 총 ${grandTotal.toLocaleString()}원</span>
+        <button class="btn btn-green btn-sm" style="margin-left:auto" onclick="poStmtExportImage()">🖼 이미지(PNG)</button>
+        <button class="btn btn-sm" onclick="document.getElementById('poStmtResultOverlay').remove()">✕ 닫기</button>
+      </div>
+      <div id="poStmtBody" style="background:#fff;border-radius:8px;padding:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid ${NAVY};padding-bottom:8px;margin-bottom:6px">
+          <div style="font-size:18px;font-weight:700;color:${NAVY}">거 래 내 역 서</div>
+          <div style="font-size:11px;color:#666">발행일: ${date}</div>
+        </div>
+        ${sectionsHtml}
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', resultOverlay);
+}
+
+function poStmtExportImage(){
+  const el = document.getElementById('poStmtBody');
+  if (!el) return;
+  if (typeof html2canvas !== 'function') { alert('html2canvas 없음'); return; }
+  html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
+    const link = document.createElement('a');
+    link.download = '거래내역서_' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '.png';
+    link.href = canvas.toDataURL('image/png');
+    document.body.appendChild(link);link.click();document.body.removeChild(link);
+  }).catch(e=>alert('이미지 저장 실패: '+e.message));
 }
 
 async function downloadSelectedExpImg() {
