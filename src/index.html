@@ -4988,15 +4988,20 @@ function _doPreviewExpense(d, attachImgUrl) {
       '<tr><td style="font-size:13px;padding:4px 8px 4px 4px;white-space:nowrap;font-weight:700">　합　　계 :</td><td style="font-size:13px;padding:4px 0;text-align:right;width:100%;font-weight:700">' + fmtNum(d.total)  + '원</td></tr>' +
     '</table>';
 
-  // 오른쪽(재무회계과 MEMO): 송금내역 / 예금주명 / 은행 / 계좌번호
-  const rightParts = [];
-  if (d.desc)           rightParts.push('* ' + d.desc);
-  if (d.bank) {
-    rightParts.push('* 예금주명 : ' + d.bank.holder);
-    rightParts.push('* ' + d.bank.bank);
-    rightParts.push('* 계좌번호 : ' + d.bank.acct);
+  // 오른쪽(재무회계과 MEMO): 사용자가 직접 편집한 d.memo 우선, 없으면 송금내역 / 예금주명 / 은행 / 계좌번호 자동 조립
+  let rightContent;
+  if (d.memo && String(d.memo).trim()) {
+    rightContent = escHtml(d.memo).replace(/\n/g, '<br>');
+  } else {
+    const rightParts = [];
+    if (d.desc)           rightParts.push('* ' + d.desc);
+    if (d.bank) {
+      rightParts.push('* 예금주명 : ' + d.bank.holder);
+      rightParts.push('* ' + d.bank.bank);
+      rightParts.push('* 계좌번호 : ' + d.bank.acct);
+    }
+    rightContent = rightParts.map(l => escHtml(l)).join('<br>');
   }
-  const rightContent = rightParts.map(l => escHtml(l)).join('<br>');
 
   // MEMO 영역 — 좌우 단순 2열
   const memoHtml =
