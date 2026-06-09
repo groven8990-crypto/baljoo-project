@@ -216,8 +216,18 @@
       </div>
       <div id="directEditBody" style="display:none">
         <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">발주서에 잘못 나오는 주문을 직접 고치세요. 저장하면 <strong>다음번에 같은 코드·선택사항으로 들어올 때 자동 적용</strong>됩니다. <span style="color:var(--purple)">●</span> 표시는 저장된 직접수정이 있는 줄이에요.</div>
+        <div id="directEditSearchBar"></div>
         <div id="directEditList"></div>
       </div>
+    </div>
+    <div class="card" id="nonstdCodeCard" style="display:none;border:1px solid #ef4444;background:#fef2f2">
+      <div class="card-title">⚠️ 비표준 코드 — 확인 필요 <span id="nonstdCount" style="font-weight:400;font-size:12px;color:var(--danger)"></span></div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px"><b>판매자상품코드가 <code>발주처]품목명/옵션-수량</code> 형식이 아닌 주문</b>이에요. 옵션·수량이 잘못 들어갔을 가능성이 있으니 <b>품목/옵션/수량을 확인</b>한 뒤 ✓ 버튼을 눌러주세요. <span style="color:var(--danger)">미확인 항목이 있으면 발주서 생성 단계로 못 넘어가요.</span></div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button class="btn btn-sm btn-primary" onclick="confirmAllNonstd()">전체 확인 처리</button>
+        <button class="btn btn-sm" onclick="clearAllNonstdConfirmed()">전체 확인 초기화</button>
+      </div>
+      <div id="nonstdCodeList"></div>
     </div>
     <div class="card" id="mergeCandidatesCard" style="display:none;border:1px solid #fbbf24;background:#fffbeb">
       <div class="card-title">🚚 합배송 후보 <span id="mergeCount" style="font-weight:400;font-size:12px;color:var(--warn)"></span></div>
@@ -1080,6 +1090,7 @@ const CLOUD_SYNC_KEYS = [
   'yb_vendor_emails',      // 거래처 이메일
   'yb_product_aliases',    // 상품명 별칭
   'yb_dinette_event_mode', // 디네트 행사 모드
+  'yb_code_confirmed',     // 비표준 코드 확인 처리
 ];
 
 // 클라우드에 보낼 때 무거운 파일 본문은 제외
@@ -1666,6 +1677,7 @@ function renderStep2(){
   } else ael.innerHTML='';
   renderDirectEdit();
   renderMergeCandidates();
+  renderNonstdCodes();
 }
 
 // ── 합배송 후보 감지 (같은 이름 + 주소) ──
@@ -2617,6 +2629,94 @@ function rematchAllOrders(){
   }
 }
 
+// ── 비표준 코드 사용자 확인 (vc + so 키로 저장) ──
+const LS_CODE_CONFIRMED = 'yb_code_confirmed';
+function loadCodeConfirmed(){ try{return JSON.parse(localStorage.getItem(LS_CODE_CONFIRMED)||'[]');}catch{return [];}}
+function saveCodeConfirmed(arr){ try{localStorage.setItem(LS_CODE_CONFIRMED, JSON.stringify(arr));}catch(e){}}
+function isCodeConfirmed(vc, so){ return loadCodeConfirmed().includes(ovKey(vc, so)); }
+function confirmCode(vc, so){
+  const arr = loadCodeConfirmed();
+  const k = ovKey(vc, so);
+  if (!arr.includes(k)) { arr.push(k); saveCodeConfirmed(arr); }
+}
+// 표준 형식: 한글/영문/숫자 + ] + (안에 글자) + / + (안에 글자) + - + 숫자
+// 예: 일비]박대/3P-1
+const STD_CODE_RE = /^[\w가-힣]+\][^\/]+\/[^-]+-\d+$/;
+function isNonStandardCode(vc) {
+  const c = String(vc||'').trim();
+  if (!c) return true;
+  return !STD_CODE_RE.test(c);
+}
+function getUnconfirmedNonstdOrders(){
+  if (!allOrders || !allOrders.length) return [];
+  const seen = new Map();
+  for (const o of allOrders) {
+    if (!isNonStandardCode(o.vendor_code)) continue;
+    if (isCodeConfirmed(o.vendor_code, o.select_opt)) continue;
+    const k = ovKey(o.vendor_code, o.select_opt);
+    if (!seen.has(k)) seen.set(k, o);
+  }
+  return [...seen.values()];
+}
+function renderNonstdCodes(){
+  const card = document.getElementById('nonstdCodeCard');
+  const listEl = document.getElementById('nonstdCodeList');
+  const countEl = document.getElementById('nonstdCount');
+  if (!card || !listEl) return;
+  const items = getUnconfirmedNonstdOrders();
+  if (!items.length) { card.style.display = 'none'; if (countEl) countEl.textContent=''; return; }
+  card.style.display = '';
+  if (countEl) countEl.textContent = `(${items.length}건)`;
+  const G = 'display:grid;grid-template-columns:1.5fr 1.1fr 1fr 60px auto;gap:8px;align-items:center';
+  let html = `<div style="${G};padding-bottom:6px;border-bottom:2px solid #fca5a5;font-size:11px;font-weight:500;color:var(--text2)"><span>판매자상품코드</span><span>품목명</span><span>옵션</span><span>수량</span><span></span></div>`;
+  items.forEach((o, i) => {
+    const soText = o.select_opt ? `<div style="margin-top:3px;font-size:10px;color:var(--text3)"><span style="color:var(--warn)">선택사항(Q):</span> ${escHtml(o.select_opt)}</div>` : '';
+    const codeCell = `<div style="font-size:11px;color:var(--text3);word-break:break-word"><span style="font-family:monospace;color:var(--danger)">${escHtml(o.vendor_code||'')}</span><div style="color:var(--text2);margin-top:2px;line-height:1.4">${escHtml(o.product||'')}</div>${soText}</div>`;
+    html += `<div style="${G};padding:8px 0;border-bottom:1px solid #fee2e2">${codeCell}
+      <div style="font-size:12px">${escHtml(o.item_name||'-')}</div>
+      <div style="font-size:12px">${escHtml(o.option_name||'')||'-'}</div>
+      <div style="font-size:12px">${o.code_qty||1}</div>
+      <span style="display:flex;gap:4px">
+        <button class="btn btn-primary btn-sm" onclick="confirmNonstdAt(${i})">✓ 확인</button>
+        <button class="btn btn-sm" onclick="editNonstdAt(${i})">✏️ 수정</button>
+      </span></div>`;
+  });
+  listEl.innerHTML = html;
+  window._nonstdItems = items;
+}
+function confirmNonstdAt(i){
+  const o = (window._nonstdItems||[])[i]; if (!o) return;
+  confirmCode(o.vendor_code, o.select_opt);
+  renderNonstdCodes();
+}
+function editNonstdAt(i){
+  const o = (window._nonstdItems||[])[i]; if (!o) return;
+  // 직접수정 패널 열고 그 줄로 점프
+  const body = document.getElementById('directEditBody');
+  const toggle = document.getElementById('directEditToggle');
+  if (body && body.style.display === 'none') {
+    body.style.display = '';
+    if (toggle) toggle.textContent = '▲ 접기';
+  }
+  renderDirectEdit();
+  const k = ovKey(o.vendor_code, o.select_opt);
+  const idx = (_directCombos||[]).findIndex(c => c.k === k);
+  if (idx >= 0) { _editingOvIdx = idx; renderDirectEditList(); }
+  document.getElementById('directEditCard')?.scrollIntoView({behavior:'smooth', block:'center'});
+}
+function confirmAllNonstd(){
+  const items = getUnconfirmedNonstdOrders();
+  if (!items.length) return;
+  if (!confirm(`${items.length}건을 모두 확인 처리할까요? (저장된 후엔 다시 안 떠요)`)) return;
+  for (const o of items) confirmCode(o.vendor_code, o.select_opt);
+  renderNonstdCodes();
+}
+function clearAllNonstdConfirmed(){
+  if (!confirm('지금까지 확인 처리한 모든 코드를 초기화할까요? (다시 확인 필요로 표시됨)')) return;
+  saveCodeConfirmed([]);
+  renderNonstdCodes();
+}
+
 // ── 주문 품목·옵션·수량 직접 수정 (코드+선택사항 단위 저장) ──
 let _editingOvIdx = -1;
 let _directCombos = [];
@@ -2631,17 +2731,38 @@ function renderDirectEdit(){
   for(const o of allOrders){ const k=ovKey(o.vendor_code,o.select_opt); if(!seen.has(k)) seen.set(k,o); }
   _directCombos = [...seen.entries()].map(([k,o])=>({k,o}));
   const ovs = loadOverrides();
+  // 검색 바는 별도 컨테이너에 한 번만 그리고 재사용 (한글 IME 조립 도중 input이 파괴되지 않도록)
+  const searchBar = document.getElementById('directEditSearchBar');
+  if (searchBar && !searchBar.dataset.inited) {
+    searchBar.dataset.inited = '1';
+    searchBar.innerHTML = `<div style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input id="directEditSearch" class="inp" type="text" placeholder="🔍 코드 / 상품명 / 품목 / 옵션 / 선택사항 검색..." style="flex:1;min-width:180px;font-size:12px">
+      <button id="directEditSearchClear" class="btn btn-sm" style="display:none">✕ 초기화</button>
+      <label style="font-size:12px;display:flex;align-items:center;gap:4px;white-space:nowrap;color:var(--text2)">
+        <input type="checkbox" id="directEditShowDone" style="width:14px;height:14px"> 수정 완료 표시
+      </label>
+    </div>`;
+    const inp = document.getElementById('directEditSearch');
+    const clr = document.getElementById('directEditSearchClear');
+    const chk = document.getElementById('directEditShowDone');
+    // IME 조립이 끝난 뒤에만 재렌더 (한글 깨짐 방지)
+    let composing = false;
+    inp.addEventListener('compositionstart', () => { composing = true; });
+    inp.addEventListener('compositionend',   () => { composing = false; clr.style.display = inp.value ? '' : 'none'; renderDirectEditList(); });
+    inp.addEventListener('input', () => { clr.style.display = inp.value ? '' : 'none'; if (!composing) renderDirectEditList(); });
+    clr.onclick = () => { inp.value = ''; clr.style.display = 'none'; renderDirectEditList(); inp.focus(); };
+    chk.onchange = () => renderDirectEditList();
+  }
+  renderDirectEditList();
+}
+function renderDirectEditList(){
+  const listEl = document.getElementById('directEditList');
+  if (!listEl) return;
+  const ovs = loadOverrides();
   const q = (document.getElementById('directEditSearch')?.value||'').trim().toLowerCase();
   const showDone = !!document.getElementById('directEditShowDone')?.checked;
   const G = 'display:grid;grid-template-columns:1.7fr 1.3fr 1fr 60px auto;gap:8px;align-items:center';
-  const searchBox = `<div style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-    <input id="directEditSearch" class="inp" type="text" placeholder="🔍 코드 / 상품명 / 품목 / 옵션 / 선택사항 검색..." value="${escHtml(q)}" oninput="renderDirectEdit()" style="flex:1;min-width:180px;font-size:12px">
-    ${q?`<button class="btn btn-sm" onclick="document.getElementById('directEditSearch').value='';renderDirectEdit()">✕ 초기화</button>`:''}
-    <label style="font-size:12px;display:flex;align-items:center;gap:4px;white-space:nowrap;color:var(--text2)">
-      <input type="checkbox" id="directEditShowDone" ${showDone?'checked':''} onchange="renderDirectEdit()" style="width:14px;height:14px"> 수정 완료 표시
-    </label>
-  </div>`;
-  let html = searchBox + `<div style="${G};padding-bottom:6px;border-bottom:2px solid var(--border);font-size:11px;font-weight:500;color:var(--text2)"><span>코드 / 상품명</span><span>품목명</span><span>옵션</span><span>수량</span><span></span></div>`;
+  let html = `<div style="${G};padding-bottom:6px;border-bottom:2px solid var(--border);font-size:11px;font-weight:500;color:var(--text2)"><span>코드 / 상품명</span><span>품목명</span><span>옵션</span><span>수량</span><span></span></div>`;
   let shown = 0, hiddenDone = 0;
   _directCombos.forEach(({k,o},i)=>{
     const hasOv = ovs.some(x=>x.key===k);
@@ -2659,7 +2780,7 @@ function renderDirectEdit(){
         <input class="inp" id="de_item" style="font-size:12px" value="${escHtml(o.item_name||'')}">
         <input class="inp" id="de_opt" style="font-size:12px" value="${escHtml(o.option_name||'')}">
         <input class="inp" id="de_qty" type="number" min="1" style="font-size:12px" value="${o.code_qty||1}">
-        <span style="display:flex;gap:4px"><button class="btn btn-primary btn-sm" onclick="saveDirectEdit()">저장</button><button class="btn btn-sm" onclick="_editingOvIdx=-1;renderDirectEdit()">취소</button></span></div>`;
+        <span style="display:flex;gap:4px"><button class="btn btn-primary btn-sm" onclick="saveDirectEdit()">저장</button><button class="btn btn-sm" onclick="_editingOvIdx=-1;renderDirectEditList()">취소</button></span></div>`;
     }else{
       html += `<div style="${G};padding:8px 0;border-bottom:1px solid var(--border)">${codeCell}
         <div style="font-size:12px">${escHtml(o.item_name||'-')}</div>
@@ -2673,11 +2794,8 @@ function renderDirectEdit(){
   else if (q) html += `<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:right">${shown}건 표시 / 전체 ${_directCombos.length}건${hiddenDone>0?` (수정 완료 ${hiddenDone}건 숨김)`:''}</div>`;
   else if (hiddenDone > 0) html += `<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:right">${shown}건 표시 (수정 완료 ${hiddenDone}건 숨김)</div>`;
   listEl.innerHTML = html;
-  // 검색 후 포커스 유지
-  const sEl = document.getElementById('directEditSearch');
-  if (sEl && q) { sEl.focus(); sEl.setSelectionRange(q.length, q.length); }
 }
-function startDirectEdit(i){ _editingOvIdx=i; renderDirectEdit(); }
+function startDirectEdit(i){ _editingOvIdx=i; renderDirectEditList(); }
 function saveDirectEdit(){
   const c = _directCombos[_editingOvIdx]; if(!c) return;
   const item = (document.getElementById('de_item')?.value||'').trim();
@@ -2689,7 +2807,7 @@ function saveDirectEdit(){
   _editingOvIdx = -1;
   rematchAllOrders();
   renderStep2(); renderUnmatchedHints(); renderOmPreview();
-  renderDirectEdit();  // 저장 후 패널 즉시 갱신 (● 표시 반영)
+  renderDirectEditList();  // 저장 후 패널 즉시 갱신 (● 표시 반영)
 }
 function clearDirectEdit(i){
   const c = _directCombos[i]; if(!c) return;
@@ -2697,6 +2815,7 @@ function clearDirectEdit(i){
   saveOverrides(loadOverrides().filter(x=>x.key!==c.k));
   rematchAllOrders();
   renderStep2(); renderUnmatchedHints(); renderOmPreview();
+  renderDirectEditList();
 }
 // ══════════════════════════════════════════════════════════
 // 발주서 재생성 — 코드 등록 후 재매칭
@@ -4897,6 +5016,15 @@ function switchSubTab(name){
   if(name==='codemap') renderCodeMappingList();
 }
 function goStep(n){
+  // 2→3 진입 시 비표준 코드 확인 안 끝났으면 차단
+  if (n === 3) {
+    const pending = (typeof getUnconfirmedNonstdOrders === 'function') ? getUnconfirmedNonstdOrders() : [];
+    if (pending.length > 0) {
+      alert(`⚠️ 비표준 코드 ${pending.length}건을 확인해주세요.\n(분석 화면 위쪽 "비표준 코드 — 확인 필요" 카드에서 ✓ 확인 처리)`);
+      document.getElementById('nonstdCodeCard')?.scrollIntoView({behavior:'smooth', block:'center'});
+      return;
+    }
+  }
   document.querySelectorAll('.step').forEach((s,i)=>s.classList.toggle('active',i===n-1));
   for(let i=1;i<=4;i++){
     const d=document.getElementById('d'+i),l=document.getElementById('l'+i),pl=document.getElementById('pl'+i);
