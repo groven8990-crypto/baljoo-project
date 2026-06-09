@@ -2005,8 +2005,13 @@ function buildRows(vk,orders,alias){
       //  - 사용자가 코드 등록한 경우(mapped_code) 그 코드를 우선 사용
       const h = ['마켓','상품번호','옵션코드','옵션명','수량','수령자명','우편번호','배송주소','배송 상세주소\n(선택입력)','휴대전화','추가연락처\n(선택입력)','쇼핑몰명\n(도매매 전용)','전달사항','배송요청사항\n(도매매 전용)','통관고유번호\n(해외직배송 전용)'];
       return [h, ...orders.map(o => {
-        const vc = String(o.mapped_code || o.vendor_code || '');
-        // 상품번호는 vendor_code의 ] 뒤, '/' 또는 ':' 앞 부분
+        // 상품번호 추출 우선순위:
+        // ① vendor_code 가 '발주처]번호[/...]' 형태로 의미있는 상품번호를 가지면 그걸 사용
+        // ② 그렇지 않으면 mapped_code(사용자 등록 코드) 사용
+        const origVc = String(o.vendor_code || '');
+        const origAfter = origVc.includes(']') ? origVc.split(']')[1] : origVc;
+        const origHasGoodPN = origAfter.trim().length > 0 && /[\dA-Za-z]/.test(origAfter);
+        const vc = origHasGoodPN ? origVc : String(o.mapped_code || origVc);
         const afterBracket = vc.includes(']') ? vc.split(']')[1] : vc;
         let sepIdx = afterBracket.indexOf('/');
         if (sepIdx < 0) sepIdx = afterBracket.indexOf(':');
@@ -2696,14 +2701,14 @@ function rematchAllOrders(){
   }
 }
 
-// ── 옵션 패턴 일괄 사전 등록 (yb_overrides에 한 번에 여러 건 등록) ──
+// ── 옵션 패턴 일괄 사전 등록 (yb_codes — 부분 일치(optKw) 기반) ──
 function _bulkRegGather(){
   const vc = (document.getElementById('bulkVC')?.value||'').trim();
   const soPat = (document.getElementById('bulkSOPattern')?.value||'').trim();
   const nStart = parseInt(document.getElementById('bulkNStart')?.value||'');
   const nEnd = parseInt(document.getElementById('bulkNEnd')?.value||'');
   const nStep = parseInt(document.getElementById('bulkNStep')?.value||'5');
-  const item = (document.getElementById('bulkItem')?.value||'').trim();
+  const item = (document.getElementById('bulkItem')?.value||'').trim() || '품목';
   const optPat = (document.getElementById('bulkOptPattern')?.value||'').trim();
   const mStart = parseInt(document.getElementById('bulkMStart')?.value||'');
   const mStep = parseInt(document.getElementById('bulkMStep')?.value||'1');
@@ -2716,12 +2721,29 @@ function _bulkRegGather(){
   if (isNaN(nStart) || isNaN(nEnd) || isNaN(nStep) || nStep <= 0) { if(err) err.textContent='N 시작/끝/증가폭을 확인하세요.'; return null; }
   if (isNaN(mStart) || isNaN(mStep) || mStep <= 0) { if(err) err.textContent='M 시작값/증가폭을 확인하세요.'; return null; }
   if ((nEnd - nStart) % nStep !== 0) { if(err) err.textContent='N 시작~끝이 증가폭으로 정확히 떨어지지 않아요.'; return null; }
+  // 발주처 자동 감지 (vc 의 ] 앞 부분)
+  let vendor = '';
+  if (vc.includes(']')) vendor = vc.split(']')[0].trim();
+  if (!vendor) {
+    const det = (typeof detectVendor === 'function') ? detectVendor(vc, '') : '';
+    vendor = det || '도매꾹';
+  }
   const entries = [];
   let m = mStart;
   for (let n = nStart; n <= nEnd; n += nStep) {
-    const so = soPat.replace(/\{N\}/g, String(n));
-    const opt = optPat.replace(/\{M\}/g, String(m));
-    entries.push({key: ovKey(vc, so), item, option: opt, qty, _so: so, _n: n, _m: m});
+    const so = soPat.replace(/\{N\}/g, String(n));   // optKw — select_opt에 부분 포함되면 매칭
+    const opt = optPat.replace(/\{M\}/g, String(m)); // 옵션명 결과
+    // cc.code 에 결과 인코딩: 발주처]품목/옵션-수량
+    const codeStr = `${vendor}]${item}/${opt}-${qty}`;
+    entries.push({
+      originalCode: vc,
+      code: codeStr,
+      vendor,
+      product: '',          // 비워두면 cc.code 파싱 폴백 활성화 → 위의 optionName 사용
+      optKw: so,
+      productKw: '',
+      _so: so, _opt: opt, _n: n, _m: m
+    });
     m += mStep;
   }
   return entries;
@@ -2730,23 +2752,21 @@ function bulkRegPreview(){
   const entries = _bulkRegGather(); if (!entries) return;
   const prev = document.getElementById('bulkRegPreview');
   if (!prev) return;
-  const existingKeys = new Set(loadOverrides().map(x=>x.key));
-  prev.innerHTML = `<div style="margin-top:8px;font-size:12px;color:var(--text2)">총 ${entries.length}건 생성 예정</div>` +
+  const existing = loadCodes();
+  prev.innerHTML = `<div style="margin-top:8px;font-size:12px;color:var(--text2)">총 ${entries.length}건 생성 예정 (yb_codes에 추가)</div>` +
     `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">
       <thead><tr style="background:#f5f5f5">
-        <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #ddd;font-size:11px">선택사항(Q)</th>
-        <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #ddd;font-size:11px">→ 품목명</th>
-        <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #ddd;font-size:11px">→ 옵션명</th>
+        <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #ddd;font-size:11px">선택사항 키워드</th>
+        <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #ddd;font-size:11px">→ 옵션명 결과</th>
         <th style="padding:5px 8px;text-align:right;border-bottom:1px solid #ddd;font-size:11px">수량</th>
         <th style="padding:5px 8px;text-align:center;border-bottom:1px solid #ddd;font-size:11px">상태</th>
       </tr></thead>
       <tbody>${entries.map(e => {
-        const isDup = existingKeys.has(e.key);
+        const isDup = existing.some(c => c.originalCode === e.originalCode && c.optKw === e.optKw);
         return `<tr>
-          <td style="padding:5px 8px;border-bottom:1px solid #eee">${escHtml(e._so)}</td>
-          <td style="padding:5px 8px;border-bottom:1px solid #eee">${escHtml(e.item||'-')}</td>
-          <td style="padding:5px 8px;border-bottom:1px solid #eee;font-weight:600">${escHtml(e.option)}</td>
-          <td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right">${e.qty}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee"><code style="font-size:11px">${escHtml(e._so)}</code></td>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee;font-weight:600">${escHtml(e._opt)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right">${e._so.includes('-')?'':'+'+1}</td>
           <td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center">${isDup?'<span class="badge badge-warn" style="font-size:10px">중복</span>':'<span class="badge badge-green" style="font-size:10px">신규</span>'}</td>
         </tr>`;
       }).join('')}</tbody>
@@ -2754,16 +2774,17 @@ function bulkRegPreview(){
 }
 function bulkRegSave(){
   const entries = _bulkRegGather(); if (!entries) return;
-  if (!confirm(`${entries.length}건을 yb_overrides(직접수정)에 저장할까요?\n중복은 자동 덮어씁니다.`)) return;
-  const cur = loadOverrides();
-  const newKeys = new Set(entries.map(e => e.key));
-  const filtered = cur.filter(x => !newKeys.has(x.key));
-  for (const e of entries) filtered.push({key:e.key, item:e.item, option:e.option, qty:e.qty});
-  saveOverrides(filtered);
-  alert(`✅ ${entries.length}건 저장 완료. 이제 같은 코드·선택사항으로 들어올 때 자동 적용됩니다.`);
-  // 미리보기 갱신 (중복 상태로)
+  if (!confirm(`${entries.length}건을 yb_codes(코드 등록)에 저장할까요?\n같은 (원본코드 + 선택사항키워드) 조합은 자동 덮어씁니다.`)) return;
+  const cur = loadCodes();
+  const filtered = cur.filter(c => !entries.some(e => e.originalCode === c.originalCode && (c.optKw||'') === e.optKw));
+  for (const e of entries) {
+    const obj = {code:e.code, originalCode:e.originalCode, vendor:e.vendor, product:e.product, optKw:e.optKw};
+    if (e.productKw) obj.productKw = e.productKw;
+    filtered.push(obj);
+  }
+  saveCodes(filtered);
+  alert(`✅ ${entries.length}건 코드 등록 완료. 같은 코드·옵션 패턴 주문 들어올 때 자동 적용됩니다.`);
   bulkRegPreview();
-  // 현재 주문이 있다면 재매칭
   if (typeof allOrders !== 'undefined' && allOrders.length > 0) {
     rematchAllOrders();
     if (typeof renderStep2 === 'function') renderStep2();
@@ -5440,6 +5461,37 @@ function normalizeVendorName(name){
   return n;
 }
 // 페이지 로드 시 한 번만 실행 — 기존 이력 거래처명 일괄 통합
+// 도매꾹 안전화(59648398) 사이즈별 자동 매핑 1회 등록 (사장님 요청 분)
+(function seedSafetyShoes(){
+  const FLAG = 'yb_safety_shoes_seeded_v1';
+  if (localStorage.getItem(FLAG)) return;
+  try {
+    const ORIG = '도매꾹]59648398/';
+    const codes = JSON.parse(localStorage.getItem('yb_codes')||'[]');
+    let added = 0;
+    let m = 36;
+    for (let n = 230; n <= 290; n += 5) {
+      const optKw = `사이즈:${n}`;
+      const optName = `3518다이얼안전화(블랙${m})`;
+      const exists = codes.some(c => c.originalCode === ORIG && (c.optKw||'') === optKw);
+      if (!exists) {
+        codes.push({
+          code: `도매꾹]안전화/${optName}-1`,
+          originalCode: ORIG,
+          vendor: '도매꾹',
+          product: '',
+          optKw: optKw
+        });
+        added++;
+      }
+      m++;
+    }
+    if (added > 0) localStorage.setItem('yb_codes', JSON.stringify(codes));
+    localStorage.setItem(FLAG, '1');
+    if (added > 0) console.log('[safety shoes seed] '+added+'건 자동 등록');
+  } catch(e){ console.error('safety shoes seed failed', e); }
+})();
+
 (function migrateVendorNames(){
   const FLAG = 'yb_vendor_alias_migrated_v1';
   if (localStorage.getItem(FLAG)) return;
