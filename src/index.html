@@ -2832,18 +2832,34 @@ function confirmNonstdAt(i){
 }
 function editNonstdAt(i){
   const o = (window._nonstdItems||[])[i]; if (!o) return;
-  // 직접수정 패널 열고 그 줄로 점프
+  // 직접수정 카드/본문 펼치기
+  const card = document.getElementById('directEditCard');
+  if (card) card.style.display = '';
   const body = document.getElementById('directEditBody');
   const toggle = document.getElementById('directEditToggle');
-  if (body && body.style.display === 'none') {
+  if (body) {
     body.style.display = '';
     if (toggle) toggle.textContent = '▲ 접기';
   }
+  // _directCombos 채우기
   renderDirectEdit();
+  // 해당 줄 찾기
   const k = ovKey(o.vendor_code, o.select_opt);
   const idx = (_directCombos||[]).findIndex(c => c.k === k);
-  if (idx >= 0) { _editingOvIdx = idx; renderDirectEditList(); }
-  document.getElementById('directEditCard')?.scrollIntoView({behavior:'smooth', block:'center'});
+  if (idx < 0) {
+    alert('해당 주문을 직접수정 목록에서 찾지 못했어요. 발주서 생성 탭의 분석 화면이 맞는지 확인해주세요.');
+    return;
+  }
+  _editingOvIdx = idx;
+  renderDirectEditList();
+  // 편집 폼이 보이도록 스크롤
+  setTimeout(() => {
+    const editRow = document.querySelector('#directEditList div[style*="accent-bg"]');
+    if (editRow) editRow.scrollIntoView({behavior:'smooth', block:'center'});
+    else document.getElementById('directEditCard')?.scrollIntoView({behavior:'smooth', block:'center'});
+    // 첫 입력에 포커스
+    document.getElementById('de_item')?.focus();
+  }, 100);
 }
 function confirmAllNonstd(){
   const items = getUnconfirmedNonstdOrders();
@@ -2907,10 +2923,14 @@ function renderDirectEditList(){
   let shown = 0, hiddenDone = 0;
   _directCombos.forEach(({k,o},i)=>{
     const hasOv = ovs.some(x=>x.key===k);
-    if (!showDone && hasOv) { hiddenDone++; return; }
-    if (q) {
-      const hay = [o.vendor_code, o.product, o.item_name, o.option_name, o.select_opt].map(v => String(v||'').toLowerCase()).join(' ');
-      if (!hay.includes(q)) return;
+    const isEditing = _editingOvIdx === i;
+    // 편집 중인 행은 필터 무시하고 무조건 노출
+    if (!isEditing) {
+      if (!showDone && hasOv) { hiddenDone++; return; }
+      if (q) {
+        const hay = [o.vendor_code, o.product, o.item_name, o.option_name, o.select_opt].map(v => String(v||'').toLowerCase()).join(' ');
+        if (!hay.includes(q)) return;
+      }
     }
     shown++;
     const dot = hasOv ? '<span title="직접수정 저장됨" style="color:var(--purple)">● </span>' : '';
