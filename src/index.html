@@ -547,7 +547,7 @@
           <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">작성일자</label>
           <div style="display:flex;gap:6px;align-items:center">
             <input class="inp" type="date" id="expDate" style="flex:1;min-width:0">
-            <button class="btn btn-sm" type="button" onclick="document.getElementById('expDate').value=new Date().toISOString().slice(0,10)" style="white-space:nowrap;padding:6px 12px">📅 금일</button>
+            <button class="btn btn-sm" type="button" onclick="document.getElementById('expDate').value=_localISO()" style="white-space:nowrap;padding:6px 12px">📅 금일</button>
           </div>
         </div>
         <div>
@@ -1742,7 +1742,7 @@ function renderStep3(){
   const today=todayStr();let html='';
   const emails=loadVendorEmails();
   // 오늘 다운로드 받은 발주서 매핑 (vendor|alias → 가장 최근 시각)
-  const todayDate = new Date().toISOString().slice(0,10);
+  const todayDate = _localISO();
   const dlMap = {};
   loadDlHistory().forEach(h => {
     if (h.date === todayDate) {
@@ -1797,7 +1797,7 @@ function emailOne(gk){
   // 1) 엑셀 다운로드
   dlOne(gk);
   // 2) Gmail 작성창 새 탭으로
-  const today=new Date().toISOString().slice(0,10);
+  const today=_localISO();
   const subject=`[발주서] ${today} ${v}`;
   const body=
 `안녕하세요. ${v} 담당자님,
@@ -2024,7 +2024,7 @@ function logDownload(vk, alias, orders, fileName){
   hist.unshift({
     id: Date.now() + Math.floor(Math.random()*1000),
     ts: new Date().toISOString(),
-    date: new Date().toISOString().slice(0,10),
+    date: _localISO(),
     vendor: vk, alias, count: (orders||[]).length, fileName, orders: compact
   });
   if (hist.length > 200) hist.length = 200;
@@ -2068,7 +2068,7 @@ function logUpload(file, arrayBuffer, orders){
   const entry = {
     id: Date.now() + Math.floor(Math.random()*1000),
     ts: new Date().toISOString(),
-    date: new Date().toISOString().slice(0,10),
+    date: _localISO(),
     fileName: file.name,
     fileBytesB64: b64,
     size: arrayBuffer.byteLength,
@@ -2504,7 +2504,7 @@ function exportData(){
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url;
-    a.download='발주백업_'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'.json';
+    a.download='발주백업_'+_localISO().replace(/-/g,'')+'.json';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert('내보내기 실패: '+e.message);}
@@ -3574,7 +3574,7 @@ function renderExpHistList() {
   const dateFrom = (document.getElementById('expHistDateFrom')||{}).value || '';
   const dateTo   = (document.getElementById('expHistDateTo')  ||{}).value || '';
 
-  const todayIso = new Date().toISOString().slice(0,10);
+  const todayIso = _localISO();
 
   // 필터
   let filtered = hist.filter(d => {
@@ -3688,7 +3688,7 @@ function exportExpHistJson() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = '지출결의서_백업_' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '.json';
+  a.download = '지출결의서_백업_' + _localISO().replace(/-/g,'') + '.json';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -3739,7 +3739,7 @@ function exportExpHistXlsx() {
   const dateFrom = (document.getElementById('expHistDateFrom')||{}).value || '';
   const dateTo   = (document.getElementById('expHistDateTo')  ||{}).value || '';
 
-  const todayIso2 = new Date().toISOString().slice(0,10);
+  const todayIso2 = _localISO();
   let filtered = hist.filter(d => {
     if (_expCoFilter !== 'all' && d.co !== _expCoFilter) return false;
     if (_expTodayOnly && (d.date||'') !== todayIso2) return false;
@@ -4234,7 +4234,7 @@ function showStatementModal({byVendor, vendors, issuer, period, selected}){
           <div style="font-size:22px;font-weight:700;color:#212121;text-align:center;letter-spacing:8px">거 래 내 역 서</div>
           <div style="margin-top:10px;display:flex;justify-content:space-between;font-size:12px;color:#555;flex-wrap:wrap;gap:8px">
             <div>기간: <b>${escHtml(period)}</b></div>
-            <div>발행일: ${new Date().toISOString().slice(0,10)}</div>
+            <div>발행일: ${_localISO()}</div>
           </div>
           ${sections}
           <div style="margin-top:18px;padding:12px 14px;background:#EBF0F8;border-radius:6px;display:flex;justify-content:space-between;align-items:center">
@@ -4248,9 +4248,9 @@ function showStatementModal({byVendor, vendors, issuer, period, selected}){
 }
 
 function _stmtFileBase(){
-  if (!_stmtData) return '거래내역서_' + new Date().toISOString().slice(0,10).replace(/-/g,'');
+  if (!_stmtData) return '거래내역서_' + _localISO().replace(/-/g,'');
   const {groups} = _stmtData;
-  const tag = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const tag = _localISO().replace(/-/g,'');
   const vendors = [...new Set(groups.map(g=>g.vendor))];
   const cos = [...new Set(groups.map(g=>g.co))];
   const safe = s => String(s||'').replace(/[\\/?*\[\]:]/g,'_').trim();
@@ -4287,7 +4287,7 @@ function exportStatementXlsx(){
     const aoa = [];
     aoa.push(['거 래 내 역 서']);
     aoa.push([]);
-    aoa.push(['기간', period, '', '발행일', new Date().toISOString().slice(0,10)]);
+    aoa.push(['기간', period, '', '발행일', _localISO()]);
     aoa.push([]);
     aoa.push(['【 공급자 】','', '', '【 공급받는자 】','']);
     aoa.push(['거래처', g.vendor, '', '회사명', g.co]);
@@ -4319,7 +4319,7 @@ function exportStatementXlsx(){
     const all = [];
     all.push(['거 래 내 역 서 — 통합']);
     all.push([]);
-    all.push(['기간', period, '', '발행일', new Date().toISOString().slice(0,10), '']);
+    all.push(['기간', period, '', '발행일', _localISO(), '']);
     all.push([]);
     all.push(['거래처(공급자)','공급받는자','날짜','내역','공급가','부가세','송금금액']);
     let gs=0,gv=0,gt=0;
@@ -4405,7 +4405,7 @@ function poStmtUpload(input){
     }));
     // 전체 기본일자: 추출된 날짜 중 가장 이른 것, 없으면 오늘
     const allDates = parsedAll.map(p => p.inferredDate).filter(Boolean).sort();
-    const defaultDate = allDates[0] || new Date().toISOString().slice(0,10);
+    const defaultDate = allDates[0] || _localISO();
     _poStmtState = {groups, date: defaultDate};
     poStmtShowModal();
   });
@@ -4614,7 +4614,7 @@ function poStmtGenerate(){
   if (!_poStmtState) return;
   const overlay = document.getElementById('poStmtOverlay');
   if (!overlay) return;
-  const date = document.getElementById('poStmtDate')?.value || new Date().toISOString().slice(0,10);
+  const date = document.getElementById('poStmtDate')?.value || _localISO();
   const NAVY = '#1E3A5F';
   // 입력값 수집 + 단가 저장
   const sections = [];
@@ -4718,7 +4718,7 @@ function poStmtGenerate(){
       <div id="poStmtBody" style="background:#fff;border-radius:8px;padding:18px">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid ${NAVY};padding-bottom:8px;margin-bottom:6px">
           <div style="font-size:18px;font-weight:700;color:${NAVY}">거 래 내 역 서</div>
-          <div style="font-size:11px;color:#666">발행일: ${new Date().toISOString().slice(0,10)}</div>
+          <div style="font-size:11px;color:#666">발행일: ${_localISO()}</div>
         </div>
         ${sectionsHtml}
       </div>
@@ -4733,7 +4733,7 @@ function poStmtExportImage(){
   if (typeof html2canvas !== 'function') { alert('html2canvas 없음'); return; }
   html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
     const link = document.createElement('a');
-    link.download = '거래내역서_' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '.png';
+    link.download = '거래내역서_' + _localISO().replace(/-/g,'') + '.png';
     link.href = canvas.toDataURL('image/png');
     document.body.appendChild(link);link.click();document.body.removeChild(link);
   }).catch(e=>alert('이미지 저장 실패: '+e.message));
@@ -4884,9 +4884,9 @@ function switchTab(name){
     if(name==='income'){try{initIncomeTab();}catch(e){console.error(e);}}
     if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}}
     if(name==='recon'){try{reconInitIfNeeded();}catch(e){console.error(e);}}
-    if(name==='report'){try{const d=document.getElementById('rptDate');if(d&&!d.value)d.value=new Date().toISOString().slice(0,10);}catch(e){console.error(e);}}
-    if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=new Date().toISOString().slice(0,10);}catch(e){console.error(e);}}
-    if(name==='weeklyreport'){try{const d=document.getElementById('wrAnyDate');if(d)d.value=new Date().toISOString().slice(0,10);}catch(e){console.error(e);}}
+    if(name==='report'){try{const d=document.getElementById('rptDate');if(d&&!d.value)d.value=_localISO();}catch(e){console.error(e);}}
+    if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
+    if(name==='weeklyreport'){try{const d=document.getElementById('wrAnyDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
   }catch(e){console.error('switchTab 오류:',e);}
 }
 function switchSubTab(name){
@@ -4907,7 +4907,13 @@ function goStep(n){
   if(n===3)renderStep3();
   window.scrollTo(0,0);
 }
-function todayStr(){return new Date().toISOString().slice(2,10).replace(/-/g,'');}  // YY MM DD (6자리)
+// 로컬 시간 기준 YYYY-MM-DD 반환 (toISOString은 UTC라서 한국 시간대에서 새벽에 어제로 빠지는 문제 회피)
+function _localISO(d) {
+  d = d || new Date();
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
+function todayStr(){return _localISO().slice(2).replace(/-/g,'');}  // YY MM DD (6자리, 로컬)
 // 별칭 → 스토어명 변환 (로또상회→그로븐, 자꾸가게→옐로우브릿지)
 function aliasToStore(alias) {
   const map = { '로또상회':'그로븐', '자꾸가게':'옐로우브릿지' };
@@ -4915,7 +4921,7 @@ function aliasToStore(alias) {
 }
 // 날짜-발주처-발주서_스토어명 형식
 function makeFileName(vendor, alias) {
-  const today = new Date().toISOString().slice(2,10).replace(/-/g,'');  // YYMMDD 6자리
+  const today = _localISO().slice(2).replace(/-/g,'');  // YYMMDD 6자리 (로컬)
   const store = aliasToStore(alias);
   return `${today}-${vendor}-발주서_${store}.xlsx`;
 }
@@ -4989,7 +4995,7 @@ function saveHistory(a){ localStorage.setItem(LS_HISTORY, JSON.stringify(a)); }
 // 주문 처리 완료 시 이력 저장
 function saveToHistory(fileName, orders) {
   const history = loadHistory();
-  const dateStr = new Date().toISOString().slice(0,10); // YYYY-MM-DD
+  const dateStr = _localISO(); // YYYY-MM-DD
   const summary = {};
   orders.forEach(o => {
     const vk = o.vendor_key || '미매칭';
@@ -5372,7 +5378,7 @@ function expBulkImport(files) {
 function initExpenseTab() {
   _restoreExpSaveFolder(); // 저장된 폴더 핸들 복원
   // 오늘 날짜 기본값
-  document.getElementById('expDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('expDate').value = _localISO();
   // 작성자 기본값 불러오기
   const savedWriter = localStorage.getItem('yb_default_writer') || '';
   if (savedWriter) document.getElementById('expWriter').value = savedWriter;
@@ -5894,7 +5900,7 @@ function insertFirstTradeMemo() {
   el.focus();
 }
 function resetExpForm() {
-  document.getElementById('expDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('expDate').value = _localISO();
   ['expWriter','expDesc','expSupply','expVat','expTotal','expMemo','expNote'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('expVendor').value = '';
   document.getElementById('expBankInfo').style.display = 'none';
@@ -5919,7 +5925,7 @@ function saveIncHist(a){ localStorage.setItem(LS_INCHIST, JSON.stringify(a)); }
 
 function initIncomeTab() {
   _restoreIncSaveFolder(); // 저장된 폴더 핸들 복원
-  document.getElementById('incDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('incDate').value = _localISO();
   const savedWriter = localStorage.getItem('yb_default_writer') || '';
   if (savedWriter) document.getElementById('incWriter').value = savedWriter;
   if (curIncCo === '그로븐') {
@@ -6292,7 +6298,7 @@ function saveIncome() {
 }
 
 function resetIncForm() {
-  document.getElementById('incDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('incDate').value = _localISO();
   ['incWriter','incDesc','incSupply','incVat','incTotal','incMemo','incRightMemo','incNote'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('incVendor').value = '';
   document.getElementById('incBankInfo').style.display = 'none';
@@ -6381,7 +6387,7 @@ function renderIncHistList() {
   const q        = (document.getElementById('incHistSearch')||{}).value?.trim().toLowerCase() || '';
   const dateFrom = (document.getElementById('incHistDateFrom')||{}).value || '';
   const dateTo   = (document.getElementById('incHistDateTo')  ||{}).value || '';
-  const todayIso = new Date().toISOString().slice(0,10);
+  const todayIso = _localISO();
   let filtered = hist.filter(d => {
     if (_incCoFilter !== 'all' && d.co !== _incCoFilter) return false;
     if (_incTodayOnly && (d.date||'') !== todayIso) return false;
@@ -6488,7 +6494,7 @@ function exportIncHistXlsx() {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(rows);
   XLSX.utils.book_append_sheet(wb, ws, '입금결의서이력');
-  XLSX.writeFile(wb, '입금결의서이력_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  XLSX.writeFile(wb, '입금결의서이력_'+_localISO()+'.xlsx');
 }
 
 // 입금결의서 계좌관리 (지출결의서 데이터 공유)
@@ -6952,7 +6958,7 @@ function reconExportXlsx() {
   ws['!cols'] = [{wch:12},{wch:15},{wch:13},{wch:15},{wch:13},{wch:12},{wch:30},{wch:30}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '정산대조결과');
-  XLSX.writeFile(wb, '정산대조결과_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  XLSX.writeFile(wb, '정산대조결과_' + _localISO() + '.xlsx');
 }
 // ── 정산 대조 끝 ──
 </script>
@@ -7608,7 +7614,7 @@ function priceImportFile(file) {
 // ══════════════════════════════════════════════════════════
 const DS_SUPPLIERS=['거풍푸드','공덕농협','늘푸른우리','도매꾹','생선상륙','일비','일해수산','최고집','충남마른김수협','푸드앤드베스트','한마당식품(다모아)','해당별'];
 const ds_now=new Date();
-const ds_todayKey=ds_now.toISOString().slice(0,10);
+const ds_todayKey=_localISO(ds_now);
 const DS_STORE='ywDailyStatus_'+ds_todayKey;
 const DS_DAYS=['일','월','화','수','목','금','토'];
 (function(){const el=document.getElementById('ds-todayInfo');if(el)el.textContent=`${ds_now.getFullYear()}년 ${ds_now.getMonth()+1}월 ${ds_now.getDate()}일 (${DS_DAYS[ds_now.getDay()]}) 기준`;})();
@@ -8073,7 +8079,7 @@ function rptDownloadExcel() {
 // report 탭 오늘 날짜 기본값 세팅 (페이지 로드 시)
 (function(){
   const dateEl = document.getElementById('rptDate');
-  if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0,10);
+  if (dateEl && !dateEl.value) dateEl.value = _localISO();
 })();
 
 // ══════════════════════════════════════════════════════════
@@ -8293,10 +8299,10 @@ window.addEventListener('load', ()=>{
   if (dEvtChk) dEvtChk.checked = srIsDinetteEvent();
   // 매출 보고용 보고일자 — 오늘 날짜로 자동 세팅
   const srDate = document.getElementById('srReportDate');
-  if (srDate) srDate.value = new Date().toISOString().slice(0,10);
+  if (srDate) srDate.value = _localISO();
   // 주간 매출 보고용 날짜 — 오늘 날짜로 자동 세팅 (그 주 월~일 자동 계산)
   const wrDate = document.getElementById('wrAnyDate');
-  if (wrDate) wrDate.value = new Date().toISOString().slice(0,10);
+  if (wrDate) wrDate.value = _localISO();
 });
 
 // ══════════════════════════════════════════════════════════
@@ -8630,7 +8636,7 @@ function srRender(){
   if(!dateStr){
     const first=allOrders.find(o=>o.order_date);
     if(first){const d=new Date(first.order_date);if(!isNaN(d))dateStr=d.toISOString().slice(0,10);}
-    if(!dateStr)dateStr=new Date().toISOString().slice(0,10);
+    if(!dateStr)dateStr=_localISO();
     document.getElementById('srReportDate').value=dateStr;
   }
   const titleDate=dateStr.replace(/-/g,'.');
@@ -8691,7 +8697,7 @@ function srExportImage(){
   if(typeof html2canvas!=='function'){alert('이미지 변환 라이브러리(html2canvas)를 찾을 수 없어요.');return;}
   html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
     const link=document.createElement('a');
-    const dateStr=(document.getElementById('srReportDate').value||new Date().toISOString().slice(0,10)).replace(/-/g,'');
+    const dateStr=(document.getElementById('srReportDate').value||_localISO()).replace(/-/g,'');
     link.download=`매출보고_${dateStr}.png`;
     link.href=canvas.toDataURL('image/png');
     document.body.appendChild(link);link.click();document.body.removeChild(link);
@@ -8752,7 +8758,7 @@ function wrMergeDinette(snaps){
 function wrRender(){
   const status = document.getElementById('wrStatus');
   let any = document.getElementById('wrAnyDate').value;
-  if (!any) { any = new Date().toISOString().slice(0,10); document.getElementById('wrAnyDate').value = any; }
+  if (!any) { any = _localISO(); document.getElementById('wrAnyDate').value = any; }
   const range = wrWeekRange(any);
   if (!range) { status.innerHTML='<span style="color:var(--danger)">날짜가 잘못됐어요</span>'; return; }
   const hist = srLoadHistory();
@@ -8953,8 +8959,8 @@ async function wrExportImage(){
   if (!el) { alert('먼저 주간 보고서를 생성해주세요'); return; }
   if (typeof html2canvas !== 'function') { alert('html2canvas 없음'); return; }
   const pages = el.querySelectorAll('.wr-page');
-  const range = wrWeekRange(document.getElementById('wrAnyDate').value || new Date().toISOString().slice(0,10));
-  const tag = range ? (range.start+'_'+range.end).replace(/-/g,'') : new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const range = wrWeekRange(document.getElementById('wrAnyDate').value || _localISO());
+  const tag = range ? (range.start+'_'+range.end).replace(/-/g,'') : _localISO().replace(/-/g,'');
   const btn = document.getElementById('wrImageBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 저장 중...'; }
   try {
