@@ -222,7 +222,7 @@
     </div>
     <div class="card" id="nonstdCodeCard" style="display:none;border:1px solid #ef4444;background:#fef2f2">
       <div class="card-title">⚠️ 비표준 코드 — 확인 필요 <span id="nonstdCount" style="font-weight:400;font-size:12px;color:var(--danger)"></span></div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:10px"><b>판매자상품코드가 <code>발주처]품목명/옵션-수량</code> 형식이 아닌 주문</b>이에요. 옵션·수량이 잘못 들어갔을 가능성이 있으니 <b>품목/옵션/수량을 확인</b>한 뒤 ✓ 버튼을 눌러주세요. <span style="color:var(--danger)">미확인 항목이 있으면 발주서 생성 단계로 못 넘어가요.</span></div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px"><b>판매자상품코드가 <code>발주처]품목명/옵션-수량</code> 형식이 아닌 주문</b>이에요. 옵션·수량이 잘못 들어갔을 가능성이 있으니 <b>품목/옵션/수량을 확인</b>한 뒤 ✓ 버튼을 눌러주세요. <span style="color:var(--text3)">발주서 생성 시 미확인 건이 있으면 확인 창이 떠요.</span></div>
       <div style="display:flex;gap:6px;margin-bottom:10px">
         <button class="btn btn-sm btn-primary" onclick="confirmAllNonstd()">전체 확인 처리</button>
         <button class="btn btn-sm" onclick="clearAllNonstdConfirmed()">전체 확인 초기화</button>
@@ -5157,13 +5157,15 @@ function switchSubTab(name){
   if(name==='codemap') renderCodeMappingList();
 }
 function goStep(n){
-  // 2→3 진입 시 비표준 코드 확인 안 끝났으면 차단
+  // 2→3 진입 시 비표준 코드 확인 안 끝났으면 경고만 띄우고 진행 허용
   if (n === 3) {
     const pending = (typeof getUnconfirmedNonstdOrders === 'function') ? getUnconfirmedNonstdOrders() : [];
     if (pending.length > 0) {
-      alert(`⚠️ 비표준 코드 ${pending.length}건을 확인해주세요.\n(분석 화면 위쪽 "비표준 코드 — 확인 필요" 카드에서 ✓ 확인 처리)`);
-      document.getElementById('nonstdCodeCard')?.scrollIntoView({behavior:'smooth', block:'center'});
-      return;
+      const ok = confirm(`⚠️ 비표준 코드 ${pending.length}건이 아직 확인 처리되지 않았어요.\n\n그래도 발주서 생성으로 넘어갈까요?\n([확인] = 넘어감 / [취소] = 멈추고 확인 처리)`);
+      if (!ok) {
+        document.getElementById('nonstdCodeCard')?.scrollIntoView({behavior:'smooth', block:'center'});
+        return;
+      }
     }
   }
   document.querySelectorAll('.step').forEach((s,i)=>s.classList.toggle('active',i===n-1));
