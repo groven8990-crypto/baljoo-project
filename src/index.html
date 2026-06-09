@@ -348,6 +348,73 @@
       <div id="addError" style="font-size:12px;color:var(--danger);margin-top:8px"></div>
     </div>
 
+    <div class="card">
+      <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('bulkRegBody');var t=document.getElementById('bulkRegToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';}else{b.style.display='none';t.textContent='▼ 펼치기';}">
+        📦 옵션 패턴 일괄 사전 등록
+        <span id="bulkRegToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
+      </div>
+      <div id="bulkRegBody" style="display:none">
+        <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">
+          사이즈처럼 일정한 규칙으로 반복되는 옵션을 한 번에 등록하세요. 예: 사이즈 230~290 → 옵션명 (블랙36)~(블랙48).<br>
+          <code>{N}</code>은 선택사항 안의 변수 (시작값~끝값 증가), <code>{M}</code>은 결과 옵션명 안의 변수.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">판매자상품코드 <span style="color:var(--danger)">★</span></label>
+            <input class="inp" id="bulkVC" placeholder="예: 도매꾹]59648398/" style="font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">선택사항 패턴 (Q) <span style="color:var(--danger)">★</span></label>
+            <input class="inp" id="bulkSOPattern" placeholder="예: 사이즈:{N}" style="font-size:12px">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">N 시작값</label>
+            <input class="inp" id="bulkNStart" type="number" placeholder="230" style="font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">N 끝값</label>
+            <input class="inp" id="bulkNEnd" type="number" placeholder="290" style="font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">N 증가폭</label>
+            <input class="inp" id="bulkNStep" type="number" placeholder="5" value="5" style="font-size:12px">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">결과 품목명 (고정값, 선택)</label>
+            <input class="inp" id="bulkItem" placeholder="예: 안전화" style="font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">결과 옵션명 패턴 <span style="color:var(--danger)">★</span></label>
+            <input class="inp" id="bulkOptPattern" placeholder="예: 3518다이얼안전화(블랙{M})" style="font-size:12px">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">M 시작값</label>
+            <input class="inp" id="bulkMStart" type="number" placeholder="36" style="font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">M 증가폭</label>
+            <input class="inp" id="bulkMStep" type="number" placeholder="1" value="1" style="font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">수량 (각 항목)</label>
+            <input class="inp" id="bulkQty" type="number" placeholder="1" value="1" style="font-size:12px">
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <button class="btn btn-sm" onclick="bulkRegPreview()">🔍 미리보기</button>
+          <button class="btn btn-sm btn-primary" onclick="bulkRegSave()">💾 일괄 저장</button>
+        </div>
+        <div id="bulkRegError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
+        <div id="bulkRegPreview"></div>
+      </div>
+    </div>
+
     <div id="unmatchedHintCard" style="display:none" class="card">
       <div class="card-title">⚠️ 마지막 파일에서 인식 못한 코드 <span style="font-weight:400;font-size:12px;color:var(--text2)">(+ 등록 클릭 시 자동 입력)</span></div>
       <div id="unmatchedHintList"></div>
@@ -2626,6 +2693,80 @@ function rematchAllOrders(){
     o.unmatched=!vk;
     if(vk){const gk=vk+'|'+o.alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(o);}
     else unmatchedList.push(o);
+  }
+}
+
+// ── 옵션 패턴 일괄 사전 등록 (yb_overrides에 한 번에 여러 건 등록) ──
+function _bulkRegGather(){
+  const vc = (document.getElementById('bulkVC')?.value||'').trim();
+  const soPat = (document.getElementById('bulkSOPattern')?.value||'').trim();
+  const nStart = parseInt(document.getElementById('bulkNStart')?.value||'');
+  const nEnd = parseInt(document.getElementById('bulkNEnd')?.value||'');
+  const nStep = parseInt(document.getElementById('bulkNStep')?.value||'5');
+  const item = (document.getElementById('bulkItem')?.value||'').trim();
+  const optPat = (document.getElementById('bulkOptPattern')?.value||'').trim();
+  const mStart = parseInt(document.getElementById('bulkMStart')?.value||'');
+  const mStep = parseInt(document.getElementById('bulkMStep')?.value||'1');
+  const qty = Math.max(1, parseInt(document.getElementById('bulkQty')?.value||'1')||1);
+  const err = document.getElementById('bulkRegError');
+  if (err) err.textContent = '';
+  if (!vc) { if(err) err.textContent='판매자상품코드를 입력하세요.'; return null; }
+  if (!soPat.includes('{N}')) { if(err) err.textContent='선택사항 패턴에 {N}을 포함해야 합니다.'; return null; }
+  if (!optPat.includes('{M}')) { if(err) err.textContent='옵션명 패턴에 {M}을 포함해야 합니다.'; return null; }
+  if (isNaN(nStart) || isNaN(nEnd) || isNaN(nStep) || nStep <= 0) { if(err) err.textContent='N 시작/끝/증가폭을 확인하세요.'; return null; }
+  if (isNaN(mStart) || isNaN(mStep) || mStep <= 0) { if(err) err.textContent='M 시작값/증가폭을 확인하세요.'; return null; }
+  if ((nEnd - nStart) % nStep !== 0) { if(err) err.textContent='N 시작~끝이 증가폭으로 정확히 떨어지지 않아요.'; return null; }
+  const entries = [];
+  let m = mStart;
+  for (let n = nStart; n <= nEnd; n += nStep) {
+    const so = soPat.replace(/\{N\}/g, String(n));
+    const opt = optPat.replace(/\{M\}/g, String(m));
+    entries.push({key: ovKey(vc, so), item, option: opt, qty, _so: so, _n: n, _m: m});
+    m += mStep;
+  }
+  return entries;
+}
+function bulkRegPreview(){
+  const entries = _bulkRegGather(); if (!entries) return;
+  const prev = document.getElementById('bulkRegPreview');
+  if (!prev) return;
+  const existingKeys = new Set(loadOverrides().map(x=>x.key));
+  prev.innerHTML = `<div style="margin-top:8px;font-size:12px;color:var(--text2)">총 ${entries.length}건 생성 예정</div>` +
+    `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">
+      <thead><tr style="background:#f5f5f5">
+        <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #ddd;font-size:11px">선택사항(Q)</th>
+        <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #ddd;font-size:11px">→ 품목명</th>
+        <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #ddd;font-size:11px">→ 옵션명</th>
+        <th style="padding:5px 8px;text-align:right;border-bottom:1px solid #ddd;font-size:11px">수량</th>
+        <th style="padding:5px 8px;text-align:center;border-bottom:1px solid #ddd;font-size:11px">상태</th>
+      </tr></thead>
+      <tbody>${entries.map(e => {
+        const isDup = existingKeys.has(e.key);
+        return `<tr>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee">${escHtml(e._so)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee">${escHtml(e.item||'-')}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee;font-weight:600">${escHtml(e.option)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right">${e.qty}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center">${isDup?'<span class="badge badge-warn" style="font-size:10px">중복</span>':'<span class="badge badge-green" style="font-size:10px">신규</span>'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+}
+function bulkRegSave(){
+  const entries = _bulkRegGather(); if (!entries) return;
+  if (!confirm(`${entries.length}건을 yb_overrides(직접수정)에 저장할까요?\n중복은 자동 덮어씁니다.`)) return;
+  const cur = loadOverrides();
+  const newKeys = new Set(entries.map(e => e.key));
+  const filtered = cur.filter(x => !newKeys.has(x.key));
+  for (const e of entries) filtered.push({key:e.key, item:e.item, option:e.option, qty:e.qty});
+  saveOverrides(filtered);
+  alert(`✅ ${entries.length}건 저장 완료. 이제 같은 코드·선택사항으로 들어올 때 자동 적용됩니다.`);
+  // 미리보기 갱신 (중복 상태로)
+  bulkRegPreview();
+  // 현재 주문이 있다면 재매칭
+  if (typeof allOrders !== 'undefined' && allOrders.length > 0) {
+    rematchAllOrders();
+    if (typeof renderStep2 === 'function') renderStep2();
   }
 }
 
