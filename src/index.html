@@ -9165,7 +9165,6 @@ function wrRender(){
         <div style="margin-top:12px;padding-top:10px;border-top:1px dashed #FCD34D">
           <div style="font-size:11px;color:#444">증감률</div>
           <div style="font-size:22px;font-weight:700;color:${_deltaColor};margin-top:2px;line-height:1.2">${_deltaSign}${_pct.toFixed(1)}%</div>
-          <div style="font-size:11px;color:#666;margin-top:2px">vs 직전 주</div>
         </div>
       </div>`
     : `<div style="background:#FEF3C7;padding:14px 16px;border-radius:6px;border-left:4px solid #F59E0B;font-size:13px;color:#92400E">📊 직전 주 (${prevRange?prevRange.start.slice(5).replace('-','/')+'~'+prevRange.end.slice(5).replace('-','/'):''}) 데이터 없음<br><span style="font-size:11px">비교 불가</span></div>`;
