@@ -9146,43 +9146,47 @@ function wrRender(){
   const _deltaColor = _delta >= 0 ? '#16A34A' : '#DC2626';
   const _deltaArrow = _delta >= 0 ? '▲' : '▼';
   const _deltaSign  = _delta >= 0 ? '+' : '';
+  // 왼쪽 카드: 직전 주 비교 (3행 세로 배치 — 글씨 크게)
   const compareHtml = prevSnaps.length > 0
-    ? `<div style="background:#FEF3C7;padding:12px 16px;margin-top:12px;border-radius:6px;border-left:4px solid #F59E0B;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;font-size:12px">
-        <div>
-          <div style="font-size:10px;color:#92400E;font-weight:700">직전 주 (${prevRange.start.slice(5).replace('-','/')}~${prevRange.end.slice(5).replace('-','/')})</div>
-          <div style="font-size:15px;font-weight:700;color:#92400E;margin-top:2px">${prevTotal.toLocaleString()}원</div>
-          <div style="font-size:10px;color:#92400E;margin-top:2px">${prevCnt.toLocaleString()}건</div>
+    ? `<div style="background:#FEF3C7;padding:14px 16px;border-radius:6px;border-left:4px solid #F59E0B">
+        <div style="font-size:11px;color:#92400E;font-weight:700;margin-bottom:10px">직전 주 (${prevRange.start.slice(5).replace('-','/')} ~ ${prevRange.end.slice(5).replace('-','/')})</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <div style="font-size:11px;color:#92400E">직전 주 매출</div>
+            <div style="font-size:17px;font-weight:700;color:#92400E;margin-top:2px;line-height:1.2">${prevTotal.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#92400E;margin-top:2px">${prevCnt.toLocaleString()}건</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#444">차액</div>
+            <div style="font-size:17px;font-weight:700;color:${_deltaColor};margin-top:2px;line-height:1.2">${_deltaArrow} ${_deltaSign}${_delta.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#666;margin-top:2px">${_deltaSign}${_deltaCnt.toLocaleString()}건</div>
+          </div>
         </div>
-        <div>
-          <div style="font-size:10px;color:#444;font-weight:700">차액</div>
-          <div style="font-size:15px;font-weight:700;color:${_deltaColor};margin-top:2px">${_deltaArrow} ${_deltaSign}${_delta.toLocaleString()}원</div>
-          <div style="font-size:10px;color:#666;margin-top:2px">${_deltaSign}${_deltaCnt.toLocaleString()}건</div>
-        </div>
-        <div>
-          <div style="font-size:10px;color:#444;font-weight:700">증감률</div>
-          <div style="font-size:15px;font-weight:700;color:${_deltaColor};margin-top:2px">${_deltaSign}${_pct.toFixed(1)}%</div>
-          <div style="font-size:10px;color:#666;margin-top:2px">vs 직전 주</div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed #FCD34D">
+          <div style="font-size:11px;color:#444">증감률</div>
+          <div style="font-size:22px;font-weight:700;color:${_deltaColor};margin-top:2px;line-height:1.2">${_deltaSign}${_pct.toFixed(1)}%</div>
+          <div style="font-size:11px;color:#666;margin-top:2px">vs 직전 주</div>
         </div>
       </div>`
-    : `<div style="background:#FEF3C7;padding:10px 16px;margin-top:12px;border-radius:6px;border-left:4px solid #F59E0B;font-size:12px;color:#92400E">📊 직전 주 (${prevRange?prevRange.start.slice(5).replace('-','/')+'~'+prevRange.end.slice(5).replace('-','/'):''}) 데이터 없음 · 비교 불가</div>`;
-  // 최근 4주 추이 표
-  const lastWeeksHtml = `<div style="background:#fff;border:1px solid #eee;padding:12px 16px;margin-top:12px;border-radius:6px">
-    <div style="font-size:11px;color:#666;font-weight:700;margin-bottom:8px">📈 최근 4주 추이</div>
-    <div style="display:grid;grid-template-columns:repeat(${lastWeeks.length},1fr);gap:8px">
+    : `<div style="background:#FEF3C7;padding:14px 16px;border-radius:6px;border-left:4px solid #F59E0B;font-size:13px;color:#92400E">📊 직전 주 (${prevRange?prevRange.start.slice(5).replace('-','/')+'~'+prevRange.end.slice(5).replace('-','/'):''}) 데이터 없음<br><span style="font-size:11px">비교 불가</span></div>`;
+  // 오른쪽 카드: 최근 4주 추이 (얇은 막대)
+  const lastWeeksHtml = `<div style="background:#fff;border:1px solid #eee;padding:12px 16px;border-radius:6px">
+    <div style="font-size:12px;color:#666;font-weight:700;margin-bottom:10px">📈 최근 4주 추이</div>
+    <div style="display:grid;grid-template-columns:repeat(${lastWeeks.length},1fr);gap:6px;height:140px;align-items:end">
       ${lastWeeks.map((w,i)=>{
         const maxV = Math.max(...lastWeeks.map(x=>x.total), 1);
         const heightPct = w.total > 0 ? Math.max(8, Math.round(w.total / maxV * 100)) : 4;
         const barColor = w.isCurrent ? '#1A56DB' : '#94A3B8';
-        return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">
-          <div style="font-size:10px;color:#444;font-weight:600">${w.total>0?(w.total/10000).toFixed(0)+'만':'-'}</div>
-          <div style="width:100%;height:60px;display:flex;align-items:flex-end;justify-content:center">
-            <div style="width:60%;height:${heightPct}%;background:${barColor};border-radius:3px 3px 0 0"></div>
-          </div>
-          <div style="font-size:10px;color:#888">${w.label}${w.isCurrent?' (이번)':''}</div>
+        return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end">
+          <div style="font-size:11px;color:#444;font-weight:600">${w.total>0?(w.total/10000).toFixed(0)+'만':'-'}</div>
+          <div style="width:32%;min-width:14px;max-width:24px;height:${heightPct}%;background:${barColor};border-radius:3px 3px 0 0"></div>
+          <div style="font-size:11px;color:#888;text-align:center;line-height:1.2">${w.label}${w.isCurrent?'<br>(이번)':''}</div>
         </div>`;
       }).join('')}
     </div>
   </div>`;
+  // 두 카드를 좌(직전 주 비교) / 우(4주 추이) 가로 배치
+  const compareRowHtml = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">${compareHtml}${lastWeeksHtml}</div>`;
   // 일자별 표
   const byDate = inWeek.sort((a,b)=>a.date<b.date?-1:1);
   const HEAD_BG='#F1F5F9', HEAD_FG='#334155', FOOT_BG='#E2E8F0';
@@ -9232,8 +9236,7 @@ function wrRender(){
             <div style="font-size:11px;color:#888;margin-top:2px">${dnAgg.count.toLocaleString()}건</div>
           </div>
         </div>
-        ${compareHtml}
-        ${lastWeeksHtml}
+        ${compareRowHtml}
         <div style="background:#94A3B8;color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">일자별 요약</div>
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead><tr style="background:${HEAD_BG}">
