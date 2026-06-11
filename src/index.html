@@ -7891,30 +7891,35 @@ function priceImportFile(file) {
       // 판매가(10%) 시트
       const saleSheet = wb.Sheets['판매가(10%)'];
       const saleRows  = saleSheet ? XLSX.utils.sheet_to_json(saleSheet, { header:1, defval:'' }) : [];
-      let newSale = 0;
+      let newSale = 0, dupSale = 0;
       if (saleRows.length > 3) {
         const existing = priceLoadStorage(PRICE_SALE_KEY);
+        // 고유키: 코드 있으면 코드, 없으면 발주처+제품명+규격1+규격2+수량+단가
+        const _saleKey = x => (x.code && x.code.trim()) ? 'C:'+x.code.trim()
+          : ['V', x.vendor||'', x.name||'', x.spec1||'', x.spec2||'', x.qty||'', x.price||''].join('|');
+        const seen = new Set(existing.map(_saleKey));
         const rows = saleRows.slice(3).filter(r => r.some(v => v !== ''));
         rows.forEach(r => {
+          const code   = String(r[0]||'').trim();
           const vendor = String(r[2]||'').trim();
           const name   = String(r[3]||'').trim();
-          if (!vendor && !name) return;
-          // 중복 체크 (발주처+제품명 동일하면 스킵)
-          const dup = existing.some(x => x.vendor===vendor && x.name===name);
-          if (!dup) {
-            existing.push({
-              vendor, name,
-              spec1:   String(r[4]||''), spec2:  String(r[5]||''),
-              origin:  String(r[6]||''), qty:    String(r[7]||''),
-              unit:    String(r[8]||''), price:  String(r[9]||''),
-              ship:    String(r[10]||''),total:  String(r[11]||''),
-              saleP:   String(r[13]||''),naver:  String(r[14]||''),
-              coupang: String(r[15]||''),carrier:String(r[20]||''),
-              tax:     String(r[1]||''), code:   String(r[0]||''),
-              note:    String(r[21]||''),
-            });
-            newSale++;
-          }
+          if (!vendor && !name && !code) return;
+          const item = {
+            vendor, name,
+            spec1:   String(r[4]||''), spec2:  String(r[5]||''),
+            origin:  String(r[6]||''), qty:    String(r[7]||''),
+            unit:    String(r[8]||''), price:  String(r[9]||''),
+            ship:    String(r[10]||''),total:  String(r[11]||''),
+            saleP:   String(r[13]||''),naver:  String(r[14]||''),
+            coupang: String(r[15]||''),carrier:String(r[20]||''),
+            tax:     String(r[1]||''), code,
+            note:    String(r[21]||''),
+          };
+          const k = _saleKey(item);
+          if (seen.has(k)) { dupSale++; return; }
+          seen.add(k);
+          existing.push(item);
+          newSale++;
         });
         priceSaveStorage(PRICE_SALE_KEY, existing);
       }
@@ -7922,32 +7927,37 @@ function priceImportFile(file) {
       // 도매꾹 시트
       const dmSheet = wb.Sheets['도매꾹'];
       const dmRows  = dmSheet ? XLSX.utils.sheet_to_json(dmSheet, { header:1, defval:'' }) : [];
-      let newDm = 0;
+      let newDm = 0, dupDm = 0;
       if (dmRows.length > 3) {
         const existing = priceLoadStorage(PRICE_DM_KEY);
+        const _dmKey = x => (x.code && x.code.trim()) ? 'C:'+x.code.trim()
+          : ['N', x.name||'', x.spec||'', x.qty||'', x.price||''].join('|');
+        const seen = new Set(existing.map(_dmKey));
         const rows = dmRows.slice(3).filter(r => r.some(v => v !== ''));
         rows.forEach(r => {
           const name = String(r[3]||'').trim();
           if (!name) return;
-          const dup = existing.some(x => x.name===name);
-          if (!dup) {
-            existing.push({
-              no:      String(r[0]||''), code:    String(r[2]||''),
-              name,    spec:    String(r[4]||''),
-              qty:     String(r[5]||''), ship:    String(r[6]||''),
-              price:   String(r[7]||''), total:   String(r[8]||''),
-              saleP:   String(r[11]||''),marginR: String(r[13]||''),
-              note:    String(r[14]||''),
-            });
-            newDm++;
-          }
+          const item = {
+            no:      String(r[0]||''), code:    String(r[2]||''),
+            name,    spec:    String(r[4]||''),
+            qty:     String(r[5]||''), ship:    String(r[6]||''),
+            price:   String(r[7]||''), total:   String(r[8]||''),
+            saleP:   String(r[11]||''),marginR: String(r[13]||''),
+            note:    String(r[14]||''),
+          };
+          const k = _dmKey(item);
+          if (seen.has(k)) { dupDm++; return; }
+          seen.add(k);
+          existing.push(item);
+          newDm++;
         });
         priceSaveStorage(PRICE_DM_KEY, existing);
       }
 
       priceRebuildVendorFilter();
       priceRender();
-      alert(`✅ 가져오기 완료!\n판매가(10%): ${newSale}건 추가\n도매꾹: ${newDm}건 추가\n(중복 항목은 건너뜀)`);
+      const msg = `✅ 가져오기 완료!\n판매가(10%): ${newSale}건 추가${dupSale>0?` (기존 중복 ${dupSale}건 제외)`:''}\n도매꾹: ${newDm}건 추가${dupDm>0?` (기존 중복 ${dupDm}건 제외)`:''}`;
+      alert(msg);
     } catch(err) {
       alert('❌ 파일 읽기 오류: ' + err.message);
     }
