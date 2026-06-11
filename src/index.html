@@ -5476,38 +5476,39 @@ function normalizeVendorName(name){
 // 동일(깐마늘) 거래처 — 모든 변형 코드를 "깐마늘 1kg"로 통일 매핑
 // 동일_마늘2 (2kg) → 깐마늘 1kg × 2 / 동일_깐마늘1 → × 1 / 동일]마늘/1kg-1 → × 1 (마늘→깐마늘 교체)
 (function seedDongil(){
-  const FLAG = 'yb_dongil_seeded_v3';
-  if (localStorage.getItem(FLAG)) return;
+  // flag 없이 매번 누락 항목만 채워넣음 (자가복구)
   try {
     let codes = JSON.parse(localStorage.getItem('yb_codes')||'[]');
-    // 이전 시드 (마늘 그대로 두던 매핑) 제거
+    // 마늘 그대로 두던 옛 매핑 제거 (깐마늘로 교체될 예정)
+    const before = codes.length;
     codes = codes.filter(c => !(c.code && /^동일\]마늘\/(1kg|2kg|3kg)-\d$/.test(c.code)));
     const entries = [
-      // ── 비표준 _마늘N + optKw 매칭 ──
+      // 비표준 _마늘N + optKw 매칭
       { originalCode:'동일_마늘1',   code:'동일]깐마늘/1kg-1', vendor:'동일', product:'', optKw:'1kg' },
       { originalCode:'동일_마늘2',   code:'동일]깐마늘/1kg-2', vendor:'동일', product:'', optKw:'2kg' },
       { originalCode:'동일_마늘3',   code:'동일]깐마늘/1kg-3', vendor:'동일', product:'', optKw:'3kg' },
-      // _마늘N 폴백 (옵션 없으면 코드의 N을 따라감)
+      // _마늘N 옵션 없을 때 폴백
       { originalCode:'동일_마늘1',   code:'동일]깐마늘/1kg-1', vendor:'동일', product:'' },
       { originalCode:'동일_마늘2',   code:'동일]깐마늘/1kg-2', vendor:'동일', product:'' },
       { originalCode:'동일_마늘3',   code:'동일]깐마늘/1kg-3', vendor:'동일', product:'' },
-      // ── 비표준 _깐마늘N ──
+      // 비표준 _깐마늘N
       { originalCode:'동일_깐마늘1', code:'동일]깐마늘/1kg-1', vendor:'동일', product:'' },
       { originalCode:'동일_깐마늘2', code:'동일]깐마늘/1kg-2', vendor:'동일', product:'' },
       { originalCode:'동일_깐마늘3', code:'동일]깐마늘/1kg-3', vendor:'동일', product:'' },
-      // ── 표준 동일]마늘/Nkg-1 → 깐마늘 1kg × N (마늘 → 깐마늘 교체) ──
+      // 표준 동일]마늘/Nkg-1 → 깐마늘 1kg × N
       { originalCode:'동일]마늘/1kg-1', code:'동일]깐마늘/1kg-1', vendor:'동일', product:'' },
       { originalCode:'동일]마늘/2kg-1', code:'동일]깐마늘/1kg-2', vendor:'동일', product:'' },
       { originalCode:'동일]마늘/3kg-1', code:'동일]깐마늘/1kg-3', vendor:'동일', product:'' },
     ];
     let added = 0;
     for (const e of entries) {
-      const exists = codes.some(c => c.originalCode === e.originalCode && (c.optKw||'') === (e.optKw||''));
+      const exists = codes.some(c => c.originalCode === e.originalCode && (c.optKw||'') === (e.optKw||'') && c.code === e.code);
       if (!exists) { codes.push(e); added++; }
     }
-    localStorage.setItem('yb_codes', JSON.stringify(codes));
-    localStorage.setItem(FLAG, '1');
-    if (added > 0) console.log('[동일 seed v3] '+added+'건 자동 등록');
+    if (added > 0 || before !== codes.length) {
+      localStorage.setItem('yb_codes', JSON.stringify(codes));
+      console.log('[동일 seed] '+added+'건 추가, '+(before-codes.length+added)+'건 정리');
+    }
   } catch(e){ console.error('동일 seed failed', e); }
 })();
 // 도매꾹 안전화(59648398) 사이즈별 자동 매핑 1회 등록 (사장님 요청 분)
