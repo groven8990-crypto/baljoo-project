@@ -3746,7 +3746,20 @@ function invDownload() {
     const wsOrig = invOrderWb.Sheets[invOrderWb.SheetNames[0]];
     const header = XLSX.utils.sheet_to_json(wsOrig, {header:1})[0] || [];
     const wbCopy = JSON.parse(JSON.stringify(invOrderWb));
-    const newWs = XLSX.utils.json_to_sheet(invResultData, {header: header.length ? header : undefined});
+    // 매칭된 행만 (운송장번호 채워진 것) 추출
+    const trackCol = invResolveCtx?.trackCol;
+    const matchedRows = trackCol
+      ? invResultData.filter(row => {
+          const v = row[trackCol];
+          return v !== undefined && v !== null && String(v).trim() !== '';
+        })
+      : invResultData;
+    const unmatchedCnt = invResultData.length - matchedRows.length;
+    if (matchedRows.length === 0) {
+      alert('매칭된 주문이 없어 다운로드할 내용이 없습니다.');
+      return;
+    }
+    const newWs = XLSX.utils.json_to_sheet(matchedRows, {header: header.length ? header : undefined});
     wbCopy.Sheets[wbCopy.SheetNames[0]] = newWs;
     // 파일명: 운송장(거래처) 이름 기준 — '{거래처1_거래처2..}_송장입력.xlsx'
     const vendorNames = [...new Set((invTrackFiles||[]).map(t => (t.vendorName||'').trim()).filter(Boolean))];
@@ -3758,7 +3771,7 @@ function invDownload() {
     const fname = safe + '_송장입력.xlsx';
     XLSX.writeFile(wbCopy, fname);
     const statusEl = document.getElementById('invStatus');
-    if (statusEl) statusEl.textContent = '✅ 다운로드 완료: ' + fname;
+    if (statusEl) statusEl.textContent = '✅ 다운로드 완료: ' + fname + ' (매칭 ' + matchedRows.length + '건' + (unmatchedCnt>0 ? ', 미매칭 ' + unmatchedCnt + '건 제외' : '') + ')';
   } catch(e) {
     console.error('invDownload 오류:', e);
     const statusEl = document.getElementById('invStatus');
