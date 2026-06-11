@@ -3812,6 +3812,9 @@ function toggleExpPaid(i) {
   const hist = loadExpHist();
   if (!hist[i]) return;
   hist[i].paid = !hist[i].paid;
+  // 송금완료로 변경 시 오늘 날짜 기록, 미송금으로 되돌리면 초기화
+  if (hist[i].paid) hist[i].paidAt = _localISO();
+  else delete hist[i].paidAt;
   saveExpHist(hist);
   renderExpHistList();
 }
@@ -3943,9 +3946,13 @@ function renderExpHistList() {
       const realIdx = hist.indexOf(d);
       const isPaid = !!d.paid;
       const rowBg  = 'background:var(--surface)';
+      const paidLabel = isPaid && d.paidAt
+        ? '✅ ' + (d.paidAt.slice(5) || '')
+        : (isPaid ? '✅ 완료' : '☐ 송금');
+      const paidTitle = isPaid && d.paidAt ? '송금완료 ' + d.paidAt + ' · 클릭하면 미송금으로 변경' : (isPaid ? '클릭하면 미송금으로 변경' : '송금완료로 표시');
       const paidBtn = isPaid
-        ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" title="클릭하면 미송금으로 변경" onclick="toggleExpPaid(' + realIdx + ')">✅ 완료</button>'
-        : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="송금완료로 표시" onclick="toggleExpPaid(' + realIdx + ')">☐ 송금</button>';
+        ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap;font-variant-numeric:tabular-nums" title="' + paidTitle + '" onclick="toggleExpPaid(' + realIdx + ')">' + paidLabel + '</button>'
+        : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="' + paidTitle + '" onclick="toggleExpPaid(' + realIdx + ')">' + paidLabel + '</button>';
       const attachBtn = d.hasAttach
         ? '<button class="btn btn-sm" style="padding:2px 8px;color:var(--primary);border-color:var(--primary)" title="거래내역서 보기" onclick="viewExpAttach(' + (d.id||0) + ')">📎</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3)" title="거래내역서 첨부" onclick="attachToExpHist(' + realIdx + ')">📎+</button>';
@@ -6714,6 +6721,8 @@ function toggleIncPaid(i) {
   const hist = loadIncHist();
   if (!hist[i]) return;
   hist[i].paid = !hist[i].paid;
+  if (hist[i].paid) hist[i].paidAt = _localISO();
+  else delete hist[i].paidAt;
   saveIncHist(hist);
   renderIncHistList();
 }
@@ -6785,9 +6794,11 @@ function renderIncHistList() {
       const realIdx = hist.indexOf(d);
       const isPaid  = !!d.paid;
       const rowBg   = 'background:var(--surface)';
+      const paidLabel = isPaid && d.paidAt ? '✅ '+(d.paidAt.slice(5)||'') : (isPaid?'✅ 확인':'☐ 확인');
+      const paidTitleI = isPaid && d.paidAt ? '입금확인 '+d.paidAt+' · 클릭하면 미확인으로 변경' : (isPaid?'클릭하면 미확인으로 변경':'입금확인으로 표시');
       const paidBtn = isPaid
-        ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" onclick="toggleIncPaid('+realIdx+')">✅ 확인</button>'
-        : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" onclick="toggleIncPaid('+realIdx+')">☐ 확인</button>';
+        ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap;font-variant-numeric:tabular-nums" title="'+paidTitleI+'" onclick="toggleIncPaid('+realIdx+')">'+paidLabel+'</button>'
+        : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="'+paidTitleI+'" onclick="toggleIncPaid('+realIdx+')">'+paidLabel+'</button>';
       const descStyle = 'font-size:13px';
       html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
         '<span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.date||'')+'</span>'+
