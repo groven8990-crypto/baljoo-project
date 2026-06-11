@@ -7330,6 +7330,7 @@ function reconExportXlsx() {
       <div style="flex:1"></div>
       <button class="btn btn-sm" onclick="priceImportExcel()" title="엑셀 파일에서 일괄 가져오기">📥 엑셀 가져오기</button>
       <input type="file" id="priceImportInput" accept=".xlsx,.xls" style="display:none" onchange="priceImportFile(this.files[0]);this.value=''">
+      <button class="btn btn-danger btn-sm" onclick="priceClearAllConfirm()" title="현재 탭의 모든 품목 삭제">🗑 전체 삭제</button>
       <button class="btn btn-primary btn-sm" onclick="priceOpenForm(null)">＋ 품목 추가</button>
     </div>
     <!-- 2행: 발주처 필터 + 검색 -->
@@ -7879,6 +7880,17 @@ function priceDelete(idx){
 // ── 엑셀 가져오기 ──
 function priceImportExcel() {
   document.getElementById('priceImportInput').click();
+}
+
+function priceClearAllConfirm() {
+  const key = _pSub === 'sale' ? PRICE_SALE_KEY : PRICE_DM_KEY;
+  const items = priceLoadStorage(key);
+  if (!items.length) { alert('삭제할 품목이 없습니다.'); return; }
+  const sub = _pSub === 'sale' ? '판매가(10%)' : '도매꾹';
+  if (!confirm(`${sub} 탭의 ${items.length}건을 모두 삭제할까요?\n\n(엑셀 가져오기로 다시 채울 수 있어요)`)) return;
+  priceSaveStorage(key, []);
+  priceRebuildVendorFilter();
+  priceRender();
 }
 
 function priceImportFile(file) {
