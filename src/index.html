@@ -8873,6 +8873,8 @@ function srRenderProductAliases(){
 function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회'))return 'grobn';if(a.includes('자꾸가게'))return 'yb';return 'other';}
 function srAggregate(orders){
   const platMap={},prodMap={};let totalSales=0;
+  // 깐마늘 전용 상세: 플랫폼 × 옵션 단위 집계
+  const garlicMap = {};  // key = platform + '||' + option
   for(const o of orders){
     const amt=Number(o.order_amt)||0;totalSales+=amt;
     const p=srPlatform(o);
@@ -8881,8 +8883,19 @@ function srAggregate(orders){
     const n=srNormalize(o.product);
     if(!prodMap[n])prodMap[n]={count:0,sales:0};
     prodMap[n].count++;prodMap[n].sales+=amt;
+    // 깐마늘 (item_name 또는 normalize 결과 또는 product에 '깐마늘' 포함)
+    const isGarlic = (o.item_name||'').includes('깐마늘')
+                  || n === '깐마늘'
+                  || (o.product||'').includes('깐마늘');
+    if (isGarlic) {
+      const opt = (o.option_name||'').trim() || '옵션없음';
+      const k = p + '||' + opt;
+      if (!garlicMap[k]) garlicMap[k] = {platform:p, option:opt, count:0, sales:0};
+      garlicMap[k].count++;
+      garlicMap[k].sales += amt;
+    }
   }
-  return {totalSales,count:orders.length,platMap,prodMap};
+  return {totalSales,count:orders.length,platMap,prodMap,garlicMap};
 }
 function srBrandSection(title, color, agg, opts){
   if(agg.count===0) return '';
@@ -8940,6 +8953,64 @@ function srBrandSection(title, color, agg, opts){
         <td style="padding:9px 14px;color:${HEAD_FG}">합계</td>
         <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.count.toLocaleString()}건</td>
         <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.totalSales.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>
+    ${srGarlicDetailHtml(agg, color)}`;
+}
+// 깐마늘 상세 — 플랫폼 × 옵션 단위
+function srGarlicDetailHtml(agg, color){
+  const map = agg.garlicMap || {};
+  const entries = Object.values(map);
+  if (entries.length === 0) return '';
+  const HEAD_BG='#F1F5F9', HEAD_FG='#334155', FOOT_BG='#E2E8F0';
+  // 플랫폼별로 그룹핑
+  const byPlat = {};
+  for (const e of entries) {
+    if (!byPlat[e.platform]) byPlat[e.platform] = [];
+    byPlat[e.platform].push(e);
+  }
+  // 플랫폼별 매출 내림차순
+  const platOrder = Object.keys(byPlat).sort((a,b) => {
+    const sa = byPlat[a].reduce((s,x)=>s+x.sales,0);
+    const sb = byPlat[b].reduce((s,x)=>s+x.sales,0);
+    return sb - sa;
+  });
+  // 옵션 정렬 우선순위 (1kg → 2kg → 3kg → 기타)
+  const optOrder = o => {
+    const m = String(o.option||'').match(/^(\d+)kg/i);
+    return m ? parseInt(m[1]) : 99;
+  };
+  let totalCnt = 0, totalSales = 0;
+  const rows = [];
+  platOrder.forEach((plat, pi) => {
+    const items = byPlat[plat].slice().sort((a,b) => optOrder(a)-optOrder(b));
+    items.forEach((it, ii) => {
+      totalCnt += it.count;
+      totalSales += it.sales;
+      const isFirstInPlat = ii === 0;
+      rows.push(`<tr style="background:${pi%2===0?'#fff':'#F8FAFC'}">
+        <td style="padding:8px 14px;border-bottom:1px solid #eee;font-weight:${isFirstInPlat?'600':'400'};color:${isFirstInPlat?'#212121':'#666'}">${isFirstInPlat?escHtml(it.platform):''}</td>
+        <td style="padding:8px 14px;border-bottom:1px solid #eee">${escHtml(it.option)}</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #eee">${it.count.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #eee">${it.sales.toLocaleString()}원</td>
+      </tr>`);
+    });
+  });
+  return `
+    <div style="background:${color};color:#fff;padding:6px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;opacity:0.85">🧄 깐마늘 상세 (플랫폼 × 옵션)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+      <colgroup><col style="width:32%"><col style="width:25%"><col style="width:18%"><col style="width:25%"></colgroup>
+      <thead><tr style="background:${HEAD_BG}">
+        <th style="padding:8px 14px;text-align:left;color:${HEAD_FG};font-weight:700">플랫폼</th>
+        <th style="padding:8px 14px;text-align:left;color:${HEAD_FG};font-weight:700">옵션</th>
+        <th style="padding:8px 14px;text-align:right;color:${HEAD_FG};font-weight:700">건수</th>
+        <th style="padding:8px 14px;text-align:right;color:${HEAD_FG};font-weight:700">매출액</th>
+      </tr></thead>
+      <tbody>${rows.join('')}</tbody>
+      <tfoot><tr style="background:${FOOT_BG};font-weight:700">
+        <td colspan="2" style="padding:8px 14px;color:${HEAD_FG}">합계</td>
+        <td style="padding:8px 14px;text-align:right;color:${HEAD_FG}">${totalCnt.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;color:${HEAD_FG}">${totalSales.toLocaleString()}원</td>
       </tr></tfoot>
     </table>`;
 }
