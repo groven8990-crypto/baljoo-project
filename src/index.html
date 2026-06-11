@@ -2044,9 +2044,9 @@ function buildRows(vk,orders,alias){
       })];
     }
     case '동일':
-      // 농업법인회사 동일(마늘) 발주서 — 상품명1=품목명, 내품수량1=수량
+      // 농업법인회사 동일(깐마늘) 발주서 — 상품명1=품목명+옵션, 내품수량1=수량
       return [['받는사람','전화번호1','전화번호2','우편번호','주소','수량(A타입)','상품명1','보내는사람(지정)','전화번호1(지정)','주소(지정)','배송메시지','주문번호','내품수량1','운임'],
-        ...orders.map(o=>[o.recv_name,o.recv_phone,'',o.zip,o.addr,'',o.item_name||'',s.name,s.phone,s.addr,o.memo,o.order_no,effQty(o),''])];
+        ...orders.map(o=>[o.recv_name,o.recv_phone,'',o.zip,o.addr,'',combined(o),s.name,s.phone,s.addr,o.memo,o.order_no,effQty(o),''])];
     default:
       return [['주문번호','품목명','옵션','수량','수령인','연락처','주소','우편번호','배송메모','원본코드'],
         ...orders.map(o=>[o.order_no,o.item_name,o.option_name,effQty(o),o.recv_name,o.recv_phone,o.addr,o.zip,o.memo,o.vendor_code])];
@@ -5473,6 +5473,35 @@ function normalizeVendorName(name){
   return n;
 }
 // 페이지 로드 시 한 번만 실행 — 기존 이력 거래처명 일괄 통합
+// 동일(깐마늘) 거래처 — 모든 변형 코드를 "깐마늘 1kg"로 통일 매핑
+// 동일_마늘2 (2kg) → 깐마늘 1kg × 2 / 동일_깐마늘1 → × 1 / 동일]마늘/1kg-1 → × 1 (마늘→깐마늘 교체)
+(function seedDongil(){
+  const FLAG = 'yb_dongil_seeded_v2';
+  if (localStorage.getItem(FLAG)) return;
+  try {
+    let codes = JSON.parse(localStorage.getItem('yb_codes')||'[]');
+    // 이전 v1 시드 (마늘 그대로 두던 매핑) 제거
+    codes = codes.filter(c => !(c.code && /^동일\]마늘\/2kg-2$/.test(c.code)));
+    const entries = [
+      // 동일_마늘2 + 선택사항에 2kg → 깐마늘 1kg × 2
+      { originalCode:'동일_마늘2',   code:'동일]깐마늘/1kg-2', vendor:'동일', product:'', optKw:'2kg' },
+      // 동일_마늘2 + 옵션 없는 폴백 → 깐마늘 1kg × 2 (대부분 2kg일 거니까)
+      { originalCode:'동일_마늘2',   code:'동일]깐마늘/1kg-2', vendor:'동일', product:'' },
+      // 동일_깐마늘1 → 깐마늘 1kg × 1
+      { originalCode:'동일_깐마늘1', code:'동일]깐마늘/1kg-1', vendor:'동일', product:'' },
+      // 동일]마늘/1kg-1 → 깐마늘 1kg × 1 (마늘 → 깐마늘 교체)
+      { originalCode:'동일]마늘/1kg-1', code:'동일]깐마늘/1kg-1', vendor:'동일', product:'' },
+    ];
+    let added = 0;
+    for (const e of entries) {
+      const exists = codes.some(c => c.originalCode === e.originalCode && (c.optKw||'') === (e.optKw||''));
+      if (!exists) { codes.push(e); added++; }
+    }
+    localStorage.setItem('yb_codes', JSON.stringify(codes));
+    localStorage.setItem(FLAG, '1');
+    if (added > 0) console.log('[동일 seed v2] '+added+'건 자동 등록');
+  } catch(e){ console.error('동일 seed failed', e); }
+})();
 // 도매꾹 안전화(59648398) 사이즈별 자동 매핑 1회 등록 (사장님 요청 분)
 (function seedSafetyShoes(){
   const FLAG = 'yb_safety_shoes_seeded_v1';
