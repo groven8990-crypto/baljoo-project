@@ -7325,8 +7325,12 @@ function reconExportXlsx() {
   <div class="card" style="padding:14px 18px;margin-bottom:14px">
     <!-- 1행: 서브탭 + 액션 버튼 -->
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-      <button class="btn" id="pSubBtn-sale" onclick="priceSwitchSub('sale')" style="background:var(--text);color:#fff;font-size:13px">📦 판매가(10%)</button>
-      <button class="btn" id="pSubBtn-dm"   onclick="priceSwitchSub('dm')" style="font-size:13px">🛒 도매꾹</button>
+      <button class="btn" id="pSubBtn-sale"    onclick="priceSwitchSub('sale')"    style="background:var(--text);color:#fff;font-size:13px">📦 판매가(10%)</button>
+      <button class="btn" id="pSubBtn-dm"      onclick="priceSwitchSub('dm')"      style="font-size:13px">🛒 도매꾹</button>
+      <button class="btn" id="pSubBtn-b2bgwa"  onclick="priceSwitchSub('b2bgwa')"  style="font-size:13px">🐟 B2B(과메기)</button>
+      <button class="btn" id="pSubBtn-bakdae"  onclick="priceSwitchSub('bakdae')"  style="font-size:13px">🐟 박대공급</button>
+      <button class="btn" id="pSubBtn-b2bhae"  onclick="priceSwitchSub('b2bhae')"  style="font-size:13px">⭐ B2B(해담별)</button>
+      <button class="btn" id="pSubBtn-b2bgwak" onclick="priceSwitchSub('b2bgwak')" style="font-size:13px">🐝 B2B(곽위)</button>
       <div style="flex:1"></div>
       <button class="btn btn-sm" onclick="priceImportExcel()" title="엑셀 파일에서 일괄 가져오기">📥 엑셀 가져오기</button>
       <input type="file" id="priceImportInput" accept=".xlsx,.xls" style="display:none" onchange="priceImportFile(this.files[0]);this.value=''">
@@ -7707,51 +7711,122 @@ let _pEditIdx = null;
 function priceLoadStorage(key){ try{return JSON.parse(localStorage.getItem(key)||'[]');}catch{return [];} }
 function priceSaveStorage(key,arr){ localStorage.setItem(key,JSON.stringify(arr)); }
 
-const SALE_FIELDS = [
-  {key:'vendor', label:'발주처',   req:true,  type:'text'},
-  {key:'name',   label:'제품명',   req:true,  type:'text'},
-  {key:'spec1',  label:'규격1',    req:false, type:'text'},
-  {key:'spec2',  label:'규격2',    req:false, type:'text'},
-  {key:'qty',    label:'수량',     req:false, type:'text'},
-  {key:'unit',   label:'단위',     req:false, type:'text'},
-  {key:'price',  label:'단가',     req:false, type:'text'},
-  {key:'ship',   label:'배송비',   req:false, type:'text'},
-  {key:'total',  label:'총매입가', req:false, type:'text'},
-  {key:'saleP',  label:'판매가',   req:false, type:'text'},
-  {key:'naver',  label:'네이버가', req:false, type:'text'},
-  {key:'coupang',label:'쿠팡가',   req:false, type:'text'},
-  {key:'carrier',label:'택배사',   req:false, type:'text'},
-  {key:'tax',    label:'과세여부', req:false, type:'select', options:['','과세','면세']},
-  {key:'code',   label:'코드',     req:false, type:'text'},
-  {key:'note',   label:'비고',     req:false, type:'text'},
-];
-const DM_FIELDS = [
-  {key:'no',     label:'번호',     req:false, type:'text'},
-  {key:'code',   label:'코드',     req:false, type:'text'},
-  {key:'name',   label:'제품명',   req:true,  type:'text'},
-  {key:'spec',   label:'규격',     req:false, type:'text'},
-  {key:'qty',    label:'수량',     req:false, type:'text'},
-  {key:'ship',   label:'배송비',   req:false, type:'text'},
-  {key:'price',  label:'단가',     req:false, type:'text'},
-  {key:'total',  label:'총매입가', req:false, type:'text'},
-  {key:'saleP',  label:'판매가',   req:false, type:'text'},
-  {key:'marginR',label:'마진율(%)',req:false, type:'text'},
-  {key:'note',   label:'비고',     req:false, type:'text'},
-];
+// 시트별 설정 — id, 시트명, 저장키, 헤더 행 인덱스(0-based), 컬럼 매핑, 표시 컬럼, 폼 필드
+const PRICE_TABS = {
+  sale: {
+    sheet: '판매가(10%)', key: PRICE_SALE_KEY, headerRow: 2,
+    hasVendor: true,
+    parseCols: { code:0, tax:1, vendor:2, name:3, spec1:4, spec2:5, origin:6, qty:7, unit:8, price:9, ship:10, total:11, saleP:13, naver:14, coupang:15, talkdeal:16, eleven:17, auction:18, carrier:20, note:21 },
+    fields: [
+      {key:'vendor',label:'발주처',req:true,type:'text'},
+      {key:'name',label:'제품명',req:true,type:'text'},
+      {key:'spec1',label:'규격1',type:'text'},{key:'spec2',label:'규격2',type:'text'},
+      {key:'qty',label:'수량',type:'text'},{key:'unit',label:'단위',type:'text'},
+      {key:'price',label:'단가',type:'text'},{key:'ship',label:'배송비',type:'text'},
+      {key:'total',label:'총매입가',type:'text'},{key:'saleP',label:'판매가',type:'text'},
+      {key:'naver',label:'네이버가',type:'text'},{key:'coupang',label:'쿠팡가',type:'text'},
+      {key:'carrier',label:'택배사',type:'text'},
+      {key:'tax',label:'과세여부',type:'select',options:['','과세','면세']},
+      {key:'code',label:'코드',type:'text'},{key:'note',label:'비고',type:'text'}
+    ]
+  },
+  dm: {
+    sheet: '도매꾹', key: PRICE_DM_KEY, headerRow: 2,
+    hasVendor: false,
+    parseCols: { no:0, code:2, name:3, spec:4, qty:5, ship:6, price:7, total:8, saleP:11, marginR:13, note:14 },
+    fields: [
+      {key:'no',label:'번호',type:'text'},{key:'code',label:'코드',type:'text'},
+      {key:'name',label:'제품명',req:true,type:'text'},{key:'spec',label:'규격',type:'text'},
+      {key:'qty',label:'수량',type:'text'},{key:'ship',label:'배송비',type:'text'},
+      {key:'price',label:'단가',type:'text'},{key:'total',label:'총매입가',type:'text'},
+      {key:'saleP',label:'판매가',type:'text'},{key:'marginR',label:'마진율(%)',type:'text'},
+      {key:'note',label:'비고',type:'text'}
+    ]
+  },
+  b2bgwa: {
+    sheet: 'B2B단가(과메기)', key: 'baljoo_priceB2BGwa', headerRow: 2,
+    hasVendor: true,
+    parseCols: { tax:0, vendor:1, name:2, spec1:3, spec2:4, origin:5, qty:6, unit:7, ship:8, price:9, total:10, supplyP:11, marginAmt:12, marginR:13, note:14 },
+    fields: [
+      {key:'vendor',label:'발주처',type:'text'},{key:'name',label:'제품명',req:true,type:'text'},
+      {key:'spec1',label:'규격1',type:'text'},{key:'spec2',label:'규격2',type:'text'},
+      {key:'origin',label:'생산지',type:'text'},{key:'qty',label:'수량',type:'text'},
+      {key:'unit',label:'단위',type:'text'},{key:'price',label:'단가',type:'text'},
+      {key:'ship',label:'배송비',type:'text'},{key:'total',label:'총매입가',type:'text'},
+      {key:'supplyP',label:'공급단가',type:'text'},{key:'marginAmt',label:'마진액',type:'text'},
+      {key:'marginR',label:'마진율(%)',type:'text'},
+      {key:'tax',label:'과세여부',type:'select',options:['','과세','면세']},
+      {key:'note',label:'비고',type:'text'}
+    ]
+  },
+  bakdae: {
+    sheet: 'Sheet1', key: 'baljoo_priceBakdae', headerRow: 3,
+    hasVendor: true,
+    parseCols: { tax:0, vendor:1, name:2, spec1:3, spec2:4, origin:5, qty:6, unit:7, supplyP:8, ship:9, note:10 },
+    fields: [
+      {key:'vendor',label:'발주처',type:'text'},{key:'name',label:'제품명',req:true,type:'text'},
+      {key:'spec1',label:'규격1',type:'text'},{key:'spec2',label:'규격2',type:'text'},
+      {key:'origin',label:'생산지',type:'text'},{key:'qty',label:'수량',type:'text'},
+      {key:'unit',label:'단위',type:'text'},{key:'supplyP',label:'공급단가',type:'text'},
+      {key:'ship',label:'배송비',type:'text'},
+      {key:'tax',label:'과세여부',type:'select',options:['','과세','면세']},
+      {key:'note',label:'비고',type:'text'}
+    ]
+  },
+  b2bhae: {
+    sheet: 'B2B단가(해담별)', key: 'baljoo_priceB2BHae', headerRow: 2,
+    hasVendor: false,
+    parseCols: { tax:0, name:1, spec1:2, spec2:3, origin:4, qty:5, unit:6, ship:7, price:8, total:9, supplyP:10, marginAmt:11, marginR:12, note:13 },
+    fields: [
+      {key:'name',label:'제품명',req:true,type:'text'},
+      {key:'spec1',label:'규격1',type:'text'},{key:'spec2',label:'규격2',type:'text'},
+      {key:'origin',label:'생산지',type:'text'},{key:'qty',label:'수량',type:'text'},
+      {key:'unit',label:'단위',type:'text'},{key:'price',label:'단가',type:'text'},
+      {key:'ship',label:'배송비',type:'text'},{key:'total',label:'총매입가',type:'text'},
+      {key:'supplyP',label:'공급단가',type:'text'},{key:'marginAmt',label:'마진액',type:'text'},
+      {key:'marginR',label:'마진율(%)',type:'text'},
+      {key:'tax',label:'과세여부',type:'select',options:['','과세','면세']},
+      {key:'note',label:'비고',type:'text'}
+    ]
+  },
+  b2bgwak: {
+    sheet: 'B2B단가(곽위)', key: 'baljoo_priceB2BGwak', headerRow: 2,
+    hasVendor: false,
+    parseCols: { tax:0, name:1, spec1:2, spec2:3, origin:4, qty:5, unit:6, ship:7, price:8, total:9, supplyP:10, marginAmt:11, marginR:12, note:13 },
+    fields: [
+      {key:'name',label:'제품명',req:true,type:'text'},
+      {key:'spec1',label:'규격1',type:'text'},{key:'spec2',label:'규격2',type:'text'},
+      {key:'origin',label:'생산지',type:'text'},{key:'qty',label:'수량',type:'text'},
+      {key:'unit',label:'단위',type:'text'},{key:'price',label:'단가',type:'text'},
+      {key:'ship',label:'배송비',type:'text'},{key:'total',label:'총매입가',type:'text'},
+      {key:'supplyP',label:'공급단가',type:'text'},{key:'marginAmt',label:'마진액',type:'text'},
+      {key:'marginR',label:'마진율(%)',type:'text'},
+      {key:'tax',label:'과세여부',type:'select',options:['','과세','면세']},
+      {key:'note',label:'비고',type:'text'}
+    ]
+  },
+};
+const PRICE_TAB_IDS = ['sale','dm','b2bgwa','bakdae','b2bhae','b2bgwak'];
+
+// Legacy: 기존 코드 호환용
+const SALE_FIELDS = PRICE_TABS.sale.fields;
+const DM_FIELDS   = PRICE_TABS.dm.fields;
 
 function priceSwitchSub(sub){
   _pSub=sub; priceCloseForm();
-  ['sale','dm'].forEach(s=>{
+  PRICE_TAB_IDS.forEach(s=>{
     const b=document.getElementById('pSubBtn-'+s);
     if(b){b.style.background=s===sub?'var(--text)':'';b.style.color=s===sub?'#fff':'';}
   });
   const vw=document.getElementById('pVendorWrap');
-  if(vw)vw.style.display=sub==='sale'?'flex':'none';
+  const cfg = PRICE_TABS[sub];
+  if(vw)vw.style.display=cfg && cfg.hasVendor?'flex':'none';
   priceRender();
 }
 
 function priceRebuildVendorFilter(){
-  const items=priceLoadStorage(PRICE_SALE_KEY);
+  const cfg = PRICE_TABS[_pSub] || PRICE_TABS.sale;
+  const items = cfg.hasVendor ? priceLoadStorage(cfg.key) : [];
   const vendors=['전체',...new Set(items.map(r=>r.vendor).filter(Boolean))].sort((a,b)=>a==='전체'?-1:a.localeCompare(b,'ko'));
   const sel=document.getElementById('pVendorFilter');
   if(!sel)return;
@@ -7773,54 +7848,50 @@ function priceRender(){
     <button class="btn btn-sm" style="padding:2px 7px;font-size:11px" onclick="priceOpenForm(${i})">✏️</button>
     <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:11px;margin-left:2px" onclick="priceDelete(${i})">✕</button>
   </td>`;
-  if(_pSub==='sale'){
-    let items=priceLoadStorage(PRICE_SALE_KEY);
-    let rows=items;
-    if(vendor!=='전체')rows=rows.filter(r=>r.vendor===vendor);
-    if(search)rows=rows.filter(r=>(r.name+r.code+r.spec1+r.spec2+r.vendor).toLowerCase().includes(search));
-    head.innerHTML=`<tr>${[TH('업체'),TH('제품명'),TH('규격1'),TH('규격2'),TH('수량'),TH('단위'),TH('단가'),TH('배송비'),TH('총매입가'),TH('판매가'),TH('네이버'),TH('쿠팡'),TH('택배사'),TH('코드'),TH('관리')].join('')}</tr>`;
-    const taxBadge=t=>t?`<span style="background:${t==='면세'?'#e5e7eb':'#fef3c7'};color:${t==='면세'?'#374151':'#92400e'};border-radius:3px;padding:1px 5px;font-size:10px">${t}</span>`:'';
-    body.innerHTML=rows.length?rows.map(r=>{
-      const ri=items.indexOf(r);
-      return`<tr>
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">${escHtml(r.vendor||'')} ${taxBadge(r.tax)}</td>
-        ${TD(escHtml(r.name||''))}${TD(escHtml(r.spec1||''))}${TD(escHtml(r.spec2||''))}
-        ${TD(escHtml(String(r.qty||'')),true)}${TD(escHtml(r.unit||''))}
-        ${TD(fN(r.price),true)}${TD(fN(r.ship),true)}
-        ${TD('<strong>'+fN(r.total)+'</strong>',true)}
-        ${TD('<span style="color:var(--accent);font-weight:600">'+fN(r.saleP)+'</span>',true)}
-        ${TD(fN(r.naver),true)}${TD(fN(r.coupang),true)}
-        ${TD(escHtml(r.carrier||''))}
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:10px;font-family:monospace;color:var(--text3)">${escHtml(r.code||'')}</td>
-        ${ACT(ri)}</tr>`;
-    }).join(''):`<tr><td colspan="15" style="padding:24px;text-align:center;color:var(--text3)">등록된 품목이 없습니다. [＋ 추가] 버튼으로 등록하세요.</td></tr>`;
-    document.getElementById('pCount').textContent=rows.length+'건';
-  }else{
-    let items=priceLoadStorage(PRICE_DM_KEY);
-    let rows=items;
-    if(search)rows=rows.filter(r=>(r.name+(r.code||'')+r.spec).toLowerCase().includes(search));
-    head.innerHTML=`<tr>${[TH('번호'),TH('코드'),TH('제품명'),TH('규격'),TH('수량'),TH('단가'),TH('배송비'),TH('총매입가'),TH('판매가'),TH('마진율'),TH('비고'),TH('관리')].join('')}</tr>`;
-    body.innerHTML=rows.length?rows.map(r=>{
-      const ri=items.indexOf(r);
-      return`<tr>
-        ${TD(escHtml(String(r.no||'')))}
-        <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:10px;font-family:monospace;color:var(--text3)">${escHtml(String(r.code||''))}</td>
-        ${TD('<strong>'+escHtml(r.name||'')+'</strong>')}
-        ${TD(escHtml(r.spec||''))}${TD(escHtml(String(r.qty||'')),true)}
-        ${TD(fN(r.price),true)}${TD(fN(r.ship),true)}
-        ${TD('<strong>'+fN(r.total)+'</strong>',true)}
-        ${TD('<span style="color:var(--accent);font-weight:600">'+fN(r.saleP)+'</span>',true)}
-        ${TD(r.marginR!==''&&r.marginR!=null?r.marginR+'%':'—',true)}
-        ${TD(escHtml(r.note||''))}${ACT(ri)}</tr>`;
-    }).join(''):`<tr><td colspan="12" style="padding:24px;text-align:center;color:var(--text3)">등록된 품목이 없습니다. [＋ 추가] 버튼으로 등록하세요.</td></tr>`;
-    document.getElementById('pCount').textContent=rows.length+'건';
+  const taxBadge=t=>t?`<span style="background:${t==='면세'?'#e5e7eb':'#fef3c7'};color:${t==='면세'?'#374151':'#92400e'};border-radius:3px;padding:1px 5px;font-size:10px">${t}</span>`:'';
+  const cfg = PRICE_TABS[_pSub] || PRICE_TABS.sale;
+  let items = priceLoadStorage(cfg.key);
+  let rows = items;
+  if (cfg.hasVendor && vendor !== '전체') rows = rows.filter(r=>r.vendor===vendor);
+  if (search) rows = rows.filter(r => {
+    return cfg.fields.some(f => String(r[f.key]||'').toLowerCase().includes(search));
+  });
+  // 표시 컬럼 — 폼 필드를 그대로 사용 (관리 컬럼 별도)
+  const displayFields = cfg.fields;
+  head.innerHTML = `<tr>${displayFields.map(f=>TH(f.label)).join('')}${TH('관리')}</tr>`;
+  if (rows.length) {
+    body.innerHTML = rows.map(r=>{
+      const ri = items.indexOf(r);
+      const cells = displayFields.map(f => {
+        const v = r[f.key];
+        // 숫자 필드 자동 콤마
+        if (/단가|가격|매입가|판매가|배송비|마진액|네이버|쿠팡|공급단가/.test(f.label)) {
+          return TD(fN(v), true);
+        }
+        if (f.key==='marginR' && v) {
+          return TD(String(v).includes('%')?v:v+'%', true);
+        }
+        if (f.key==='tax') {
+          return `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">${taxBadge(v)}</td>`;
+        }
+        if (f.key==='code') {
+          return `<td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:10px;font-family:monospace;color:var(--text3)">${escHtml(String(v||''))}</td>`;
+        }
+        return TD(escHtml(String(v||'')));
+      }).join('');
+      return `<tr>${cells}${ACT(ri)}</tr>`;
+    }).join('');
+  } else {
+    body.innerHTML = `<tr><td colspan="${displayFields.length+1}" style="padding:24px;text-align:center;color:var(--text3)">등록된 품목이 없습니다. [＋ 추가] 버튼으로 등록하세요.</td></tr>`;
   }
+  document.getElementById('pCount').textContent = rows.length+'건';
 }
 
 function priceOpenForm(idx){
   _pEditIdx=idx;
-  const fields=_pSub==='sale'?SALE_FIELDS:DM_FIELDS;
-  const key=_pSub==='sale'?PRICE_SALE_KEY:PRICE_DM_KEY;
+  const cfg = PRICE_TABS[_pSub] || PRICE_TABS.sale;
+  const fields = cfg.fields;
+  const key = cfg.key;
   const items=priceLoadStorage(key);
   const item=idx!==null?(items[idx]||{}):{};
   document.getElementById('priceFormTitle').textContent=idx!==null?'품목 수정':'품목 추가';
@@ -7848,8 +7919,9 @@ function priceCloseForm(){
 }
 
 function priceSaveForm(){
-  const fields=_pSub==='sale'?SALE_FIELDS:DM_FIELDS;
-  const key=_pSub==='sale'?PRICE_SALE_KEY:PRICE_DM_KEY;
+  const cfg = PRICE_TABS[_pSub] || PRICE_TABS.sale;
+  const fields = cfg.fields;
+  const key = cfg.key;
   const items=priceLoadStorage(key);
   const obj={};let valid=true;
   fields.forEach(f=>{
@@ -7869,11 +7941,12 @@ function priceSaveForm(){
 
 function priceDelete(idx){
   if(!confirm('이 항목을 삭제하시겠습니까?'))return;
-  const key=_pSub==='sale'?PRICE_SALE_KEY:PRICE_DM_KEY;
+  const cfg = PRICE_TABS[_pSub] || PRICE_TABS.sale;
+  const key = cfg.key;
   const items=priceLoadStorage(key);
   items.splice(idx,1);
   priceSaveStorage(key,items);
-  if(_pSub==='sale')priceRebuildVendorFilter();
+  if(cfg.hasVendor)priceRebuildVendorFilter();
   priceRender();
 }
 
@@ -7883,13 +7956,12 @@ function priceImportExcel() {
 }
 
 function priceClearAllConfirm() {
-  const key = _pSub === 'sale' ? PRICE_SALE_KEY : PRICE_DM_KEY;
-  const items = priceLoadStorage(key);
+  const cfg = PRICE_TABS[_pSub] || PRICE_TABS.sale;
+  const items = priceLoadStorage(cfg.key);
   if (!items.length) { alert('삭제할 품목이 없습니다.'); return; }
-  const sub = _pSub === 'sale' ? '판매가(10%)' : '도매꾹';
-  if (!confirm(`${sub} 탭의 ${items.length}건을 모두 삭제할까요?\n\n(엑셀 가져오기로 다시 채울 수 있어요)`)) return;
-  priceSaveStorage(key, []);
-  priceRebuildVendorFilter();
+  if (!confirm(`${cfg.sheet} 탭의 ${items.length}건을 모두 삭제할까요?\n\n(엑셀 가져오기로 다시 채울 수 있어요)`)) return;
+  priceSaveStorage(cfg.key, []);
+  if (cfg.hasVendor) priceRebuildVendorFilter();
   priceRender();
 }
 
@@ -7899,77 +7971,41 @@ function priceImportFile(file) {
   reader.onload = e => {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array' });
-
-      // 판매가(10%) 시트
-      const saleSheet = wb.Sheets['판매가(10%)'];
-      const saleRows  = saleSheet ? XLSX.utils.sheet_to_json(saleSheet, { header:1, defval:'' }) : [];
-      let newSale = 0, dupSale = 0;
-      if (saleRows.length > 3) {
-        const existing = priceLoadStorage(PRICE_SALE_KEY);
-        // 고유키: 코드 있으면 코드, 없으면 발주처+제품명+규격1+규격2+수량+단가
-        const _saleKey = x => (x.code && x.code.trim()) ? 'C:'+x.code.trim()
-          : ['V', x.vendor||'', x.name||'', x.spec1||'', x.spec2||'', x.qty||'', x.price||''].join('|');
-        const seen = new Set(existing.map(_saleKey));
-        const rows = saleRows.slice(3).filter(r => r.some(v => v !== ''));
-        rows.forEach(r => {
-          const code   = String(r[0]||'').trim();
-          const vendor = String(r[2]||'').trim();
-          const name   = String(r[3]||'').trim();
-          if (!vendor && !name && !code) return;
-          const item = {
-            vendor, name,
-            spec1:   String(r[4]||''), spec2:  String(r[5]||''),
-            origin:  String(r[6]||''), qty:    String(r[7]||''),
-            unit:    String(r[8]||''), price:  String(r[9]||''),
-            ship:    String(r[10]||''),total:  String(r[11]||''),
-            saleP:   String(r[13]||''),naver:  String(r[14]||''),
-            coupang: String(r[15]||''),carrier:String(r[20]||''),
-            tax:     String(r[1]||''), code,
-            note:    String(r[21]||''),
-          };
-          const k = _saleKey(item);
-          if (seen.has(k)) { dupSale++; return; }
+      const summary = [];
+      // 모든 등록된 시트 처리
+      for (const id of PRICE_TAB_IDS) {
+        const cfg = PRICE_TABS[id];
+        const ws = wb.Sheets[cfg.sheet];
+        if (!ws) { summary.push(`${cfg.sheet}: 시트 없음`); continue; }
+        const rawRows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        if (rawRows.length <= cfg.headerRow + 1) { summary.push(`${cfg.sheet}: 데이터 없음`); continue; }
+        const existing = priceLoadStorage(cfg.key);
+        // 고유키: code 있으면 code, 없으면 주요 필드 조합
+        const keyFields = cfg.hasVendor ? ['vendor','name','spec1','spec2','qty','price'] : ['name','spec','spec1','spec2','qty','price'];
+        const makeKey = x => (x.code && String(x.code).trim()) ? 'C:'+String(x.code).trim()
+          : 'K:' + keyFields.map(f => String(x[f]||'')).join('|');
+        const seen = new Set(existing.map(makeKey));
+        const dataRows = rawRows.slice(cfg.headerRow + 1).filter(r => r.some(v => v !== ''));
+        let added = 0, dup = 0;
+        dataRows.forEach(r => {
+          const item = {};
+          for (const [k, idx] of Object.entries(cfg.parseCols)) {
+            item[k] = String(r[idx]||'');
+          }
+          // 필수 식별값 — 제품명이나 코드 중 하나는 있어야
+          if (!item.name && !item.code) return;
+          const k = makeKey(item);
+          if (seen.has(k)) { dup++; return; }
           seen.add(k);
           existing.push(item);
-          newSale++;
+          added++;
         });
-        priceSaveStorage(PRICE_SALE_KEY, existing);
+        priceSaveStorage(cfg.key, existing);
+        summary.push(`${cfg.sheet}: ${added}건 추가${dup>0?` (중복 ${dup}건 제외)`:''}`);
       }
-
-      // 도매꾹 시트
-      const dmSheet = wb.Sheets['도매꾹'];
-      const dmRows  = dmSheet ? XLSX.utils.sheet_to_json(dmSheet, { header:1, defval:'' }) : [];
-      let newDm = 0, dupDm = 0;
-      if (dmRows.length > 3) {
-        const existing = priceLoadStorage(PRICE_DM_KEY);
-        const _dmKey = x => (x.code && x.code.trim()) ? 'C:'+x.code.trim()
-          : ['N', x.name||'', x.spec||'', x.qty||'', x.price||''].join('|');
-        const seen = new Set(existing.map(_dmKey));
-        const rows = dmRows.slice(3).filter(r => r.some(v => v !== ''));
-        rows.forEach(r => {
-          const name = String(r[3]||'').trim();
-          if (!name) return;
-          const item = {
-            no:      String(r[0]||''), code:    String(r[2]||''),
-            name,    spec:    String(r[4]||''),
-            qty:     String(r[5]||''), ship:    String(r[6]||''),
-            price:   String(r[7]||''), total:   String(r[8]||''),
-            saleP:   String(r[11]||''),marginR: String(r[13]||''),
-            note:    String(r[14]||''),
-          };
-          const k = _dmKey(item);
-          if (seen.has(k)) { dupDm++; return; }
-          seen.add(k);
-          existing.push(item);
-          newDm++;
-        });
-        priceSaveStorage(PRICE_DM_KEY, existing);
-      }
-
       priceRebuildVendorFilter();
       priceRender();
-      const msg = `✅ 가져오기 완료!\n판매가(10%): ${newSale}건 추가${dupSale>0?` (기존 중복 ${dupSale}건 제외)`:''}\n도매꾹: ${newDm}건 추가${dupDm>0?` (기존 중복 ${dupDm}건 제외)`:''}`;
-      alert(msg);
+      alert(`✅ 가져오기 완료!\n\n${summary.join('\n')}`);
     } catch(err) {
       alert('❌ 파일 읽기 오류: ' + err.message);
     }
