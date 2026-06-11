@@ -8988,29 +8988,29 @@ function srGarlicDetailHtml(agg, color){
       totalCnt += it.count;
       totalSales += it.sales;
       const isFirstInPlat = ii === 0;
-      rows.push(`<tr style="background:${pi%2===0?'#fff':'#F8FAFC'}">
-        <td style="padding:8px 14px;border-bottom:1px solid #eee;font-weight:${isFirstInPlat?'600':'400'};color:${isFirstInPlat?'#212121':'#666'}">${isFirstInPlat?escHtml(it.platform):''}</td>
-        <td style="padding:8px 14px;border-bottom:1px solid #eee">${escHtml(it.option)}</td>
-        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #eee">${it.count.toLocaleString()}건</td>
-        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #eee">${it.sales.toLocaleString()}원</td>
+      rows.push(`<tr style="background:${pi%2===0?'#FFFBEB':'#FEF3C7'}">
+        <td style="padding:8px 14px;border-bottom:1px solid #FDE68A;font-weight:${isFirstInPlat?'600':'400'};color:${isFirstInPlat?'#78350F':'#92400E'}">${isFirstInPlat?escHtml(it.platform):''}</td>
+        <td style="padding:8px 14px;border-bottom:1px solid #FDE68A;color:#78350F">${escHtml(it.option)}</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:#78350F">${it.count.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:#78350F">${it.sales.toLocaleString()}원</td>
       </tr>`);
     });
   });
   return `
-    <div style="background:${color};color:#fff;padding:6px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;opacity:0.85">🧄 깐마늘 상세 (플랫폼 × 옵션)</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+    <div style="background:#FEF3C7;color:#92400E;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:4px solid #F59E0B">🧄 깐마늘 상세 (플랫폼 × 옵션)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FFFBEB">
       <colgroup><col style="width:32%"><col style="width:25%"><col style="width:18%"><col style="width:25%"></colgroup>
-      <thead><tr style="background:${HEAD_BG}">
-        <th style="padding:8px 14px;text-align:left;color:${HEAD_FG};font-weight:700">플랫폼</th>
-        <th style="padding:8px 14px;text-align:left;color:${HEAD_FG};font-weight:700">옵션</th>
-        <th style="padding:8px 14px;text-align:right;color:${HEAD_FG};font-weight:700">건수</th>
-        <th style="padding:8px 14px;text-align:right;color:${HEAD_FG};font-weight:700">매출액</th>
+      <thead><tr style="background:#FDE68A">
+        <th style="padding:8px 14px;text-align:left;color:#78350F;font-weight:700">플랫폼</th>
+        <th style="padding:8px 14px;text-align:left;color:#78350F;font-weight:700">옵션</th>
+        <th style="padding:8px 14px;text-align:right;color:#78350F;font-weight:700">건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#78350F;font-weight:700">매출액</th>
       </tr></thead>
       <tbody>${rows.join('')}</tbody>
-      <tfoot><tr style="background:${FOOT_BG};font-weight:700">
-        <td colspan="2" style="padding:8px 14px;color:${HEAD_FG}">합계</td>
-        <td style="padding:8px 14px;text-align:right;color:${HEAD_FG}">${totalCnt.toLocaleString()}건</td>
-        <td style="padding:8px 14px;text-align:right;color:${HEAD_FG}">${totalSales.toLocaleString()}원</td>
+      <tfoot><tr style="background:#FCD34D;font-weight:700">
+        <td colspan="2" style="padding:8px 14px;color:#78350F">합계</td>
+        <td style="padding:8px 14px;text-align:right;color:#78350F">${totalCnt.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;color:#78350F">${totalSales.toLocaleString()}원</td>
       </tr></tfoot>
     </table>`;
 }
