@@ -8960,7 +8960,21 @@ function srAggregate(orders){
                   || n === '깐마늘'
                   || (o.product||'').includes('깐마늘');
     if (isGarlic) {
-      const opt = (o.option_name||'').trim() || '옵션없음';
+      // 원래 kg 추출: select_opt 우선 → vendor_code → option_name → code_qty
+      let kg = 0;
+      const m1 = (o.select_opt||'').match(/(\d+)\s*kg/i);
+      if (m1) kg = parseInt(m1[1]);
+      if (!kg) {
+        const m2 = (o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i);
+        if (m2) kg = parseInt(m2[1]);
+      }
+      if (!kg) {
+        const m3 = (o.option_name||'').match(/(\d+)\s*kg/i);
+        if (m3) kg = parseInt(m3[1]);
+      }
+      if (!kg && o.code_qty && o.code_qty > 1) kg = o.code_qty;  // override에서 설정한 값
+      if (!kg) kg = 1;
+      const opt = kg + 'kg';
       const k = p + '||' + opt;
       if (!garlicMap[k]) garlicMap[k] = {platform:p, option:opt, count:0, sales:0};
       garlicMap[k].count++;
