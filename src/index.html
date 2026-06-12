@@ -296,6 +296,18 @@
 <div class="tab-content" id="tab-codes">
 <div class="container">
 
+  <!-- 사용법 -->
+  <div class="card" style="background:#EFF6FF;border:1px solid #BFDBFE;padding:12px 16px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:#1E40AF;margin-bottom:6px">💡 사용법</div>
+    <div style="font-size:12px;color:#1E3A8A;line-height:1.7">
+      • <b>🔑 코드 등록</b>: 발주처가 자동 인식 못한 비표준 코드를 매핑 (변경할 상품코드 + 상품명 키워드 + 옵션 키워드)<br>
+      • <b>🔀 옵션 변환 규칙</b>: 옵션명 정리 (예: "1단 화이트" → "DM262")<br>
+      • <b>📋 코드 매핑 목록</b>: 등록된 코드들의 매핑 현황 확인<br>
+      • <b>📦 옵션 패턴 일괄 사전 등록</b>: 사이즈 230~290 같은 반복 패턴을 한 번에 등록<br>
+      • <b>📤/📥 전체 데이터 내보내기/가져오기</b>: 다른 컴퓨터로 옮길 때 활용
+    </div>
+  </div>
+
   <div class="sub-tab-nav">
     <button class="sub-tab-btn active" id="stab-code" onclick="switchSubTab('code')">🔑 코드 등록</button>
     <button class="sub-tab-btn" id="stab-codemap" onclick="switchSubTab('codemap')">📋 변환 코드 목록</button>
@@ -489,6 +501,18 @@
 <div class="tab-content" id="tab-invoice">
 <div class="container">
 
+  <!-- 사용법 -->
+  <div class="card" style="background:#EFF6FF;border:1px solid #BFDBFE;padding:12px 16px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:#1E40AF;margin-bottom:6px">💡 사용법</div>
+    <div style="font-size:12px;color:#1E3A8A;line-height:1.7">
+      ① <b>샵마인 발송대기 파일</b> 업로드 (주문 정보 들어옴)<br>
+      ② <b>택배사 회신 파일</b>(운송장번호 든 엑셀)을 업로드 — 거래처별로 여러 개 가능<br>
+      ③ <b>매칭 미리보기</b> 확인 → 동명이인 의심 건은 송장번호 직접 선택<br>
+      ④ <b>⬇️ 완성 파일 다운로드</b> → 매칭된 행만 송장번호+택배사 채워서 저장<br>
+      ※ 택배사 이름은 자동 정규화됩니다 (우체국 → 우체국택배 등).
+    </div>
+  </div>
+
   <div class="card">
     <div class="card-title">📋 샵마인 주문 파일 업로드</div>
     <div class="upload-zone" id="invOrderZone" onclick="document.getElementById('invOrderFile').click()"
@@ -578,6 +602,18 @@
 ══════════════════════════════════════════════════════════ -->
 <div class="tab-content" id="tab-expense">
 <div class="container">
+
+  <!-- 사용법 -->
+  <div class="card" style="background:#EFF6FF;border:1px solid #BFDBFE;padding:12px 16px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:#1E40AF;margin-bottom:6px">💡 사용법</div>
+    <div style="font-size:12px;color:#1E3A8A;line-height:1.7">
+      • <b>✏️ 지출결의서 작성</b>: 회사 선택 → 거래처/금액/메모 입력 → 💾 이력 저장 (또는 📷 이미지 미리보기 후 저장)<br>
+      • <b>🏦 계좌 관리</b>: 자주 쓰는 거래처 계좌 미리 등록 (작성 시 자동 채워짐)<br>
+      • <b>📋 작성 이력</b>: 저장된 결의서 검색·송금완료 체크·이미지 재다운로드·거래내역서 만들기<br>
+      • <b>📂 옛 양식 가져오기</b>: 이전 엑셀 결의서 일괄 import (여러 시트 자동 처리)<br>
+      • 📁 폴더 설정으로 회사별(옐로우브릿지/그로븐) 자동 저장 위치를 정할 수 있어요.
+    </div>
+  </div>
 
   <div class="sub-tab-nav">
     <button class="sub-tab-btn active" id="stab-expwrite" onclick="switchExpSubTab('write')">✏️ 지출결의서 작성</button>
@@ -843,6 +879,17 @@
 <!-- 입금결의서 탭 -->
 <div class="tab-content" id="tab-income">
 <div class="container">
+
+  <!-- 사용법 -->
+  <div class="card" style="background:#EFF6FF;border:1px solid #BFDBFE;padding:12px 16px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:#1E40AF;margin-bottom:6px">💡 사용법</div>
+    <div style="font-size:12px;color:#1E3A8A;line-height:1.7">
+      • <b>✏️ 입금결의서 작성</b>: 입금처/금액/메모 입력 → 통장내역 사진 첨부도 가능<br>
+      • <b>🏦 계좌 관리</b>: 입금 받는 거래처 계좌 미리 등록 → 작성 시 자동 채워짐<br>
+      • <b>📋 작성 이력</b>: 검색·입금확인 체크·이미지 다운로드 / JSON 백업·가져오기 지원<br>
+      • 📁 폴더 설정으로 회사별 자동 저장 위치 정할 수 있어요.
+    </div>
+  </div>
 
   <div class="sub-tab-nav">
     <button class="sub-tab-btn active" id="stab-incwrite" onclick="switchIncSubTab('write')">✏️ 입금결의서 작성</button>
@@ -7436,12 +7483,27 @@ function reconExportXlsx() {
     </div>
   </div>
 
+  <!-- 사용법 안내 -->
+  <div class="card" style="background:#EFF6FF;border:1px solid #BFDBFE;padding:12px 16px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:#1E40AF;margin-bottom:6px">💡 사용법</div>
+    <div style="font-size:12px;color:#1E3A8A;line-height:1.7">
+      • 상단 탭(📦 판매가, 🛒 도매꾹, B2B 시트들 등)을 클릭해 시트를 전환하세요.<br>
+      • <b>📥 엑셀 가져오기</b>로 사장님 매입단가표 파일을 한 번에 일괄 등록할 수 있어요 (시트별 자동 분류).<br>
+      • <b>+ 품목 추가</b>로 개별 품목을 직접 등록/수정합니다.<br>
+      • 표가 옆으로 길면 <b>마우스 휠 옆으로 굴리기 / Shift+휠 / 화면 아래 가로 스크롤바</b>로 모든 컬럼을 확인하세요.<br>
+      • 발주처별 필터·검색박스로 빠르게 찾을 수 있고, <b>각 행의 ✏️</b>로 수정, <b>✕</b>로 삭제됩니다.
+    </div>
+  </div>
+
   <!-- 테이블 -->
-  <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
+  <div style="position:relative">
+    <div style="position:absolute;top:-6px;right:0;font-size:11px;color:var(--text3);background:var(--surface);padding:2px 8px;border-radius:10px;border:1px solid var(--border)">← → 가로 스크롤로 모든 컬럼 보기</div>
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:6px;background:var(--surface)">
+    <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:1100px">
       <thead id="pHead" style="background:var(--bg)"></thead>
       <tbody id="pBody"></tbody>
     </table>
+    </div>
   </div>
 
 </div>
@@ -7451,6 +7513,18 @@ function reconExportXlsx() {
      TAB 7: 일일현황  (Daily Status)
 ══════════════════════════════════════════════════════════ -->
 <div class="tab-content" id="tab-daily">
+<div class="container">
+  <!-- 사용법 -->
+  <div class="card" style="background:#EFF6FF;border:1px solid #BFDBFE;padding:12px 16px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:#1E40AF;margin-bottom:6px">💡 사용법</div>
+    <div style="font-size:12px;color:#1E3A8A;line-height:1.7">
+      • 거래처별로 <b>YB(옐로우브릿지) / GR(그로븐) 발주 / 메일 전송</b> 상태를 체크하는 일일 체크리스트<br>
+      • <b>운송장번호 회신 현황</b>: 거래처별 운송장 받은 거 기록<br>
+      • C/S 처리, 결의서 작성 여부 등 오늘 할 일을 한 화면에서 관리<br>
+      • 데이터는 날짜별로 저장돼서 다음 날 새로 시작됩니다.
+    </div>
+  </div>
+</div>
 <style>
 #tab-daily .ds-wrap{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;color:#1a202c}
 #tab-daily .ds-header{background:linear-gradient(135deg,#1e3a6e 0%,#2b6cb0 100%);color:white;border-radius:14px;padding:15px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
@@ -7780,6 +7854,18 @@ function reconExportXlsx() {
 ══════════════════════════════════════════════════════════ -->
 <div class="tab-content" id="tab-cs">
 <div class="container">
+
+  <!-- 사용법 -->
+  <div class="card" style="background:#EFF6FF;border:1px solid #BFDBFE;padding:12px 16px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:700;color:#1E40AF;margin-bottom:6px">💡 사용법</div>
+    <div style="font-size:12px;color:#1E3A8A;line-height:1.7">
+      • 고객 문의를 텍스트박스에 붙여넣으면 등록된 <b>키워드 매칭</b>으로 답변 템플릿이 추천돼요.<br>
+      • 추천 답변은 자유롭게 수정 후 <b>📋 답변 복사</b>로 클립보드에 복사 → 고객에게 붙여넣기.<br>
+      • <b>📚 답변 템플릿 관리</b>에서 자주 쓰는 답변을 키워드와 함께 추가/수정/삭제 가능.<br>
+      • 매칭된 키워드가 많은 답변이 우선 노출되고, 다른 후보는 칩으로 표시돼서 클릭으로 전환 가능.
+    </div>
+  </div>
+
   <div class="card">
     <div class="card-title">💬 고객문의 답변 자동화</div>
     <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
@@ -7975,8 +8061,8 @@ function priceRender(){
   const head=document.getElementById('pHead');
   const body=document.getElementById('pBody');
   if(!head||!body)return;
-  const TH=s=>`<th style="padding:7px 10px;white-space:nowrap;border-bottom:2px solid var(--border);text-align:left;background:var(--bg);font-size:11px;color:var(--text2)">${s}</th>`;
-  const TD=(s,r)=>`<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap${r?';text-align:right':''}">${(s===''||s==null)?'—':s}</td>`;
+  const TH=s=>`<th style="padding:6px 8px;white-space:nowrap;border-bottom:2px solid var(--border);text-align:left;background:var(--bg);font-size:11px;color:var(--text2);font-weight:600">${s}</th>`;
+  const TD=(s,r)=>`<td style="padding:5px 8px;border-bottom:1px solid var(--border);white-space:nowrap${r?';text-align:right':''}">${(s===''||s==null)?'—':s}</td>`;
   const fN=v=>{if(v===''||v==null)return'—';const n=parseFloat(String(v).replace(/,/g,''));return isNaN(n)?String(v):n.toLocaleString('ko-KR');};
   const ACT=i=>`<td style="padding:5px 8px;border-bottom:1px solid var(--border)">
     <button class="btn btn-sm" style="padding:2px 7px;font-size:11px" onclick="priceOpenForm(${i})">✏️</button>
