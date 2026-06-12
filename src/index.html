@@ -119,7 +119,6 @@
   <button class="tab-btn" id="tabBtn-daily" onclick="switchTab('daily')">📋 일일현황</button>
   <button class="tab-btn" id="tabBtn-salesreport" onclick="switchTab('salesreport')">📈 매출 보고용</button>
   <button class="tab-btn" id="tabBtn-weeklyreport" onclick="switchTab('weeklyreport')">📆 주간 매출</button>
-  <button class="tab-btn" id="tabBtn-cs" onclick="switchTab('cs')">💬 고객 답변</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -1207,7 +1206,6 @@ const CLOUD_SYNC_KEYS = [
   'yb_product_aliases',    // 상품명 별칭
   'yb_dinette_event_mode', // 디네트 행사 모드
   'yb_code_confirmed',     // 비표준 코드 확인 처리
-  'yb_cs_templates',       // 고객문의 답변 템플릿
 ];
 
 // 클라우드에 보낼 때 무거운 파일 본문은 제외
@@ -5273,7 +5271,6 @@ function switchTab(name){
     if(name==='report'){try{const d=document.getElementById('rptDate');if(d&&!d.value)d.value=_localISO();}catch(e){console.error(e);}}
     if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
     if(name==='weeklyreport'){try{const d=document.getElementById('wrAnyDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
-    if(name==='cs'){try{if(typeof csTplRender==='function')csTplRender();}catch(e){console.error(e);}}
   }catch(e){console.error('switchTab 오류:',e);}
 }
 function switchSubTab(name){
@@ -7849,75 +7846,6 @@ function reconExportXlsx() {
 </div>
 </div><!-- /tab-weeklyreport -->
 
-<!-- ══════════════════════════════════════════════════════════
-     TAB 11: 고객문의 답변 자동화
-══════════════════════════════════════════════════════════ -->
-<div class="tab-content" id="tab-cs">
-<div class="container">
-
-  <!-- 사용법 -->
-  <div class="card" style="background:#EFF6FF;border:1px solid #BFDBFE;padding:12px 16px;margin-bottom:14px">
-    <div style="font-size:13px;font-weight:700;color:#1E40AF;margin-bottom:6px">💡 사용법</div>
-    <div style="font-size:12px;color:#1E3A8A;line-height:1.7">
-      • 고객 문의를 텍스트박스에 붙여넣으면 등록된 <b>키워드 매칭</b>으로 답변 템플릿이 추천돼요.<br>
-      • 추천 답변은 자유롭게 수정 후 <b>📋 답변 복사</b>로 클립보드에 복사 → 고객에게 붙여넣기.<br>
-      • <b>📚 답변 템플릿 관리</b>에서 자주 쓰는 답변을 키워드와 함께 추가/수정/삭제 가능.<br>
-      • 매칭된 키워드가 많은 답변이 우선 노출되고, 다른 후보는 칩으로 표시돼서 클릭으로 전환 가능.
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">💬 고객문의 답변 자동화</div>
-    <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
-      고객 문의 내용을 붙여넣으면 등록된 키워드를 자동으로 인식해서 답변을 추천해줘요.
-      답변은 수정 후 복사할 수 있고, 자주 쓰는 답변은 아래 템플릿 관리에서 추가/수정 가능합니다.
-    </p>
-    <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">고객 문의 내용</label>
-    <textarea id="csInquiry" rows="5" class="inp" placeholder="고객이 보낸 문의 내용을 여기에 붙여넣으세요..." oninput="csDetect()" style="resize:vertical;width:100%;box-sizing:border-box;font-size:13px"></textarea>
-    <div id="csMatchInfo" style="margin-top:10px;font-size:12px;color:var(--text3)"></div>
-  </div>
-
-  <div class="card" id="csReplyCard" style="display:none">
-    <div class="card-title">✉️ 추천 답변 <span id="csReplyTitle" style="font-weight:400;font-size:12px;color:var(--text3);margin-left:6px"></span></div>
-    <div id="csTemplateChips" style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap"></div>
-    <textarea id="csReply" rows="10" class="inp" style="resize:vertical;width:100%;box-sizing:border-box;font-size:13px;line-height:1.6"></textarea>
-    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-      <button class="btn btn-primary btn-sm" onclick="csCopy()">📋 답변 복사</button>
-      <button class="btn btn-sm" onclick="csClear()">🔄 초기화</button>
-      <span id="csCopyStatus" style="font-size:12px;color:var(--success);margin-left:6px;align-self:center"></span>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('csTplBody');var t=document.getElementById('csTplToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';}else{b.style.display='none';t.textContent='▼ 펼치기';}">
-      📚 답변 템플릿 관리 <span id="csTplToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
-    </div>
-    <div id="csTplBody" style="display:none">
-      <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">
-        키워드를 쉼표로 구분해서 등록하세요. 문의 내용에 해당 키워드 중 하나라도 포함되면 그 답변이 추천됩니다.<br>
-        여러 키워드가 매칭되면 더 많이 일치한 답변이 우선 노출됩니다.
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1.5fr 2fr auto;gap:8px;align-items:end;margin-bottom:10px">
-        <div>
-          <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">제목 <span style="color:var(--danger)">★</span></label>
-          <input class="inp" id="csTplTitle" placeholder="예: 배송 문의" style="font-size:12px">
-        </div>
-        <div>
-          <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">키워드 (쉼표 구분) <span style="color:var(--danger)">★</span></label>
-          <input class="inp" id="csTplKeywords" placeholder="예: 배송, 발송, 언제, 도착" style="font-size:12px">
-        </div>
-        <div>
-          <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">답변 본문 <span style="color:var(--danger)">★</span></label>
-          <textarea class="inp" id="csTplReply" rows="2" placeholder="안녕하세요 고객님,..." style="font-size:12px;resize:vertical"></textarea>
-        </div>
-        <div><button class="btn btn-primary" id="csTplAddBtn" onclick="csTplSave()" style="height:36px">+ 추가</button></div>
-      </div>
-      <div id="csTplError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
-      <div id="csTplList"></div>
-    </div>
-  </div>
-</div>
-</div><!-- /tab-cs -->
 
 <script>
 // ══════════════════════════════════════════════════════════
@@ -9836,166 +9764,6 @@ function wrDeleteSnap(date){
   wrShowHistory(); wrShowHistory(); // toggle off then on
 }
 
-// ══════════════════════════════════════════════════════════
-// 고객문의 답변 자동화 (CS)
-// ══════════════════════════════════════════════════════════
-const LS_CS_TEMPLATES = 'yb_cs_templates';
-const DEFAULT_CS_TEMPLATES = [
-  { id:1, title:'배송 문의', keywords:['배송','발송','언제','도착','출고','택배','받','보내','출하'],
-    reply:'안녕하세요 고객님 :)\n\n주문해주셔서 감사합니다. 발송은 영업일 기준 1~2일 이내 진행되며, 발송 후 보통 1~2일 내 도착됩니다.\n출고가 완료되면 운송장 번호를 자동으로 안내드리니 참고 부탁드립니다.\n\n감사합니다.' },
-  { id:2, title:'교환·환불 문의', keywords:['교환','환불','반품','취소','잘못','파손','불량'],
-    reply:'안녕하세요 고객님 :)\n\n불편을 끼쳐드려 죄송합니다. 교환/환불은 상품 수령 후 7일 이내에 가능하며, 단순 변심의 경우 왕복 배송비가 부과됩니다.\n파손/불량의 경우 사진 1~2장을 보내주시면 즉시 처리 도와드리겠습니다.\n\n감사합니다.' },
-  { id:3, title:'상품 정보 문의', keywords:['상품','제품','정보','크기','무게','용량','맛','원산지','보관','유통기한'],
-    reply:'안녕하세요 고객님 :)\n\n문의주신 상품에 대해 안내드립니다.\n상세 정보는 상품 페이지 하단의 상세설명을 참고해주시면 됩니다. 추가로 궁금하신 점 있으시면 다시 문의 주세요!\n\n감사합니다.' },
-  { id:4, title:'좋은 평가 감사', keywords:['감사','맛있','좋아','후기','만족','잘 받','잘받'],
-    reply:'안녕하세요 고객님 :)\n\n좋은 평가 남겨주셔서 진심으로 감사드립니다. 만족스럽게 받아보셨다니 너무 기쁩니다.\n앞으로도 좋은 상품으로 보답드리겠습니다.\n\n감사합니다.' },
-  { id:5, title:'재고/품절 문의', keywords:['재고','품절','입고','언제 들어','매진','없'],
-    reply:'안녕하세요 고객님 :)\n\n재고 확인 후 신속히 답변드리겠습니다. 입고 일정이 정해지면 별도 안내 드리도록 하겠습니다.\n불편 드려 죄송합니다.\n\n감사합니다.' },
-  { id:6, title:'주문 변경/취소', keywords:['주문 변경','변경','주문 취소','옵션 변경','수량 변경','주소 변경'],
-    reply:'안녕하세요 고객님 :)\n\n출고 전이라면 주문 변경 및 취소가 가능합니다. 변경/취소를 원하시면 주문번호와 함께 변경 내용을 알려주시면 빠르게 처리 도와드리겠습니다.\n이미 출고된 경우엔 수령 후 반품 절차로 진행해주셔야 합니다.\n\n감사합니다.' }
-];
-function csLoadTemplates(){
-  try { const a = JSON.parse(localStorage.getItem(LS_CS_TEMPLATES)||'null'); if (Array.isArray(a)) return a; } catch(e){}
-  localStorage.setItem(LS_CS_TEMPLATES, JSON.stringify(DEFAULT_CS_TEMPLATES));
-  return [...DEFAULT_CS_TEMPLATES];
-}
-function csSaveTemplates(arr){ try { localStorage.setItem(LS_CS_TEMPLATES, JSON.stringify(arr)); } catch(e){} }
-
-let _csEditingId = null;
-function csDetect(){
-  const txt = (document.getElementById('csInquiry')?.value||'').trim();
-  const matchInfo = document.getElementById('csMatchInfo');
-  const replyCard = document.getElementById('csReplyCard');
-  const chipsEl = document.getElementById('csTemplateChips');
-  if (!txt) {
-    if (matchInfo) matchInfo.textContent = '';
-    if (replyCard) replyCard.style.display = 'none';
-    return;
-  }
-  const tpls = csLoadTemplates();
-  const lower = txt.toLowerCase();
-  // 각 템플릿마다 매칭된 키워드 개수 계산
-  const scored = tpls.map(t => {
-    const matchedKws = (t.keywords||[]).filter(k => k && lower.includes(String(k).toLowerCase().trim()));
-    return { tpl:t, score: matchedKws.length, matchedKws };
-  }).filter(s => s.score > 0)
-    .sort((a,b) => b.score - a.score);
-  if (scored.length === 0) {
-    if (matchInfo) matchInfo.innerHTML = '<span style="color:var(--warn)">⚠ 매칭되는 템플릿이 없어요. 직접 답변을 작성하거나 새 템플릿을 추가하세요.</span>';
-    if (replyCard) replyCard.style.display = 'block';
-    document.getElementById('csReplyTitle').textContent = '(직접 작성)';
-    document.getElementById('csReply').value = '안녕하세요 고객님 :)\n\n';
-    chipsEl.innerHTML = '';
-    return;
-  }
-  const best = scored[0];
-  if (matchInfo) matchInfo.innerHTML = `<span style="color:var(--success)">✅ 매칭: "${escHtml(best.tpl.title)}"</span> <span style="color:var(--text3)">— 매칭 키워드: ${best.matchedKws.map(k=>'<code style="background:var(--bg);padding:1px 5px;border-radius:3px">'+escHtml(k)+'</code>').join(' ')}</span>`;
-  if (replyCard) replyCard.style.display = 'block';
-  document.getElementById('csReplyTitle').textContent = '— ' + best.tpl.title;
-  document.getElementById('csReply').value = best.tpl.reply || '';
-  // 다른 후보들도 칩으로 표시 (상위 3개까지)
-  const others = scored.slice(0, 4);
-  chipsEl.innerHTML = others.map((s,i) => `<button class="btn btn-sm" style="padding:3px 10px;font-size:11px;${i===0?'background:var(--accent);color:#fff;border-color:var(--accent)':''}" onclick="csPickTemplate(${s.tpl.id})">${escHtml(s.tpl.title)} <span style="opacity:0.7">·${s.score}</span></button>`).join('');
-}
-function csPickTemplate(id){
-  const t = csLoadTemplates().find(x => x.id === id);
-  if (!t) return;
-  document.getElementById('csReplyTitle').textContent = '— ' + t.title;
-  document.getElementById('csReply').value = t.reply || '';
-  // 활성 칩 표시 업데이트
-  const chips = document.querySelectorAll('#csTemplateChips button');
-  chips.forEach(b => {
-    if (b.textContent.includes(t.title)) { b.style.background = 'var(--accent)'; b.style.color = '#fff'; b.style.borderColor = 'var(--accent)'; }
-    else { b.style.background = ''; b.style.color = ''; b.style.borderColor = ''; }
-  });
-}
-function csCopy(){
-  const txt = document.getElementById('csReply')?.value || '';
-  if (!txt.trim()) { alert('복사할 내용이 없어요.'); return; }
-  navigator.clipboard.writeText(txt).then(() => {
-    const st = document.getElementById('csCopyStatus');
-    if (st) { st.textContent = '✅ 복사됨!'; setTimeout(()=>{ st.textContent=''; }, 2000); }
-  }).catch(e => alert('복사 실패: '+e.message));
-}
-function csClear(){
-  document.getElementById('csInquiry').value = '';
-  document.getElementById('csReply').value = '';
-  document.getElementById('csMatchInfo').textContent = '';
-  document.getElementById('csReplyCard').style.display = 'none';
-  document.getElementById('csTemplateChips').innerHTML = '';
-}
-function csTplRender(){
-  const list = document.getElementById('csTplList');
-  if (!list) return;
-  const tpls = csLoadTemplates();
-  if (!tpls.length) { list.innerHTML = '<p style="font-size:12px;color:var(--text3)">등록된 템플릿이 없습니다.</p>'; return; }
-  list.innerHTML = tpls.map(t => `
-    <div style="padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;${_csEditingId===t.id?'background:var(--accent-bg)':''}">
-      <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:700;margin-bottom:3px">${escHtml(t.title)}</div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">키워드: ${(t.keywords||[]).map(k=>'<span style="background:#fef3c7;color:#92400e;border-radius:10px;padding:1px 7px;font-size:10px;margin-right:3px">'+escHtml(k)+'</span>').join('')}</div>
-          <div style="font-size:11px;color:var(--text2);white-space:pre-wrap;line-height:1.5;max-height:60px;overflow:hidden;text-overflow:ellipsis">${escHtml((t.reply||'').slice(0,200))}${(t.reply||'').length>200?'...':''}</div>
-        </div>
-        <div style="display:flex;gap:4px;flex-shrink:0">
-          <button class="btn btn-sm" onclick="csTplEdit(${t.id})" style="padding:3px 8px;font-size:11px">✏️ 수정</button>
-          <button class="btn btn-danger btn-sm" onclick="csTplDelete(${t.id})" style="padding:3px 8px;font-size:11px">삭제</button>
-        </div>
-      </div>
-    </div>`).join('');
-}
-function csTplEdit(id){
-  const t = csLoadTemplates().find(x => x.id === id);
-  if (!t) return;
-  _csEditingId = id;
-  document.getElementById('csTplTitle').value = t.title || '';
-  document.getElementById('csTplKeywords').value = (t.keywords||[]).join(', ');
-  document.getElementById('csTplReply').value = t.reply || '';
-  document.getElementById('csTplAddBtn').textContent = '💾 저장';
-  document.getElementById('csTplTitle').scrollIntoView({behavior:'smooth', block:'center'});
-  csTplRender();
-}
-function csTplSave(){
-  const title = (document.getElementById('csTplTitle').value||'').trim();
-  const kwRaw = (document.getElementById('csTplKeywords').value||'').trim();
-  const reply = (document.getElementById('csTplReply').value||'').trim();
-  const err = document.getElementById('csTplError');
-  if (err) err.textContent = '';
-  if (!title || !kwRaw || !reply) {
-    if (err) err.textContent = '제목, 키워드, 답변 본문을 모두 입력해주세요.';
-    return;
-  }
-  const keywords = kwRaw.split(/[,，]/).map(k => k.trim()).filter(Boolean);
-  const tpls = csLoadTemplates();
-  if (_csEditingId != null) {
-    const i = tpls.findIndex(x => x.id === _csEditingId);
-    if (i >= 0) tpls[i] = { ...tpls[i], title, keywords, reply };
-    _csEditingId = null;
-    document.getElementById('csTplAddBtn').textContent = '+ 추가';
-  } else {
-    const newId = Math.max(0, ...tpls.map(t => t.id||0)) + 1;
-    tpls.push({ id:newId, title, keywords, reply });
-  }
-  csSaveTemplates(tpls);
-  document.getElementById('csTplTitle').value = '';
-  document.getElementById('csTplKeywords').value = '';
-  document.getElementById('csTplReply').value = '';
-  csTplRender();
-  csDetect();  // 현재 문의 다시 매칭
-}
-function csTplDelete(id){
-  if (!confirm('이 템플릿을 삭제할까요?')) return;
-  const tpls = csLoadTemplates().filter(t => t.id !== id);
-  csSaveTemplates(tpls);
-  if (_csEditingId === id) { _csEditingId = null; document.getElementById('csTplAddBtn').textContent = '+ 추가'; }
-  csTplRender();
-}
-// 탭 진입 시 템플릿 목록 로드
-(function csInit(){
-  document.addEventListener('DOMContentLoaded', () => {
-    csTplRender();
-  });
-})();
 </script>
 
 <!-- 🤖 비서 위젯 (어느 탭에서나 호출) -->
