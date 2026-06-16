@@ -7733,6 +7733,22 @@ function reconExportXlsx() {
     </label>
   </div>
   <div class="card">
+    <div class="card-title">🧄 깐마늘 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택</span></div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">
+      동일(깐마늘) 발주서에서 <b>노란색 칠한 행 = 리뷰주문</b>으로 인식해요. 그로븐/옐로우브릿지 발주서를 올리면 깐마늘 상세표에 <b>실주문 vs 리뷰주문</b>이 나눠서 표시됩니다. 두 파일 한 번에 올려도 OK.
+    </div>
+    <div class="upload-zone" id="srReviewZone" onclick="document.getElementById('srReviewFile').click()"
+         ondragover="event.preventDefault();this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="srDropReview(event)">
+      <div style="font-size:24px;margin-bottom:4px">🧄</div>
+      <div style="font-weight:600;margin-bottom:2px">YYMMDD-동일-발주서_그로븐/옐로우브릿지.xlsx 끌어다 놓거나 클릭</div>
+      <div style="font-size:11px;color:var(--text3)">파일명으로 브랜드 자동 감지 · 노란색(FFFF00) 채움 = 리뷰</div>
+      <input type="file" id="srReviewFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadReview(this.files); this.value='';">
+    </div>
+    <div id="srReviewInfo" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+  </div>
+  <div class="card">
     <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('paBody');var t=document.getElementById('paToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';srRenderProductAliases();}else{b.style.display='none';t.textContent='▼ 펼치기';}">
       🏷️ 상품명 별칭 관리
       <span id="paToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
@@ -9028,9 +9044,20 @@ function srAggregate(orders){
       if (!kg) kg = 1;
       const opt = kg + 'kg';
       const k = p + '||' + opt;
-      if (!garlicMap[k]) garlicMap[k] = {platform:p, option:opt, count:0, sales:0};
+      if (!garlicMap[k]) garlicMap[k] = {platform:p, option:opt, count:0, sales:0, realCount:0, realSales:0, reviewCount:0, reviewSales:0};
       garlicMap[k].count++;
       garlicMap[k].sales += amt;
+      // 리뷰주문 여부 — 발주서에서 노란색 칠한 받는사람 매칭
+      const brand = srBrand(o.alias);
+      const rname = String(o.recv_name||'').trim();
+      const isReview = rname && srReviewSet && srReviewSet.has(brand + '||' + rname);
+      if (isReview) {
+        garlicMap[k].reviewCount++;
+        garlicMap[k].reviewSales += amt;
+      } else {
+        garlicMap[k].realCount++;
+        garlicMap[k].realSales += amt;
+      }
     }
   }
   return {totalSales,count:orders.length,platMap,prodMap,garlicMap};
@@ -9119,12 +9146,17 @@ function srGarlicDetailHtml(agg, color){
     return m ? parseInt(m[1]) : 99;
   };
   let totalCnt = 0, totalSales = 0;
+  let totalRealCnt = 0, totalRealSales = 0, totalReviewCnt = 0, totalReviewSales = 0;
   const rows = [];
   platOrder.forEach((plat, pi) => {
     const items = byPlat[plat].slice().sort((a,b) => optOrder(a)-optOrder(b));
     items.forEach((it, ii) => {
       totalCnt += it.count;
       totalSales += it.sales;
+      totalRealCnt += (it.realCount||0);
+      totalRealSales += (it.realSales||0);
+      totalReviewCnt += (it.reviewCount||0);
+      totalReviewSales += (it.reviewSales||0);
       const isFirstInPlat = ii === 0;
       rows.push(`<tr style="background:${pi%2===0?'#FAF8F2':'#F2EDDE'}">
         <td style="padding:8px 14px;border-bottom:1px solid #EDE7D8;font-weight:${isFirstInPlat?'600':'400'};color:${isFirstInPlat?'#5B4A33':'#6B5840'}">${isFirstInPlat?escHtml(it.platform):''}</td>
@@ -9134,8 +9166,20 @@ function srGarlicDetailHtml(agg, color){
       </tr>`);
     });
   });
+  const hasReview = totalReviewCnt > 0;
+  const splitRows = hasReview ? `
+      <tr style="background:#F2EDDE">
+        <td colspan="2" style="padding:7px 14px;color:#6B5840;border-top:1px solid #E1D9C4">└ 실주문</td>
+        <td style="padding:7px 14px;text-align:right;color:#6B5840;border-top:1px solid #E1D9C4">${totalRealCnt.toLocaleString()}건</td>
+        <td style="padding:7px 14px;text-align:right;color:#6B5840;border-top:1px solid #E1D9C4;font-weight:600">${totalRealSales.toLocaleString()}원</td>
+      </tr>
+      <tr style="background:#F2EDDE">
+        <td colspan="2" style="padding:7px 14px;color:#92400E">└ 리뷰주문</td>
+        <td style="padding:7px 14px;text-align:right;color:#92400E">${totalReviewCnt.toLocaleString()}건</td>
+        <td style="padding:7px 14px;text-align:right;color:#92400E;font-weight:600">${totalReviewSales.toLocaleString()}원</td>
+      </tr>` : '';
   return `
-    <div style="background:#F5F1E8;color:#6B5840;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #C9B68A">🧄 깐마늘 상세 (플랫폼 × 옵션)</div>
+    <div style="background:#F5F1E8;color:#6B5840;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #C9B68A">🧄 깐마늘 상세 (플랫폼 × 옵션)${hasReview?' <span style="font-weight:400;font-size:11px;color:#92400E">· 리뷰 분리 적용</span>':''}</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FAF8F2">
       <colgroup><col style="width:32%"><col style="width:25%"><col style="width:18%"><col style="width:25%"></colgroup>
       <thead><tr style="background:#EDE7D8">
@@ -9145,7 +9189,7 @@ function srGarlicDetailHtml(agg, color){
         <th style="padding:8px 14px;text-align:right;color:#6B5840;font-weight:700">매출액</th>
       </tr></thead>
       <tbody>${rows.join('')}</tbody>
-      <tfoot><tr style="background:#E1D9C4;font-weight:700">
+      <tfoot>${splitRows}<tr style="background:#E1D9C4;font-weight:700">
         <td colspan="2" style="padding:8px 14px;color:#5B4A33">합계</td>
         <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalCnt.toLocaleString()}건</td>
         <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalSales.toLocaleString()}원</td>
@@ -9208,6 +9252,100 @@ function srLoadDinette(file){
 function srClearDinette(){
   srDinetteRows = null; srDinetteFileName = '';
   document.getElementById('srDinetteInfo').innerHTML = '';
+}
+// ─ 깐마늘 리뷰주문 (발주서의 노란색 채움 = 리뷰) ─
+const srReviewSet = new Set();        // 'grobn||홍길동' / 'yb||홍길동'
+const srReviewFileMeta = [];          // [{name, brand, count, err?}]
+function srDropReview(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (files && files.length) srLoadReview(files);
+}
+function srDetectReviewBrand(filename){
+  const f = String(filename||'');
+  if (/그로븐|로또상회|grobn/i.test(f)) return 'grobn';
+  if (/옐로우브릿지|자꾸가게|YB/i.test(f)) return 'yb';
+  return null;
+}
+function srIsYellowCell(cell){
+  if (!cell || !cell.s) return false;
+  const fill = cell.s.fill || cell.s;
+  const fg = (fill && (fill.fgColor || fill.bgColor)) || cell.s.fgColor || cell.s.bgColor;
+  if (!fg) return false;
+  const rgb = String(fg.rgb||'').toUpperCase();
+  return rgb === 'FFFFFF00' || rgb === 'FFFF00' || rgb === 'FFFFFFFF00';
+}
+function srLoadReview(files){
+  if (!files || !files.length) return;
+  const arr = Array.from(files);
+  let done = 0;
+  arr.forEach(file => {
+    const brand = srDetectReviewBrand(file.name);
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, {type:'array', cellStyles:true});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const range = XLSX.utils.decode_range(ws['!ref']||'A1');
+        let cnt = 0;
+        // 헤더 1행 가정 — 2행부터 데이터. 컬럼 A = 받는사람.
+        for (let R = range.s.r + 1; R <= range.e.r; R++) {
+          let isReview = false;
+          for (let C = range.s.c; C <= range.e.c; C++) {
+            const cell = ws[XLSX.utils.encode_cell({r:R, c:C})];
+            if (srIsYellowCell(cell)) { isReview = true; break; }
+          }
+          if (!isReview) continue;
+          const nameCell = ws[XLSX.utils.encode_cell({r:R, c:0})];
+          const name = nameCell ? String(nameCell.v||'').trim() : '';
+          if (!name) continue;
+          if (brand) {
+            srReviewSet.add(brand+'||'+name);
+          } else {
+            srReviewSet.add('grobn||'+name);
+            srReviewSet.add('yb||'+name);
+          }
+          cnt++;
+        }
+        srReviewFileMeta.push({name:file.name, brand, count:cnt});
+      } catch(err) {
+        srReviewFileMeta.push({name:file.name, brand:null, count:0, err:err.message});
+      } finally {
+        done++;
+        if (done === arr.length) {
+          srRenderReviewInfo();
+          // 보고서가 떠있으면 다시 그리기
+          if (document.getElementById('srReport') && document.getElementById('srReport').innerHTML.trim()) {
+            srRender();
+          }
+        }
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+function srRenderReviewInfo(){
+  const info = document.getElementById('srReviewInfo');
+  if (!info) return;
+  if (!srReviewFileMeta.length) { info.innerHTML=''; return; }
+  const lines = srReviewFileMeta.map(m => {
+    if (m.err) return `<span style="color:var(--danger)">❌ ${escHtml(m.name)} — ${escHtml(m.err)}</span>`;
+    const tag = m.brand==='grobn' ? '<span style="color:#1E40AF;font-weight:600">그로븐</span>'
+             : m.brand==='yb' ? '<span style="color:#A47800;font-weight:600">옐로우브릿지</span>'
+             : '<span style="color:#888">브랜드 미감지(양쪽 매칭)</span>';
+    return `<span style="color:var(--success)">✅ ${escHtml(m.name)}</span> — ${tag} · 리뷰 <b>${m.count}건</b> 인식`;
+  });
+  info.innerHTML = lines.join('<br>') + ` <button class="btn btn-sm" style="margin-left:6px;margin-top:6px;padding:2px 8px;font-size:10px" onclick="srClearReview()">전체 제거</button>`;
+}
+function srClearReview(){
+  srReviewSet.clear();
+  srReviewFileMeta.length = 0;
+  const info = document.getElementById('srReviewInfo');
+  if (info) info.innerHTML = '';
+  if (document.getElementById('srReport') && document.getElementById('srReport').innerHTML.trim()) {
+    srRender();
+  }
 }
 function srDinettePrice(spec, qty){
   const unit = SR_DINETTE_UNIT[spec] || 2;
