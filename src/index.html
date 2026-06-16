@@ -9545,18 +9545,18 @@ function srExportImage(){
   if(typeof html2canvas!=='function'){alert('이미지 변환 라이브러리(html2canvas)를 찾을 수 없어요.');return;}
   const dateStr=(document.getElementById('srReportDate').value||_localISO()).replace(/-/g,'');
   const headerEl=document.getElementById('srReportHeader');
-  // 저장할 섹션 후보 — 내용 있는 것만
-  const cand=[
-    {id:'srGrobnSection',  label:'그로븐'},
-    {id:'srYbSection',     label:'옐로우브릿지'},
-    {id:'srDinetteSection',label:'디네트'}
+  // 저장 묶음 정의
+  //   그로븐 → 헤더 + 그로븐 섹션
+  //   옐로우브릿지 → 옐로우브릿지 섹션 + 디네트(B2B) 섹션 (헤더 없음)
+  const groups=[
+    {label:'그로븐',       includeHeader:true,  sectionIds:['srGrobnSection']},
+    {label:'옐로우브릿지', includeHeader:false, sectionIds:['srYbSection','srDinetteSection']}
   ];
-  const targets=cand.filter(c=>{
-    const s=document.getElementById(c.id);
+  const targets=groups.filter(g=>g.sectionIds.some(id=>{
+    const s=document.getElementById(id);
     return s && s.innerHTML.trim();
-  });
+  }));
   if(targets.length===0){
-    // 폴백: 통째로 저장
     html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
       const link=document.createElement('a');
       link.download=`매출보고_${dateStr}.png`;
@@ -9566,13 +9566,14 @@ function srExportImage(){
     return;
   }
   (async()=>{
-    for(const t of targets){
-      const sec=document.getElementById(t.id);
+    for(const g of targets){
       const tmp=document.createElement('div');
       tmp.style.cssText='background:#fff;padding:22px;width:680px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
-      if(headerEl) tmp.appendChild(headerEl.cloneNode(true));
-      tmp.appendChild(sec.cloneNode(true));
-      // 푸터(발주일자) 살짝 같이
+      if(g.includeHeader && headerEl) tmp.appendChild(headerEl.cloneNode(true));
+      for(const id of g.sectionIds){
+        const sec=document.getElementById(id);
+        if(sec && sec.innerHTML.trim()) tmp.appendChild(sec.cloneNode(true));
+      }
       const foot=document.createElement('div');
       foot.style.cssText='margin-top:18px;font-size:10px;color:#888;text-align:right';
       foot.textContent=`발주일자 ${document.getElementById('srReportDate').value||_localISO()} 기준 · 발주 자동화 시스템`;
@@ -9581,15 +9582,14 @@ function srExportImage(){
       try{
         const canvas=await html2canvas(tmp,{backgroundColor:'#ffffff',scale:2,useCORS:true});
         const link=document.createElement('a');
-        link.download=`매출보고_${t.label}_${dateStr}.png`;
+        link.download=`매출보고_${g.label}_${dateStr}.png`;
         link.href=canvas.toDataURL('image/png');
         document.body.appendChild(link);link.click();document.body.removeChild(link);
       }catch(e){
-        alert(`${t.label} 이미지 저장 실패: ${e.message}`);
+        alert(`${g.label} 이미지 저장 실패: ${e.message}`);
       }finally{
         document.body.removeChild(tmp);
       }
-      // 브라우저가 연속 다운로드를 차단하지 않도록 약간 텀
       await new Promise(r=>setTimeout(r,250));
     }
   })();
