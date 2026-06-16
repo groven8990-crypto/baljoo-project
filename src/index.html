@@ -9147,9 +9147,11 @@ function srGarlicDetailHtml(agg, color){
   };
   let totalCnt = 0, totalSales = 0;
   let totalRealCnt = 0, totalRealSales = 0, totalReviewCnt = 0, totalReviewSales = 0;
+  const platSplit = {};  // plat → {realCount, realSales, reviewCount, reviewSales}
   const rows = [];
   platOrder.forEach((plat, pi) => {
     const items = byPlat[plat].slice().sort((a,b) => optOrder(a)-optOrder(b));
+    if (!platSplit[plat]) platSplit[plat] = {realCount:0, realSales:0, reviewCount:0, reviewSales:0};
     items.forEach((it, ii) => {
       totalCnt += it.count;
       totalSales += it.sales;
@@ -9157,6 +9159,10 @@ function srGarlicDetailHtml(agg, color){
       totalRealSales += (it.realSales||0);
       totalReviewCnt += (it.reviewCount||0);
       totalReviewSales += (it.reviewSales||0);
+      platSplit[plat].realCount   += (it.realCount||0);
+      platSplit[plat].realSales   += (it.realSales||0);
+      platSplit[plat].reviewCount += (it.reviewCount||0);
+      platSplit[plat].reviewSales += (it.reviewSales||0);
       const isFirstInPlat = ii === 0;
       rows.push(`<tr style="background:${pi%2===0?'#FAF8F2':'#F2EDDE'}">
         <td style="padding:8px 14px;border-bottom:1px solid #EDE7D8;font-weight:${isFirstInPlat?'600':'400'};color:${isFirstInPlat?'#5B4A33':'#6B5840'}">${isFirstInPlat?escHtml(it.platform):''}</td>
@@ -9167,19 +9173,9 @@ function srGarlicDetailHtml(agg, color){
     });
   });
   const hasReview = totalReviewCnt > 0;
-  const splitRows = hasReview ? `
-      <tr style="background:#F2EDDE">
-        <td colspan="2" style="padding:7px 14px;color:#6B5840;border-top:1px solid #E1D9C4">└ 실주문</td>
-        <td style="padding:7px 14px;text-align:right;color:#6B5840;border-top:1px solid #E1D9C4">${totalRealCnt.toLocaleString()}건</td>
-        <td style="padding:7px 14px;text-align:right;color:#6B5840;border-top:1px solid #E1D9C4;font-weight:600">${totalRealSales.toLocaleString()}원</td>
-      </tr>
-      <tr style="background:#F2EDDE">
-        <td colspan="2" style="padding:7px 14px;color:#92400E">└ 리뷰주문</td>
-        <td style="padding:7px 14px;text-align:right;color:#92400E">${totalReviewCnt.toLocaleString()}건</td>
-        <td style="padding:7px 14px;text-align:right;color:#92400E;font-weight:600">${totalReviewSales.toLocaleString()}원</td>
-      </tr>` : '';
-  return `
-    <div style="background:#F5F1E8;color:#6B5840;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #C9B68A">🧄 깐마늘 상세 (플랫폼 × 옵션)${hasReview?' <span style="font-weight:400;font-size:11px;color:#92400E">· 리뷰 분리 적용</span>':''}</div>
+  // Block 1 — 플랫폼 × 옵션 상세 (분리 행 없이 합계만)
+  const block1 = `
+    <div style="background:#F5F1E8;color:#6B5840;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #C9B68A">🧄 깐마늘 상세 (플랫폼 × 옵션)</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FAF8F2">
       <colgroup><col style="width:32%"><col style="width:25%"><col style="width:18%"><col style="width:25%"></colgroup>
       <thead><tr style="background:#EDE7D8">
@@ -9189,12 +9185,47 @@ function srGarlicDetailHtml(agg, color){
         <th style="padding:8px 14px;text-align:right;color:#6B5840;font-weight:700">매출액</th>
       </tr></thead>
       <tbody>${rows.join('')}</tbody>
-      <tfoot>${splitRows}<tr style="background:#E1D9C4;font-weight:700">
+      <tfoot><tr style="background:#E1D9C4;font-weight:700">
         <td colspan="2" style="padding:8px 14px;color:#5B4A33">합계</td>
         <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalCnt.toLocaleString()}건</td>
         <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalSales.toLocaleString()}원</td>
       </tr></tfoot>
     </table>`;
+  // Block 2 — 플랫폼별 실주문 / 리뷰주문 분리 (리뷰가 있을 때만)
+  let block2 = '';
+  if (hasReview) {
+    const splitRowsHtml = platOrder.map((plat, pi) => {
+      const s = platSplit[plat];
+      return `<tr style="background:${pi%2===0?'#FAF8F2':'#F2EDDE'}">
+        <td style="padding:8px 14px;border-bottom:1px solid #EDE7D8;font-weight:600;color:#5B4A33">${escHtml(plat)}</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#6B5840">${s.realCount.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#6B5840;font-weight:600">${s.realSales.toLocaleString()}원</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#92400E">${s.reviewCount.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#92400E;font-weight:600">${s.reviewSales.toLocaleString()}원</td>
+      </tr>`;
+    }).join('');
+    block2 = `
+    <div style="background:#F5F1E8;color:#6B5840;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #C9B68A">🧄 깐마늘 실주문 / 리뷰주문 분리 (플랫폼별)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FAF8F2">
+      <colgroup><col style="width:24%"><col style="width:14%"><col style="width:24%"><col style="width:14%"><col style="width:24%"></colgroup>
+      <thead><tr style="background:#EDE7D8">
+        <th style="padding:8px 14px;text-align:left;color:#6B5840;font-weight:700">플랫폼</th>
+        <th style="padding:8px 14px;text-align:right;color:#6B5840;font-weight:700">실주문 건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#6B5840;font-weight:700">실주문 매출</th>
+        <th style="padding:8px 14px;text-align:right;color:#92400E;font-weight:700">리뷰 건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#92400E;font-weight:700">리뷰 매출</th>
+      </tr></thead>
+      <tbody>${splitRowsHtml}</tbody>
+      <tfoot><tr style="background:#E1D9C4;font-weight:700">
+        <td style="padding:8px 14px;color:#5B4A33">합계</td>
+        <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalRealCnt.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalRealSales.toLocaleString()}원</td>
+        <td style="padding:8px 14px;text-align:right;color:#7C2D12">${totalReviewCnt.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;color:#7C2D12">${totalReviewSales.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>`;
+  }
+  return block1 + block2;
 }
 // ─ 디네트 박대 ─
 // 평시(기본) 단가
@@ -9457,28 +9488,30 @@ function srRender(){
   const titleDate=dateStr.replace(/-/g,'.');
   const html=`
     <div id="srReportContent" class="card" style="background:#fff;padding:22px;max-width:680px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
-      <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 일일 매출 현황</div>
-      <div style="font-size:11px;color:#888;margin-top:2px">발주일자 기준</div>
-      <div style="background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
-        <div>
-          <div style="font-size:11px;color:#888">총 매출액</div>
-          <div style="font-size:22px;font-weight:700;color:#1A56DB;margin-top:2px">${totalSales.toLocaleString()}원</div>
-          <div style="font-size:11px;color:#888;margin-top:2px">총 ${totalCnt.toLocaleString()}건</div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:#888">자사 매출액</div>
-          <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px">${selfSales.toLocaleString()}원</div>
-          <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:#888">디네트 매출액</div>
-          <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${dnAgg.sales.toLocaleString()}원</div>
-          <div style="font-size:11px;color:#888;margin-top:2px">${dnAgg.count.toLocaleString()}건</div>
+      <div id="srReportHeader">
+        <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 일일 매출 현황</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">발주일자 기준</div>
+        <div style="background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
+          <div>
+            <div style="font-size:11px;color:#888">총 매출액</div>
+            <div style="font-size:22px;font-weight:700;color:#1A56DB;margin-top:2px">${totalSales.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">총 ${totalCnt.toLocaleString()}건</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#888">자사 매출액</div>
+            <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px">${selfSales.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#888">디네트 매출액</div>
+            <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${dnAgg.sales.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">${dnAgg.count.toLocaleString()}건</div>
+          </div>
         </div>
       </div>
-      ${srBrandSection('로또상회 (그로븐)', '#1E3A5F', grAgg)}
-      ${srBrandSection('자꾸가게 (옐로우브릿지)', '#3A1E5F', ybAgg)}
-      ${srDinetteSection(dnAgg)}
+      <div id="srGrobnSection">${srBrandSection('로또상회 (그로븐)', '#1E3A5F', grAgg)}</div>
+      <div id="srYbSection">${srBrandSection('자꾸가게 (옐로우브릿지)', '#3A1E5F', ybAgg)}</div>
+      <div id="srDinetteSection">${srDinetteSection(dnAgg)}</div>
       <div style="margin-top:18px;font-size:10px;color:#888;text-align:right">발주일자 ${dateStr} 기준 · 발주 자동화 시스템</div>
     </div>`;
   document.getElementById('srReport').innerHTML=html;
@@ -9510,13 +9543,56 @@ function srExportImage(){
   const el=document.getElementById('srReportContent');
   if(!el){alert('먼저 보고서를 생성해주세요');return;}
   if(typeof html2canvas!=='function'){alert('이미지 변환 라이브러리(html2canvas)를 찾을 수 없어요.');return;}
-  html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
-    const link=document.createElement('a');
-    const dateStr=(document.getElementById('srReportDate').value||_localISO()).replace(/-/g,'');
-    link.download=`매출보고_${dateStr}.png`;
-    link.href=canvas.toDataURL('image/png');
-    document.body.appendChild(link);link.click();document.body.removeChild(link);
-  }).catch(e=>alert('이미지 저장 실패: '+e.message));
+  const dateStr=(document.getElementById('srReportDate').value||_localISO()).replace(/-/g,'');
+  const headerEl=document.getElementById('srReportHeader');
+  // 저장할 섹션 후보 — 내용 있는 것만
+  const cand=[
+    {id:'srGrobnSection',  label:'그로븐'},
+    {id:'srYbSection',     label:'옐로우브릿지'},
+    {id:'srDinetteSection',label:'디네트'}
+  ];
+  const targets=cand.filter(c=>{
+    const s=document.getElementById(c.id);
+    return s && s.innerHTML.trim();
+  });
+  if(targets.length===0){
+    // 폴백: 통째로 저장
+    html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
+      const link=document.createElement('a');
+      link.download=`매출보고_${dateStr}.png`;
+      link.href=canvas.toDataURL('image/png');
+      document.body.appendChild(link);link.click();document.body.removeChild(link);
+    }).catch(e=>alert('이미지 저장 실패: '+e.message));
+    return;
+  }
+  (async()=>{
+    for(const t of targets){
+      const sec=document.getElementById(t.id);
+      const tmp=document.createElement('div');
+      tmp.style.cssText='background:#fff;padding:22px;width:680px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
+      if(headerEl) tmp.appendChild(headerEl.cloneNode(true));
+      tmp.appendChild(sec.cloneNode(true));
+      // 푸터(발주일자) 살짝 같이
+      const foot=document.createElement('div');
+      foot.style.cssText='margin-top:18px;font-size:10px;color:#888;text-align:right';
+      foot.textContent=`발주일자 ${document.getElementById('srReportDate').value||_localISO()} 기준 · 발주 자동화 시스템`;
+      tmp.appendChild(foot);
+      document.body.appendChild(tmp);
+      try{
+        const canvas=await html2canvas(tmp,{backgroundColor:'#ffffff',scale:2,useCORS:true});
+        const link=document.createElement('a');
+        link.download=`매출보고_${t.label}_${dateStr}.png`;
+        link.href=canvas.toDataURL('image/png');
+        document.body.appendChild(link);link.click();document.body.removeChild(link);
+      }catch(e){
+        alert(`${t.label} 이미지 저장 실패: ${e.message}`);
+      }finally{
+        document.body.removeChild(tmp);
+      }
+      // 브라우저가 연속 다운로드를 차단하지 않도록 약간 텀
+      await new Promise(r=>setTimeout(r,250));
+    }
+  })();
 }
 
 // ══════════════════════════════════════════════════════════
