@@ -9534,6 +9534,16 @@ function srRender(){
 let _srLastSnapshot = null;
 function srSaveCurrentSnapshot(){
   if (!_srLastSnapshot) { alert('먼저 📊 보고서 생성을 눌러주세요'); return; }
+  // 입력칸의 보고일자가 스냅샷과 다르면 — 사용자가 날짜만 바꾸고 보고서 재생성을 안 누른 케이스
+  const inputDate = document.getElementById('srReportDate')?.value || '';
+  if (inputDate && inputDate !== _srLastSnapshot.date) {
+    if (!confirm(`보고일자 입력칸(${inputDate})과 화면에 떠있는 보고서 날짜(${_srLastSnapshot.date})가 달라요.\n\n📊 보고서 생성을 다시 눌러서 ${inputDate} 기준으로 새로 만든 다음에 저장할까요?`)) return;
+    srRender();
+    if (!_srLastSnapshot || _srLastSnapshot.date !== inputDate) {
+      alert('보고서 재생성 결과 날짜가 일치하지 않습니다. 입력칸을 확인하고 다시 시도해주세요.');
+      return;
+    }
+  }
   const date = _srLastSnapshot.date;
   const existing = srLoadHistory().some(s => s.date === date);
   if (existing && !confirm(`${date} 이력이 이미 있어요. 덮어쓸까요?`)) return;
