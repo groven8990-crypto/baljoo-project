@@ -9560,7 +9560,7 @@ function srExportImage(){
   const el=document.getElementById('srReportContent');
   if(!el){alert('먼저 보고서를 생성해주세요');return;}
   if(typeof html2canvas!=='function'){alert('이미지 변환 라이브러리(html2canvas)를 찾을 수 없어요.');return;}
-  const dateStr=(document.getElementById('srReportDate').value||_localISO()).replace(/-/g,'');
+  const dateStr=(document.getElementById('srReportDate').value||_localISO()).replace(/-/g,'').slice(2);  // YYMMDD
   const headerEl=document.getElementById('srReportHeader');
   // 저장 묶음 정의
   //   그로븐 → 헤더 + 그로븐 섹션
@@ -9576,7 +9576,7 @@ function srExportImage(){
   if(targets.length===0){
     html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
       const link=document.createElement('a');
-      link.download=`매출보고_${dateStr}.png`;
+      link.download=`${dateStr}-매출보고.png`;
       link.href=canvas.toDataURL('image/png');
       document.body.appendChild(link);link.click();document.body.removeChild(link);
     }).catch(e=>alert('이미지 저장 실패: '+e.message));
@@ -9599,7 +9599,7 @@ function srExportImage(){
       try{
         const canvas=await html2canvas(tmp,{backgroundColor:'#ffffff',scale:2,useCORS:true});
         const link=document.createElement('a');
-        link.download=`매출보고_${g.label}_${dateStr}.png`;
+        link.download=`${dateStr}-매출보고_${g.label}.png`;
         link.href=canvas.toDataURL('image/png');
         document.body.appendChild(link);link.click();document.body.removeChild(link);
       }catch(e){
