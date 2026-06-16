@@ -254,6 +254,17 @@
 
   <div class="step" id="step3">
     <div class="card">
+      <div class="card-title" style="display:flex;align-items:center;gap:8px">
+        🔍 자동 검토 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 샵마인 원본 vs 발주서 결과 수량 대조</span>
+        <button class="btn btn-sm" style="margin-left:auto;font-size:11px" onclick="renderVerifyArea()">↻ 다시 검토</button>
+      </div>
+      <div class="alert alert-info" style="margin-bottom:10px;font-size:12px">
+        각 발주서를 미리 만들어보고 <b>원본 주문 수량 합계와 발주서 수량 합계가 일치하는지</b> 자동으로 확인해요.
+        ⚠️ 가 뜨면 다운로드 전에 확인 필요. (특히 동일·깐마늘은 kg 단위 변환이 정확한지 추적)
+      </div>
+      <div id="genVerifyArea"></div>
+    </div>
+    <div class="card">
       <div class="card-title">📥 발주서 목록</div>
       <div id="genListArea"></div>
     </div>
@@ -1901,6 +1912,135 @@ function renderStep3(){
     </div>`;
   }
   document.getElementById('genListArea').innerHTML=html;
+  // 자동 검토도 같이 갱신
+  renderVerifyArea();
+}
+
+// ══════════════════════════════════════════════════════════
+// 자동 검토 (샵마인 원본 vs 발주서 결과 대조)
+// ══════════════════════════════════════════════════════════
+function _detectGarlicKg(o){
+  let kg = 0;
+  const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kg = parseInt(m1[1]);
+  if (!kg) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kg = parseInt(m[1]); }
+  if (!kg) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kg = parseInt(m[1]); }
+  if (!kg) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kg = parseInt(m[1]); }
+  return kg;  // 못 찾으면 0
+}
+function _expectedQty(vendor, o){
+  const baseQty = Number(o.qty)||1;
+  const codeQty = Number(o.code_qty)||1;
+  if (vendor === '동일') {
+    const kg = _detectGarlicKg(o);
+    return kg > 1 ? baseQty * kg : baseQty * codeQty;
+  }
+  return baseQty * codeQty;
+}
+function verifyVendorBuild(vendor, alias, orders){
+  const res = {vendor, alias, ok:true, srcCnt:orders.length, dstCnt:0, expectedSum:0, actualSum:0, issues:[], kgDist:null, badRows:[]};
+  res.expectedSum = orders.reduce((s,o)=> s + _expectedQty(vendor, o), 0);
+  let rows;
+  try { rows = buildRows(vendor, orders, alias); }
+  catch(e){ res.ok=false; res.issues.push('발주서 생성 중 오류: '+e.message); return res; }
+  if (!rows || rows.length < 2) {
+    res.ok=false; res.issues.push('발주서 빈 결과 (행 0개)');
+    return res;
+  }
+  res.dstCnt = rows.length - 1;
+  const header = rows[0].map(h => String(h||''));
+  // 수량 컬럼: 우선 정확 "수량" → "박스수량" → "수량(A타입)" → "주문수량" 폴백
+  let qtyCol = header.findIndex(h => /^(수량|박스수량|박스수|수량\(A타입\)|주문수량)$/.test(h.trim()));
+  if (qtyCol < 0) qtyCol = header.findIndex(h => /수량/.test(h));
+  if (qtyCol < 0) { res.issues.push('수량 컬럼을 찾지 못해 합계 검증 불가'); return res; }
+  for (let i=1; i<rows.length; i++) {
+    const v = parseInt(rows[i][qtyCol]) || 0;
+    res.actualSum += v;
+  }
+  // 깐마늘 kg 분포 (원본 기준)
+  if (vendor === '동일') {
+    res.kgDist = {};
+    for (const o of orders) {
+      const kg = _detectGarlicKg(o);
+      const key = kg > 0 ? kg+'kg' : '(미감지)';
+      res.kgDist[key] = (res.kgDist[key]||0) + (Number(o.qty)||1);
+    }
+    // 행별 정밀 대조 (동일은 1:1 매핑)
+    for (let i=0; i<orders.length; i++) {
+      const o = orders[i];
+      const expected = _expectedQty(vendor, o);
+      const actual = parseInt(rows[i+1]?.[qtyCol]) || 0;
+      if (expected !== actual) {
+        res.badRows.push({
+          recv_name: o.recv_name || '',
+          order_no: o.order_no || '',
+          select_opt: o.select_opt || '',
+          disp_opt: o.disp_opt || '',
+          expected, actual
+        });
+      }
+    }
+  }
+  if (res.srcCnt !== res.dstCnt && vendor === '동일') {
+    res.ok = false;
+    res.issues.push(`행 수 불일치: 원본 ${res.srcCnt}건 → 발주서 ${res.dstCnt}행`);
+  }
+  if (res.expectedSum !== res.actualSum) {
+    res.ok = false;
+    res.issues.push(`총 수량 불일치: 예상 ${res.expectedSum} ≠ 실제 ${res.actualSum} (차이 ${res.actualSum - res.expectedSum})`);
+  }
+  return res;
+}
+function renderVerifyArea(){
+  const el = document.getElementById('genVerifyArea');
+  if (!el) return;
+  const groupKeys = Object.keys(groupedOrders||{});
+  if (!groupKeys.length) { el.innerHTML = '<p style="font-size:12px;color:var(--text3);margin:0">발주처별 그룹이 없어요.</p>'; return; }
+  const results = [];
+  for (const gk of sortVendorKeys(groupKeys)) {
+    const [v,a] = gk.split('|');
+    try { results.push(verifyVendorBuild(v, a, groupedOrders[gk])); }
+    catch(e) { results.push({vendor:v, alias:a, ok:false, issues:['검증 오류: '+e.message]}); }
+  }
+  const okCnt = results.filter(r=>r.ok).length;
+  const warnCnt = results.length - okCnt;
+  const head = `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:${warnCnt?'#FEF3C7':'#DCFCE7'};border-left:3px solid ${warnCnt?'#F59E0B':'#16A34A'};border-radius:4px;margin-bottom:8px">
+    <span style="font-size:14px;font-weight:700;color:${warnCnt?'#92400E':'#166534'}">${warnCnt?'⚠️':'✅'} ${okCnt}/${results.length} 발주서 통과${warnCnt?` · ${warnCnt}건 점검 필요`:''}</span>
+  </div>`;
+  const list = results.map((r, idx) => {
+    const statusIco = r.ok ? '✅' : '⚠️';
+    const statusColor = r.ok ? '#166534' : '#92400E';
+    const headLine = `<span style="font-weight:600;color:${statusColor}">${statusIco} ${escHtml(r.vendor)}</span> <span class="badge badge-purple">${escHtml(r.alias)}</span>
+      <span style="font-size:12px;color:var(--text3);margin-left:6px">원본 ${r.srcCnt}건 → 발주서 ${r.dstCnt}행 · 수량합 예상 <b>${r.expectedSum}</b> / 실제 <b style="color:${r.expectedSum===r.actualSum?'var(--success)':'var(--danger)'}">${r.actualSum}</b></span>`;
+    let extra = '';
+    if (r.kgDist) {
+      const d = Object.entries(r.kgDist).sort((a,b)=>parseInt(a[0])-parseInt(b[0])).map(([k,v])=>`${k}=${v}건`).join(' · ');
+      extra += `<div style="font-size:11px;color:var(--text3);margin-top:4px">📊 원본 kg 분포 (주문건수 기준): ${d}</div>`;
+    }
+    const issueHtml = r.issues.length ? `<div style="margin-top:6px;font-size:12px;color:var(--danger)">${r.issues.map(i=>'• '+escHtml(i)).join('<br>')}</div>` : '';
+    let badHtml = '';
+    if (r.badRows && r.badRows.length) {
+      const rowsHtml = r.badRows.slice(0, 10).map(b => `
+        <tr>
+          <td style="padding:4px 8px;border-bottom:1px solid #fee2e2">${escHtml(b.recv_name)}</td>
+          <td style="padding:4px 8px;border-bottom:1px solid #fee2e2;font-family:monospace;font-size:11px">${escHtml(b.order_no)}</td>
+          <td style="padding:4px 8px;border-bottom:1px solid #fee2e2;font-size:11px">${escHtml(b.select_opt||'(빈칸)')}</td>
+          <td style="padding:4px 8px;border-bottom:1px solid #fee2e2;font-size:11px">${escHtml(b.disp_opt||'(빈칸)')}</td>
+          <td style="padding:4px 8px;border-bottom:1px solid #fee2e2;text-align:right;color:#16a34a">${b.expected}</td>
+          <td style="padding:4px 8px;border-bottom:1px solid #fee2e2;text-align:right;color:#dc2626;font-weight:700">${b.actual}</td>
+        </tr>`).join('');
+      badHtml = `<div style="margin-top:8px">
+        <details style="font-size:12px"><summary style="cursor:pointer;color:var(--danger);font-weight:600">⚠️ 수량 어긋난 행 ${r.badRows.length}건 보기</summary>
+        <table style="width:100%;border-collapse:collapse;margin-top:6px;background:#fff;border:1px solid #fecaca">
+          <thead><tr style="background:#fee2e2"><th style="padding:5px 8px;text-align:left;font-size:11px">받는사람</th><th style="padding:5px 8px;text-align:left;font-size:11px">주문번호</th><th style="padding:5px 8px;text-align:left;font-size:11px">선택사항(Q)</th><th style="padding:5px 8px;text-align:left;font-size:11px">노출상품명(쿠팡)</th><th style="padding:5px 8px;text-align:right;font-size:11px">예상</th><th style="padding:5px 8px;text-align:right;font-size:11px">실제</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        ${r.badRows.length>10?`<div style="margin-top:4px;font-size:11px;color:var(--text3)">…외 ${r.badRows.length-10}건 더</div>`:''}
+        </details>
+      </div>`;
+    }
+    return `<div style="padding:10px 12px;border-bottom:1px solid var(--border)">${headLine}${extra}${issueHtml}${badHtml}</div>`;
+  }).join('');
+  el.innerHTML = head + '<div style="border:1px solid var(--border);border-radius:6px;background:#fff">' + list + '</div>';
 }
 
 // ── 거래처별 이메일 저장 ──
@@ -2094,13 +2234,15 @@ function buildRows(vk,orders,alias){
       // 농업법인회사 동일(깐마늘) — 안전망: 모든 행을 "깐마늘 1kg" + 수량(kg수 × code_qty)로 통일
       return [['받는사람','전화번호1','전화번호2','우편번호','주소','수량(A타입)','상품명1','보내는사람(지정)','전화번호1(지정)','주소(지정)','배송메시지','주문번호','내품수량1','운임'],
         ...orders.map(o => {
-          // 옵션에 Nkg 패턴 있으면 N을 추출해서 수량에 곱하고 옵션은 1kg로 통일
-          const optStr = String(o.option_name||'');
-          const kgM = optStr.match(/(\d+)\s*kg/i);
-          const kgN = kgM ? parseInt(kgM[1]) : 1;
-          // effQty = qty(주문수량) × code_qty(코드 내장수량)
-          // kg 수가 1보다 크면 코드 내장수량 무시하고 kg수×주문수량으로 (예: 2kg 주문 1건 → 1×2=2개)
+          // kg 추출 우선순위: select_opt → 노출옵션명(쿠팡) → vendor_code → option_name
+          let kgN = 0;
+          const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kgN = parseInt(m1[1]);
+          if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kgN = parseInt(m[1]); }
+          if (!kgN) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+          if (!kgN) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+          if (!kgN) kgN = 1;
           const baseQty = Number(o.qty)||1;
+          // kg 수가 1보다 크면 코드 내장수량 무시하고 kg수×주문수량으로 (예: 2kg 주문 1건 → 1×2=2개)
           const finalQty = kgN > 1 ? baseQty * kgN : (o.code_qty||1) * baseQty;
           // 상품명은 무조건 "깐마늘 1kg"
           return [o.recv_name, o.recv_phone, '', o.zip, o.addr, finalQty, '깐마늘 1kg', s.name, s.phone, s.addr, o.memo, o.order_no, '', ''];
