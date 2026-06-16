@@ -7713,6 +7713,10 @@ function reconExportXlsx() {
       <button class="btn btn-primary" onclick="srRender()" id="srBuildBtn">📊 보고서 생성</button>
       <button class="btn" onclick="srSaveCurrentSnapshot()" id="srSaveBtn" disabled>💾 이력에 저장</button>
       <button class="btn btn-green" onclick="srExportImage()" id="srImageBtn" disabled>🖼 이미지(PNG) 저장</button>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+        <span id="srSaveFolderName" style="font-size:11px;color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
+        <button class="btn btn-sm" onclick="pickSrSaveFolder()" title="PNG 저장할 폴더를 선택합니다 (그로븐·옐로우브릿지 서브폴더 자동 생성)">📁 폴더 설정</button>
+      </div>
     </div>
   </div>
   <div class="card">
@@ -8913,6 +8917,8 @@ window.addEventListener('load', ()=>{
   // 주간 매출 보고용 날짜 — 오늘 날짜로 자동 세팅 (그 주 월~일 자동 계산)
   const wrDate = document.getElementById('wrAnyDate');
   if (wrDate) wrDate.value = _localISO();
+  // 매출보고 PNG 저장 폴더 복원
+  _restoreSrSaveFolder();
 });
 
 // ══════════════════════════════════════════════════════════
@@ -9556,6 +9562,66 @@ function srSaveCurrentSnapshot(){
   const status = document.getElementById('srStatus');
   status.innerHTML = `<span style="color:var(--success)">✅ ${date} 누적 이력에 저장됐어요</span> <span style="color:var(--text3);font-size:11px">· 주간 매출 탭에서 합산됩니다</span>`;
 }
+// ── 매출보고 PNG 저장 폴더 (지출결의서와 동일 패턴) ──
+let _srSaveDirHandle = null;
+async function _updateSrFolderLabel(){
+  const nameEl = document.getElementById('srSaveFolderName');
+  if (!nameEl) return;
+  if (_srSaveDirHandle) {
+    nameEl.textContent = '📂 ' + _srSaveDirHandle.name + ' (그로븐·옐로우브릿지 서브폴더 자동 생성)';
+    nameEl.style.color = 'var(--primary)';
+  } else {
+    nameEl.textContent = '저장 폴더 미설정';
+    nameEl.style.color = '';
+  }
+}
+async function _restoreSrSaveFolder(){
+  try {
+    const handle = await _idbGet('srSaveDirHandle');
+    if (!handle) return;
+    const perm = await handle.queryPermission({mode:'readwrite'});
+    _srSaveDirHandle = handle;
+    const nameEl = document.getElementById('srSaveFolderName');
+    if (nameEl) {
+      if (perm === 'granted') {
+        nameEl.textContent = '📂 ' + handle.name + ' (그로븐·옐로우브릿지 서브폴더 자동 생성)';
+        nameEl.style.color = 'var(--success)';
+      } else {
+        nameEl.textContent = '📂 ' + handle.name + ' (재실행 시 승인 필요 — 저장 버튼 클릭 시 자동 요청)';
+        nameEl.style.color = 'var(--warn)';
+      }
+    }
+  } catch(e) { /* 무시 */ }
+}
+async function pickSrSaveFolder(){
+  try {
+    if (!window.showDirectoryPicker) {
+      alert('이 브라우저는 폴더 직접 저장을 지원하지 않습니다.\nPNG가 Downloads 폴더에 저장됩니다.');
+      return;
+    }
+    const handle = await window.showDirectoryPicker({mode:'readwrite', startIn:'desktop'});
+    _srSaveDirHandle = handle;
+    await _idbPut('srSaveDirHandle', handle);
+    await _updateSrFolderLabel();
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('폴더 선택 오류: ' + e.message);
+  }
+}
+async function _getSrSubDirHandle(label){
+  if (!_srSaveDirHandle) return null;
+  try {
+    const perm = await _srSaveDirHandle.queryPermission({mode:'readwrite'});
+    if (perm === 'prompt') {
+      const granted = await _srSaveDirHandle.requestPermission({mode:'readwrite'});
+      if (granted !== 'granted') return null;
+    } else if (perm !== 'granted') return null;
+    // 라벨 그대로 서브폴더로 (그로븐 / 옐로우브릿지)
+    return await _srSaveDirHandle.getDirectoryHandle(label, {create:true});
+  } catch(e) {
+    console.warn('매출보고 서브폴더 접근 실패:', e);
+    return null;
+  }
+}
 function srExportImage(){
   const el=document.getElementById('srReportContent');
   if(!el){alert('먼저 보고서를 생성해주세요');return;}
@@ -9598,10 +9664,21 @@ function srExportImage(){
       document.body.appendChild(tmp);
       try{
         const canvas=await html2canvas(tmp,{backgroundColor:'#ffffff',scale:2,useCORS:true});
-        const link=document.createElement('a');
-        link.download=`${dateStr}-매출보고_${g.label}.png`;
-        link.href=canvas.toDataURL('image/png');
-        document.body.appendChild(link);link.click();document.body.removeChild(link);
+        const fileName=`${dateStr}-매출보고_${g.label}.png`;
+        const blob=await new Promise(res=>canvas.toBlob(res,'image/png'));
+        const subDir=await _getSrSubDirHandle(g.label);
+        if (subDir && blob) {
+          // 사용자 지정 폴더의 브랜드 서브폴더에 직접 저장
+          const fileHandle=await subDir.getFileHandle(fileName,{create:true});
+          const w=await fileHandle.createWritable();
+          await w.write(blob); await w.close();
+        } else {
+          // 폴더 미지정 → 기존 다운로드
+          const link=document.createElement('a');
+          link.download=fileName;
+          link.href=canvas.toDataURL('image/png');
+          document.body.appendChild(link);link.click();document.body.removeChild(link);
+        }
       }catch(e){
         alert(`${g.label} 이미지 저장 실패: ${e.message}`);
       }finally{
