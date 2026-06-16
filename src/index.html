@@ -265,7 +265,13 @@
       <div id="genVerifyArea"></div>
     </div>
     <div class="card">
-      <div class="card-title">📥 발주서 목록</div>
+      <div class="card-title" style="display:flex;align-items:center;gap:8px">
+        📥 발주서 목록
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+          <span id="poSaveFolderName" style="font-size:11px;font-weight:400;color:var(--text3);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
+          <button class="btn btn-sm" onclick="pickPoSaveFolder()" title="발주서 저장할 폴더 선택 (그로븐·옐로우브릿지 서브폴더 자동 생성)">📁 폴더 설정</button>
+        </div>
+      </div>
       <div id="genListArea"></div>
     </div>
     <div class="card">
@@ -285,10 +291,6 @@
       <button class="btn" onclick="goStep(1)">🏠 처음으로</button>
       <button class="btn" onclick="goStep(2)">← 이전</button>
       <button class="btn btn-green" id="genAllBtn" onclick="generateAll()">⬇ 전체 발주서 다운로드</button>
-      <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
-        <span id="poSaveFolderName" style="font-size:11px;color:var(--text3);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
-        <button class="btn btn-sm" onclick="pickPoSaveFolder()" title="발주서 저장할 폴더 선택 (그로븐·옐로우브릿지 서브폴더 자동 생성)">📁 폴더 설정</button>
-      </div>
     </div>
   </div>
 
@@ -3150,13 +3152,14 @@ function getUnconfirmedNonstdOrders(){
   }
   return [...seen.values()];
 }
+let _editingNonstdIdx = -1;
 function renderNonstdCodes(){
   const card = document.getElementById('nonstdCodeCard');
   const listEl = document.getElementById('nonstdCodeList');
   const countEl = document.getElementById('nonstdCount');
   if (!card || !listEl) return;
   const items = getUnconfirmedNonstdOrders();
-  if (!items.length) { card.style.display = 'none'; if (countEl) countEl.textContent=''; return; }
+  if (!items.length) { card.style.display = 'none'; if (countEl) countEl.textContent=''; _editingNonstdIdx = -1; return; }
   card.style.display = '';
   if (countEl) countEl.textContent = `(${items.length}건)`;
   const G = 'display:grid;grid-template-columns:1.5fr 1.1fr 1fr 60px auto;gap:8px;align-items:center';
@@ -3165,17 +3168,48 @@ function renderNonstdCodes(){
     const soText = o.select_opt ? `<div style="margin-top:3px;font-size:10px;color:var(--text3)"><span style="color:var(--warn)">선택사항(Q):</span> ${escHtml(o.select_opt)}</div>` : '';
     const dopText = o.disp_opt ? `<div style="margin-top:2px;font-size:10px;color:var(--text3)"><span style="color:#0E7490">노출상품명(쿠팡):</span> ${escHtml(o.disp_opt)}</div>` : '';
     const codeCell = `<div style="font-size:11px;color:var(--text3);word-break:break-word"><span style="font-family:monospace;color:var(--danger)">${escHtml(o.vendor_code||'')}</span><div style="color:var(--text2);margin-top:2px;line-height:1.4">${escHtml(o.product||'')}</div>${soText}${dopText}</div>`;
-    html += `<div style="${G};padding:8px 0;border-bottom:1px solid #fee2e2">${codeCell}
-      <div style="font-size:12px">${escHtml(o.item_name||'-')}</div>
-      <div style="font-size:12px">${escHtml(o.option_name||'')||'-'}</div>
-      <div style="font-size:12px">${o.code_qty||1}</div>
-      <span style="display:flex;gap:4px">
-        <button class="btn btn-primary btn-sm" onclick="confirmNonstdAt(${i})">✓ 확인</button>
-        <button class="btn btn-sm" onclick="editNonstdAt(${i})">✏️ 수정</button>
-      </span></div>`;
+    if (_editingNonstdIdx === i) {
+      html += `<div style="${G};padding:8px 0;border-bottom:1px solid #fee2e2;background:#fff7ed">${codeCell}
+        <input class="inp" id="ns_item_${i}" style="font-size:12px" value="${escHtml(o.item_name||'')}">
+        <input class="inp" id="ns_opt_${i}" style="font-size:12px" value="${escHtml(o.option_name||'')}">
+        <input class="inp" id="ns_qty_${i}" type="number" min="1" style="font-size:12px" value="${o.code_qty||1}">
+        <span style="display:flex;gap:4px">
+          <button class="btn btn-primary btn-sm" onclick="saveNonstdEdit(${i})">💾 저장</button>
+          <button class="btn btn-sm" onclick="_editingNonstdIdx=-1;renderNonstdCodes()">취소</button>
+        </span></div>`;
+    } else {
+      html += `<div style="${G};padding:8px 0;border-bottom:1px solid #fee2e2">${codeCell}
+        <div style="font-size:12px">${escHtml(o.item_name||'-')}</div>
+        <div style="font-size:12px">${escHtml(o.option_name||'')||'-'}</div>
+        <div style="font-size:12px">${o.code_qty||1}</div>
+        <span style="display:flex;gap:4px">
+          <button class="btn btn-primary btn-sm" onclick="confirmNonstdAt(${i})">✓ 확인</button>
+          <button class="btn btn-sm" onclick="editNonstdAt(${i})">✏️ 수정</button>
+        </span></div>`;
+    }
   });
   listEl.innerHTML = html;
   window._nonstdItems = items;
+}
+function saveNonstdEdit(i){
+  const o = (window._nonstdItems||[])[i]; if (!o) return;
+  const item = (document.getElementById('ns_item_'+i)?.value||'').trim();
+  const opt  = (document.getElementById('ns_opt_'+i)?.value||'').trim();
+  const qty  = Math.max(1, parseInt(document.getElementById('ns_qty_'+i)?.value||'1')||1);
+  const k = ovKey(o.vendor_code, o.select_opt);
+  // 직접수정(override) 저장 — 다음에 같은 코드+선택사항으로 들어와도 자동 적용
+  const ovs = loadOverrides().filter(x=>x.key!==k);
+  ovs.push({key:k, item, option:opt, qty});
+  saveOverrides(ovs);
+  // 이 코드는 확인 처리됨 (다시 안 뜸)
+  confirmCode(o.vendor_code, o.select_opt);
+  _editingNonstdIdx = -1;
+  // 재매칭 + 모든 관련 UI 갱신
+  rematchAllOrders();
+  renderStep2();
+  renderUnmatchedHints();
+  renderOmPreview();
+  if (typeof renderDirectEditList === 'function') renderDirectEditList();
 }
 function confirmNonstdAt(i){
   const o = (window._nonstdItems||[])[i]; if (!o) return;
@@ -3183,35 +3217,10 @@ function confirmNonstdAt(i){
   renderNonstdCodes();
 }
 function editNonstdAt(i){
-  const o = (window._nonstdItems||[])[i]; if (!o) return;
-  // 직접수정 카드/본문 펼치기
-  const card = document.getElementById('directEditCard');
-  if (card) card.style.display = '';
-  const body = document.getElementById('directEditBody');
-  const toggle = document.getElementById('directEditToggle');
-  if (body) {
-    body.style.display = '';
-    if (toggle) toggle.textContent = '▲ 접기';
-  }
-  // _directCombos 채우기
-  renderDirectEdit();
-  // 해당 줄 찾기
-  const k = ovKey(o.vendor_code, o.select_opt);
-  const idx = (_directCombos||[]).findIndex(c => c.k === k);
-  if (idx < 0) {
-    alert('해당 주문을 직접수정 목록에서 찾지 못했어요. 발주서 생성 탭의 분석 화면이 맞는지 확인해주세요.');
-    return;
-  }
-  _editingOvIdx = idx;
-  renderDirectEditList();
-  // 편집 폼이 보이도록 스크롤
-  setTimeout(() => {
-    const editRow = document.querySelector('#directEditList div[style*="accent-bg"]');
-    if (editRow) editRow.scrollIntoView({behavior:'smooth', block:'center'});
-    else document.getElementById('directEditCard')?.scrollIntoView({behavior:'smooth', block:'center'});
-    // 첫 입력에 포커스
-    document.getElementById('de_item')?.focus();
-  }, 100);
+  _editingNonstdIdx = i;
+  renderNonstdCodes();
+  // 첫 입력에 포커스
+  setTimeout(()=>document.getElementById('ns_item_'+i)?.focus(), 50);
 }
 function confirmAllNonstd(){
   const items = getUnconfirmedNonstdOrders();
