@@ -10009,16 +10009,17 @@ async function wrExportImage(){
   const pages = el.querySelectorAll('.wr-page');
   const range = wrWeekRange(document.getElementById('wrAnyDate').value || _localISO());
   const tag = range ? (range.start+'_'+range.end).replace(/-/g,'') : _localISO().replace(/-/g,'');
+  const today = _localISO().replace(/-/g,'').slice(2);  // 저장일 YYMMDD
   const btn = document.getElementById('wrImageBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 저장 중...'; }
   try {
     if (pages.length === 0) {
       const canvas = await html2canvas(el, {backgroundColor:'#ffffff', scale:2, useCORS:true});
-      _wrDownloadCanvas(canvas, `주간매출보고_${tag}.png`);
+      _wrDownloadCanvas(canvas, `${today}-주간매출보고_${tag}.png`);
     } else {
       for (let i = 0; i < pages.length; i++) {
         const canvas = await html2canvas(pages[i], {backgroundColor:'#ffffff', scale:2, useCORS:true});
-        _wrDownloadCanvas(canvas, `주간매출보고_${tag}_${i+1}of${pages.length}.png`);
+        _wrDownloadCanvas(canvas, `${today}-주간매출보고_${tag}_${i+1}of${pages.length}.png`);
         await new Promise(r => setTimeout(r, 250));  // 브라우저가 연속 다운로드 차단하지 않도록 살짝 텀
       }
     }
