@@ -2001,6 +2001,7 @@ function verifyVendorBuild(vendor, alias, orders){
     res.rowDetails.push({
       recv_name: o.recv_name||'',
       order_no: o.order_no||'',
+      src_product: o.product||'',
       src_select: o.select_opt||'',
       src_disp: o.disp_opt||'',
       dst_item: dstItem,
@@ -2044,6 +2045,7 @@ function renderVerifyArea(){
       return `<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff">
         <thead><tr style="background:#F3F4F6;color:#374151">
           <th style="padding:6px 8px;text-align:left;font-weight:600">받는사람</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:600">상품명</th>
           <th style="padding:6px 8px;text-align:left;font-weight:600">선택사항(Q)</th>
           <th style="padding:6px 8px;text-align:left;font-weight:600">노출상품명(쿠팡)</th>
           <th style="padding:6px 8px;text-align:left;font-weight:600">발주서 품목/옵션</th>
@@ -2053,9 +2055,10 @@ function renderVerifyArea(){
         <tbody>${list.map(rd => `
           <tr style="background:${rd.issues.length?'#FEF2F2':'#fff'}">
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${escHtml(rd.recv_name)}</td>
-            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#6B7280;max-width:200px;word-break:break-word">${escHtml(rd.src_select||'-')}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#374151;max-width:180px;word-break:break-word">${escHtml(rd.src_product||'-')}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#6B7280;max-width:180px;word-break:break-word">${escHtml(rd.src_select||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#0E7490;max-width:160px;word-break:break-word">${escHtml(rd.src_disp||'-')}</td>
-            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;max-width:200px;word-break:break-word">${escHtml((rd.dst_item+' '+rd.dst_opt).trim()||'-')}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;max-width:180px;word-break:break-word">${escHtml((rd.dst_item+' '+rd.dst_opt).trim()||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right">${rd.dst_qty!==null?rd.dst_qty:'-'}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:var(--danger);font-size:10px">${rd.issues.map(i=>'• '+escHtml(i)).join('<br>')||''}</td>
           </tr>`).join('')}</tbody></table>`;
