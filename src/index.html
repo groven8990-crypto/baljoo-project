@@ -285,6 +285,10 @@
       <button class="btn" onclick="goStep(1)">🏠 처음으로</button>
       <button class="btn" onclick="goStep(2)">← 이전</button>
       <button class="btn btn-green" id="genAllBtn" onclick="generateAll()">⬇ 전체 발주서 다운로드</button>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+        <span id="poSaveFolderName" style="font-size:11px;color:var(--text3);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
+        <button class="btn btn-sm" onclick="pickPoSaveFolder()" title="발주서 저장할 폴더 선택 (그로븐·옐로우브릿지 서브폴더 자동 생성)">📁 폴더 설정</button>
+      </div>
     </div>
   </div>
 
@@ -2319,16 +2323,96 @@ function dlOne(gk){
   autoColWidth(ws, rows);
   XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
   const fname = makeFileName(v, a);
-  XLSX.writeFile(wb, fname);
-  const c=document.getElementById('gc_'+ekey(gk));if(c)c.classList.add('done');
-  const mk=document.getElementById('dlm_'+ekey(gk));
-  if(mk){
-    const nowTime = new Date().toTimeString().slice(0,5);
-    mk.title = `오늘 ${nowTime} 다운로드 완료`;
-    mk.style.display = 'inline-flex';
+  _poWriteWorkbook(wb, fname, a).then(()=>{
+    const c=document.getElementById('gc_'+ekey(gk));if(c)c.classList.add('done');
+    const mk=document.getElementById('dlm_'+ekey(gk));
+    if(mk){
+      const nowTime = new Date().toTimeString().slice(0,5);
+      mk.title = `오늘 ${nowTime} 다운로드 완료`;
+      mk.style.display = 'inline-flex';
+    }
+    ds_autoCheckOne(v, a); // 개별 다운로드 시에도 일일현황 자동 체크
+    logDownload(v, a, orders, fname);  // 다운로드 이력 저장
+  });
+}
+
+// ── 발주서 저장 폴더 (지출결의서와 동일 패턴) ──
+let _poSaveDirHandle = null;
+async function _updatePoFolderLabel(){
+  const nameEl = document.getElementById('poSaveFolderName');
+  if (!nameEl) return;
+  if (_poSaveDirHandle) {
+    nameEl.textContent = '📂 ' + _poSaveDirHandle.name + ' (그로븐·옐로우브릿지 서브폴더 자동 생성)';
+    nameEl.style.color = 'var(--primary)';
+  } else {
+    nameEl.textContent = '저장 폴더 미설정';
+    nameEl.style.color = '';
   }
-  ds_autoCheckOne(v, a); // 개별 다운로드 시에도 일일현황 자동 체크
-  logDownload(v, a, orders, fname);  // 다운로드 이력 저장
+}
+async function _restorePoSaveFolder(){
+  try {
+    const handle = await _idbGet('poSaveDirHandle');
+    if (!handle) return;
+    const perm = await handle.queryPermission({mode:'readwrite'});
+    _poSaveDirHandle = handle;
+    const nameEl = document.getElementById('poSaveFolderName');
+    if (nameEl) {
+      if (perm === 'granted') {
+        nameEl.textContent = '📂 ' + handle.name + ' (그로븐·옐로우브릿지 서브폴더 자동 생성)';
+        nameEl.style.color = 'var(--success)';
+      } else {
+        nameEl.textContent = '📂 ' + handle.name + ' (재실행 시 승인 필요 — 다운로드 시 자동 요청)';
+        nameEl.style.color = 'var(--warn)';
+      }
+    }
+  } catch(e) { /* 무시 */ }
+}
+async function pickPoSaveFolder(){
+  try {
+    if (!window.showDirectoryPicker) {
+      alert('이 브라우저는 폴더 직접 저장을 지원하지 않습니다.\n발주서가 Downloads 폴더에 저장됩니다.');
+      return;
+    }
+    const handle = await window.showDirectoryPicker({mode:'readwrite', startIn:'desktop'});
+    _poSaveDirHandle = handle;
+    await _idbPut('poSaveDirHandle', handle);
+    await _updatePoFolderLabel();
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('폴더 선택 오류: ' + e.message);
+  }
+}
+async function _getPoSubDirHandle(alias){
+  if (!_poSaveDirHandle) return null;
+  try {
+    const perm = await _poSaveDirHandle.queryPermission({mode:'readwrite'});
+    if (perm === 'prompt') {
+      const granted = await _poSaveDirHandle.requestPermission({mode:'readwrite'});
+      if (granted !== 'granted') return null;
+    } else if (perm !== 'granted') return null;
+    // 별칭 → 스토어명 변환 (로또상회→그로븐, 자꾸가게→옐로우브릿지)
+    const subName = aliasToStore(alias);
+    return await _poSaveDirHandle.getDirectoryHandle(subName, {create:true});
+  } catch(e) {
+    console.warn('발주서 서브폴더 접근 실패:', e);
+    return null;
+  }
+}
+async function _poWriteWorkbook(wb, fname, alias){
+  const subDir = await _getPoSubDirHandle(alias);
+  if (subDir) {
+    try {
+      const u8 = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+      const blob = new Blob([u8], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const fh = await subDir.getFileHandle(fname, {create:true});
+      const w = await fh.createWritable();
+      await w.write(blob); await w.close();
+      return;
+    } catch(e) {
+      console.warn('폴더 저장 실패, 다운로드로 폴백:', e);
+    }
+  }
+  // 폴더 미지정 or 실패 → 기존 다운로드
+  XLSX.writeFile(wb, fname);
 }
 
 // ── 발주서 다운로드 이력 ──
@@ -2365,7 +2449,8 @@ function dlFromHistory(id){
   const ws = XLSX.utils.aoa_to_sheet(rows);
   autoColWidth(ws, rows);
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-  XLSX.writeFile(wb, item.fileName || makeFileName(item.vendor, item.alias));
+  const fname = item.fileName || makeFileName(item.vendor, item.alias);
+  _poWriteWorkbook(wb, fname, item.alias);
 }
 function deleteDlHistory(id){
   saveDlHistory(loadDlHistory().filter(h=>h.id!==id));
@@ -9098,6 +9183,8 @@ window.addEventListener('load', ()=>{
   if (wrDate) wrDate.value = _localISO();
   // 매출보고 PNG 저장 폴더 복원
   _restoreSrSaveFolder();
+  // 발주서 저장 폴더 복원
+  _restorePoSaveFolder();
 });
 
 // ══════════════════════════════════════════════════════════
