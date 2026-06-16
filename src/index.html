@@ -1710,7 +1710,7 @@ function handleFile(file) {
         const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
         const order_amt=Math.round(_ab - _ai + _ah);
         const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
+        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
         allOrders.push(order);
         if(vk){const gk=vk+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
         else unmatchedList.push(order);
@@ -2896,7 +2896,8 @@ function renderNonstdCodes(){
   let html = `<div style="${G};padding-bottom:6px;border-bottom:2px solid #fca5a5;font-size:11px;font-weight:500;color:var(--text2)"><span>판매자상품코드</span><span>품목명</span><span>옵션</span><span>수량</span><span></span></div>`;
   items.forEach((o, i) => {
     const soText = o.select_opt ? `<div style="margin-top:3px;font-size:10px;color:var(--text3)"><span style="color:var(--warn)">선택사항(Q):</span> ${escHtml(o.select_opt)}</div>` : '';
-    const codeCell = `<div style="font-size:11px;color:var(--text3);word-break:break-word"><span style="font-family:monospace;color:var(--danger)">${escHtml(o.vendor_code||'')}</span><div style="color:var(--text2);margin-top:2px;line-height:1.4">${escHtml(o.product||'')}</div>${soText}</div>`;
+    const dopText = o.disp_opt ? `<div style="margin-top:2px;font-size:10px;color:var(--text3)"><span style="color:#0E7490">노출상품명(쿠팡):</span> ${escHtml(o.disp_opt)}</div>` : '';
+    const codeCell = `<div style="font-size:11px;color:var(--text3);word-break:break-word"><span style="font-family:monospace;color:var(--danger)">${escHtml(o.vendor_code||'')}</span><div style="color:var(--text2);margin-top:2px;line-height:1.4">${escHtml(o.product||'')}</div>${soText}${dopText}</div>`;
     html += `<div style="${G};padding:8px 0;border-bottom:1px solid #fee2e2">${codeCell}
       <div style="font-size:12px">${escHtml(o.item_name||'-')}</div>
       <div style="font-size:12px">${escHtml(o.option_name||'')||'-'}</div>
@@ -3019,7 +3020,8 @@ function renderDirectEditList(){
     shown++;
     const dot = hasOv ? '<span title="직접수정 저장됨" style="color:var(--purple)">● </span>' : '';
     const soText = o.select_opt ? `<div style="margin-top:3px;font-size:10px;color:var(--text3)"><span style="color:var(--warn)">선택사항(Q):</span> <span style="color:var(--text2)">${escHtml(o.select_opt)}</span></div>` : '';
-    const codeCell = `<div style="font-size:11px;color:var(--text3);word-break:break-word">${dot}${escHtml(o.vendor_code||'')}<div style="color:var(--text2);margin-top:2px;line-height:1.4">${escHtml(o.product||'')}</div>${soText}</div>`;
+    const dopText = o.disp_opt ? `<div style="margin-top:2px;font-size:10px;color:var(--text3)"><span style="color:#0E7490">노출상품명(쿠팡):</span> <span style="color:var(--text2)">${escHtml(o.disp_opt)}</span></div>` : '';
+    const codeCell = `<div style="font-size:11px;color:var(--text3);word-break:break-word">${dot}${escHtml(o.vendor_code||'')}<div style="color:var(--text2);margin-top:2px;line-height:1.4">${escHtml(o.product||'')}</div>${soText}${dopText}</div>`;
     if(_editingOvIdx===i){
       html += `<div style="${G};padding:8px 0;border-bottom:1px solid var(--border);background:var(--accent-bg)">${codeCell}
         <input class="inp" id="de_item" style="font-size:12px" value="${escHtml(o.item_name||'')}">
@@ -5358,7 +5360,7 @@ function handleFileAdd(file){
         const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
         const order_amt=Math.round(_ab - _ai + _ah);
         const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
+        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
         allOrders.push(order);
         if(vk){const gk=vk+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
         else unmatchedList.push(order);
