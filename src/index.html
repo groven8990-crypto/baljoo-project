@@ -9030,10 +9030,15 @@ function srAggregate(orders){
                   || n === '깐마늘'
                   || (o.product||'').includes('깐마늘');
     if (isGarlic) {
-      // 원래 kg 추출: select_opt 우선 → vendor_code → option_name → code_qty
+      // 원래 kg 추출: select_opt → 노출옵션명(쿠팡) → vendor_code → option_name → code_qty
+      // (선택사항이 상품명만 들어있는 케이스는 노출옵션명(쿠팡)에서 kg를 잡아야 함)
       let kg = 0;
       const m1 = (o.select_opt||'').match(/(\d+)\s*kg/i);
       if (m1) kg = parseInt(m1[1]);
+      if (!kg) {
+        const m_disp = (o.disp_opt||'').match(/(\d+)\s*kg/i);
+        if (m_disp) kg = parseInt(m_disp[1]);
+      }
       if (!kg) {
         const m2 = (o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i);
         if (m2) kg = parseInt(m2[1]);
