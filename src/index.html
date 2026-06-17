@@ -6300,9 +6300,19 @@ async function previewExpense() {
     const reader = new FileReader();
     reader.onload = e => _doPreviewExpense(d, e.target.result);
     reader.readAsDataURL(file);
-  } else {
-    _doPreviewExpense(d, null);
+    return;
   }
+  // 수정 중일 때 새로 첨부 안 했으면 기존 IDB 첨부 이미지 불러오기
+  if (_editingExpItemId) {
+    try {
+      const attach = await _idbGetAttach(_editingExpItemId);
+      if (attach && (attach.type||'').startsWith('image/')) {
+        _doPreviewExpense(d, attach.data);
+        return;
+      }
+    } catch(e) { console.warn('기존 첨부 로드 실패:', e); }
+  }
+  _doPreviewExpense(d, null);
 }
 let _expModalData = null;
 function _doPreviewExpense(d, attachImgUrl) {
@@ -6451,7 +6461,7 @@ function _doPreviewExpense(d, attachImgUrl) {
     // 특이사항 (첨부 이미지 있으면 함께 표시)
     '<tr><td style="' + B + ';padding:5px 10px;font-size:11px;font-weight:600;background:#f5f5f5">특이사항 및 메모</td></tr>' +
     '<tr><td style="' + B + ';padding:8px 10px;font-size:11px;min-height:36px">' +
-      (d.note ? escHtml(d.note) : '* 주문 내역 첨부') +
+      (d.note ? escHtml(d.note) : '') +
       (attachImgUrl ? '<br><img src="' + attachImgUrl + '" style="max-width:100%;margin-top:8px;display:block;border:1px solid #e0e0e0;border-radius:3px">' : '') +
     '</td></tr>' +
     '</table>' +
