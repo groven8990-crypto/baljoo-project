@@ -770,7 +770,9 @@
         </div>
         <div id="expAttachPreview" style="display:none;margin-top:8px;padding:8px;border:1px dashed var(--border);border-radius:6px;background:#fafafa">
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px">미리보기 (특이사항 및 메모 칸에 함께 인쇄됩니다)</div>
-          <img id="expAttachPreviewImg" style="max-width:100%;max-height:280px;display:block;border:1px solid #e0e0e0;border-radius:4px">
+          <img id="expAttachPreviewImg" style="max-width:100%;max-height:280px;display:none;border:1px solid #e0e0e0;border-radius:4px">
+          <iframe id="expAttachPreviewPdf" style="width:100%;height:380px;display:none;border:1px solid #e0e0e0;border-radius:4px;background:#fff"></iframe>
+          <div id="expAttachPreviewPdfHint" style="display:none;font-size:11px;color:var(--text3);margin-top:6px">📄 PDF 첫 페이지가 자동으로 이미지로 변환돼서 저장됩니다.</div>
         </div>
       </div>
 
@@ -1134,6 +1136,24 @@
 </div>
 
 <script src="vendor/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>
+  if (window['pdfjsLib']) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  }
+  // PDF 첫 페이지를 PNG 데이터 URL로 변환
+  window._pdfFirstPageToPngDataUrl = async function(pdfDataUrl, scale){
+    if (!window['pdfjsLib']) throw new Error('pdfjsLib 미로드');
+    const pdf = await pdfjsLib.getDocument(pdfDataUrl).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({scale: scale || 1.5});
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width; canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({canvasContext: ctx, viewport}).promise;
+    return canvas.toDataURL('image/png');
+  };
+</script>
 
 
 
@@ -4481,7 +4501,7 @@ async function previewHistItem(i) {
   let attachImgUrl = null;
   if (d.hasAttach && d.id) {
     const attach = await _idbGetAttach(d.id);
-    if (attach && (attach.type||'').startsWith('image/')) attachImgUrl = attach.data;
+    if (attach) attachImgUrl = await _expAttachToImageUrl(attach.type, attach.data);
   }
   _doPreviewExpense(d, attachImgUrl);
 }
@@ -4550,21 +4570,37 @@ function onExpAttachChange(input) {
   const clearBtn = document.getElementById('expAttachClear');
   const prevBox  = document.getElementById('expAttachPreview');
   const prevImg  = document.getElementById('expAttachPreviewImg');
+  const prevPdf  = document.getElementById('expAttachPreviewPdf');
+  const prevHint = document.getElementById('expAttachPreviewPdfHint');
+  const hidePrev = () => {
+    if (prevBox)  prevBox.style.display = 'none';
+    if (prevImg) { prevImg.style.display = 'none'; prevImg.src = ''; }
+    if (prevPdf) { prevPdf.style.display = 'none'; prevPdf.src = ''; }
+    if (prevHint) prevHint.style.display = 'none';
+  };
   if (f) {
     if (nameEl) { nameEl.textContent = f.name; nameEl.style.color = 'var(--success)'; }
     if (clearBtn) clearBtn.style.display = '';
-    if ((f.type||'').startsWith('image/') && prevBox && prevImg) {
-      const reader = new FileReader();
-      reader.onload = e => { prevImg.src = e.target.result; prevBox.style.display = ''; };
-      reader.readAsDataURL(f);
-    } else if (prevBox) {
-      prevBox.style.display = 'none';
-    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const dataUrl = e.target.result;
+      hidePrev();
+      if (prevBox) prevBox.style.display = '';
+      if ((f.type||'').startsWith('image/') && prevImg) {
+        prevImg.src = dataUrl; prevImg.style.display = '';
+      } else if ((f.type||'') === 'application/pdf' && prevPdf) {
+        prevPdf.src = dataUrl; prevPdf.style.display = '';
+        if (prevHint) prevHint.style.display = '';
+      } else {
+        // 모르는 타입 — 박스만 닫음
+        if (prevBox) prevBox.style.display = 'none';
+      }
+    };
+    reader.readAsDataURL(f);
   } else {
     if (nameEl) { nameEl.textContent = '선택된 파일 없음'; nameEl.style.color = 'var(--text3)'; }
     if (clearBtn) clearBtn.style.display = 'none';
-    if (prevBox) prevBox.style.display = 'none';
-    if (prevImg) prevImg.src = '';
+    hidePrev();
   }
 }
 function clearExpAttach() {
@@ -5424,8 +5460,15 @@ async function downloadSelectedExpImg() {
     if (!d) { fail++; continue; }
 
     try {
-      // 지출결의서 렌더링
-      _doPreviewExpense(d);
+      // 첨부(이미지/PDF) 로드 후 지출결의서 렌더링
+      let attachImgUrl = null;
+      if (d.hasAttach && d.id) {
+        try {
+          const attach = await _idbGetAttach(d.id);
+          if (attach) attachImgUrl = await _expAttachToImageUrl(attach.type, attach.data);
+        } catch(_) {}
+      }
+      _doPreviewExpense(d, attachImgUrl);
       await new Promise(r => setTimeout(r, 120));
       const el = document.getElementById('expPrintArea');
       if (!el) { fail++; continue; }
@@ -5483,11 +5526,11 @@ async function saveExpImgFromHist(i) {
   const hist = loadExpHist();
   const d = hist[i];
   if (!d) return;
-  // 첨부 이미지 로드
+  // 첨부 이미지/PDF 로드 (PDF는 첫 페이지 PNG로 변환)
   let attachImgUrl = null;
   if (d.hasAttach && d.id) {
     const attach = await _idbGetAttach(d.id);
-    if (attach && (attach.type||'').startsWith('image/')) attachImgUrl = attach.data;
+    if (attach) attachImgUrl = await _expAttachToImageUrl(attach.type, attach.data);
   }
   // 숨겨진 임시 컨테이너에 렌더링 후 캡처
   let tmp = document.getElementById('_expImgTmp');
@@ -6322,22 +6365,36 @@ function fmtNum(n) {
 }
 function chk(v) { return v ? 'O' : ''; }
 
+async function _expAttachToImageUrl(type, dataUrl){
+  if (!dataUrl) return null;
+  if ((type||'').startsWith('image/')) return dataUrl;
+  if ((type||'') === 'application/pdf') {
+    try { return await window._pdfFirstPageToPngDataUrl(dataUrl, 1.5); }
+    catch(e) { console.warn('PDF→이미지 변환 실패:', e); return null; }
+  }
+  return null;
+}
 async function previewExpense() {
   const d   = getExpFormData();
   const inp = document.getElementById('expAttachFile');
   const file = inp && inp.files && inp.files[0];
-  if (file && file.type.startsWith('image/')) {
+  if (file) {
+    // 새로 선택한 파일 우선
     const reader = new FileReader();
-    reader.onload = e => _doPreviewExpense(d, e.target.result);
+    reader.onload = async e => {
+      const url = await _expAttachToImageUrl(file.type, e.target.result);
+      _doPreviewExpense(d, url);
+    };
     reader.readAsDataURL(file);
     return;
   }
-  // 수정 중일 때 새로 첨부 안 했으면 기존 IDB 첨부 이미지 불러오기
+  // 수정 중일 때 새로 첨부 안 했으면 기존 IDB 첨부 불러오기 (이미지 or PDF)
   if (_editingExpItemId) {
     try {
       const attach = await _idbGetAttach(_editingExpItemId);
-      if (attach && (attach.type||'').startsWith('image/')) {
-        _doPreviewExpense(d, attach.data);
+      if (attach) {
+        const url = await _expAttachToImageUrl(attach.type, attach.data);
+        _doPreviewExpense(d, url);
         return;
       }
     } catch(e) { console.warn('기존 첨부 로드 실패:', e); }
@@ -6567,19 +6624,29 @@ function editExpHist(i) {
   // 계좌정보
   const bank = loadBankInfo().find(b => b.name === d.vendor || (d.vendor||'').includes(b.name) || (b.name||'').includes(d.vendor||''));
   if (bank) applyBankTemplate(bank); else document.getElementById('expBankInfo').style.display = 'none';
-  // 첨부파일 안내 + 기존 첨부 이미지 미리보기 자동 표시
-  const nameEl = document.getElementById('expAttachName');
-  const clrBtn = document.getElementById('expAttachClear');
-  const prevBox = document.getElementById('expAttachPreview');
-  const prevImg = document.getElementById('expAttachPreviewImg');
-  if (prevBox) prevBox.style.display = 'none';
-  if (prevImg) prevImg.src = '';
+  // 첨부파일 안내 + 기존 첨부 이미지/PDF 미리보기 자동 표시
+  const nameEl   = document.getElementById('expAttachName');
+  const clrBtn   = document.getElementById('expAttachClear');
+  const prevBox  = document.getElementById('expAttachPreview');
+  const prevImg  = document.getElementById('expAttachPreviewImg');
+  const prevPdf  = document.getElementById('expAttachPreviewPdf');
+  const prevHint = document.getElementById('expAttachPreviewPdfHint');
+  if (prevBox)  prevBox.style.display = 'none';
+  if (prevImg) { prevImg.style.display = 'none'; prevImg.src = ''; }
+  if (prevPdf) { prevPdf.style.display = 'none'; prevPdf.src = ''; }
+  if (prevHint) prevHint.style.display = 'none';
   if (d.hasAttach) {
     if (nameEl) { nameEl.textContent = '📎 기존 첨부파일 있음 (새 파일 선택 시 교체)'; nameEl.style.color = 'var(--primary)'; }
     if (d.id != null) {
       _idbGetAttach(d.id).then(attach => {
-        if (attach && (attach.type||'').startsWith('image/') && prevImg && prevBox) {
-          prevImg.src = attach.data; prevBox.style.display = '';
+        if (!attach || !prevBox) return;
+        if ((attach.type||'').startsWith('image/') && prevImg) {
+          prevImg.src = attach.data; prevImg.style.display = '';
+          prevBox.style.display = '';
+        } else if ((attach.type||'') === 'application/pdf' && prevPdf) {
+          prevPdf.src = attach.data; prevPdf.style.display = '';
+          if (prevHint) prevHint.style.display = '';
+          prevBox.style.display = '';
         }
       }).catch(e => console.warn('기존 첨부 미리보기 로드 실패:', e));
     }
