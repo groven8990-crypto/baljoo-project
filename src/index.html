@@ -2327,8 +2327,13 @@ function dlOne(gk){
   autoColWidth(ws, rows);
   XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
   const fname = makeFileName(v, a);
+  // 버튼 시각적 피드백 (저장 중 → 완료)
+  const card = document.getElementById('gc_'+ekey(gk));
+  const dlBtn = card?.querySelector('button.btn-sm');
+  const prevText = dlBtn?.textContent;
+  if (dlBtn) { dlBtn.disabled = true; dlBtn.textContent = '⏳ 저장 중...'; }
   _poWriteWorkbook(wb, fname, a).then(()=>{
-    const c=document.getElementById('gc_'+ekey(gk));if(c)c.classList.add('done');
+    if (card) card.classList.add('done');
     const mk=document.getElementById('dlm_'+ekey(gk));
     if(mk){
       const nowTime = new Date().toTimeString().slice(0,5);
@@ -2336,6 +2341,11 @@ function dlOne(gk){
       mk.style.display = 'inline-flex';
     }
     logDownload(v, a, orders, fname);  // 다운로드 이력 저장
+  }).catch(err => {
+    console.error('발주서 다운로드 실패:', err);
+    alert('발주서 저장 실패: ' + (err?.message||err));
+  }).finally(()=>{
+    if (dlBtn) { dlBtn.disabled = false; dlBtn.textContent = prevText || '⬇ 다운로드'; }
   });
 }
 
@@ -2401,12 +2411,14 @@ async function _getPoSubDirHandle(alias){
   }
 }
 async function _poWriteWorkbook(wb, fname, alias){
+  // 파일명에서 OS가 거부할 문자 제거
+  const safeName = String(fname||'').replace(/[\\/:*?"<>|]/g, '_');
   const subDir = await _getPoSubDirHandle(alias);
   if (subDir) {
     try {
       const u8 = XLSX.write(wb, {type:'array', bookType:'xlsx'});
       const blob = new Blob([u8], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-      const fh = await subDir.getFileHandle(fname, {create:true});
+      const fh = await subDir.getFileHandle(safeName, {create:true});
       const w = await fh.createWritable();
       await w.write(blob); await w.close();
       return;
@@ -2415,7 +2427,7 @@ async function _poWriteWorkbook(wb, fname, alias){
     }
   }
   // 폴더 미지정 or 실패 → 기존 다운로드
-  XLSX.writeFile(wb, fname);
+  XLSX.writeFile(wb, safeName);
 }
 
 // ── 발주서 다운로드 이력 ──
