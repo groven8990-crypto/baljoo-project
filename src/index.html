@@ -811,17 +811,18 @@
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">예금주명</label><input class="inp" id="bnHolder" placeholder="예: 공덕농협농산물가공사업소"></div>
-        <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">결제조건 (기본값)</label>
-          <select class="inp" id="bnPayType">
-            <option value="즉시결제">즉시결제</option>
-            <option value="외상">외상</option>
-            <option value="선금">선금</option>
-            <option value="15일결제">15일결제</option>
-            <option value="당월말결제">당월말결제</option>
-            <option value="주결제">주결제</option>
-          </select>
+        <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">결제조건 (기본값) <span style="color:var(--text3);font-weight:400">— 직접 입력 가능</span></label>
+          <input class="inp" id="bnPayType" list="payTypeOptions" placeholder="예: 즉시결제, 외상, 선금, 15일결제 등" value="즉시결제">
         </div>
       </div>
+      <datalist id="payTypeOptions">
+        <option value="즉시결제">
+        <option value="외상">
+        <option value="선금">
+        <option value="15일결제">
+        <option value="당월말결제">
+        <option value="주결제">
+      </datalist>
       <div style="margin-bottom:10px">
         <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:6px">증빙자료 기본 체크</label>
         <div style="display:flex;gap:12px;flex-wrap:wrap">
@@ -1053,15 +1054,8 @@
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">예금주명</label><input class="inp" id="incbnHolder" placeholder="예: 공덕농협농산물가공사업소"></div>
-        <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">결제조건 (기본값)</label>
-          <select class="inp" id="incbnPayType">
-            <option value="즉시결제">즉시결제</option>
-            <option value="외상">외상</option>
-            <option value="선금">선금</option>
-            <option value="15일결제">15일결제</option>
-            <option value="당월말결제">당월말결제</option>
-            <option value="주결제">주결제</option>
-          </select>
+        <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">결제조건 (기본값) <span style="color:var(--text3);font-weight:400">— 직접 입력 가능</span></label>
+          <input class="inp" id="incbnPayType" list="payTypeOptions" placeholder="예: 즉시결제, 외상, 선금, 15일결제 등" value="즉시결제">
         </div>
       </div>
       <div id="incbnError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
@@ -6324,6 +6318,26 @@ function hideVendorList() {
   if (dd) dd.style.display = 'none';
 }
 
+// 결제조건 라디오 그룹에 해당 값의 라디오가 없으면 동적으로 추가
+function ensurePayTypeRadio(groupName, value) {
+  if (!value) return null;
+  const v = String(value).trim();
+  if (!v) return null;
+  let existing = document.querySelector(`input[name="${groupName}"][value="${CSS.escape ? CSS.escape(v) : v}"]`);
+  if (existing) return existing;
+  const firstRadio = document.querySelector(`input[name="${groupName}"]`);
+  if (!firstRadio) return null;
+  const container = firstRadio.closest('label')?.parentElement;
+  if (!container) return null;
+  const label = document.createElement('label');
+  label.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer';
+  const r = document.createElement('input');
+  r.type = 'radio'; r.name = groupName; r.value = v;
+  label.appendChild(r);
+  label.appendChild(document.createTextNode(' ' + v));
+  container.appendChild(label);
+  return r;
+}
 function applyBankTemplate(bank) {
   if (!bank) { document.getElementById('expBankInfo').style.display='none'; return; }
   document.getElementById('expBankInfo').style.display = 'block';
@@ -6332,7 +6346,8 @@ function applyBankTemplate(bank) {
     `${bank.bank} &nbsp;|&nbsp; 계좌번호: <strong>${bank.acct}</strong>` +
     (bank.tmemo ? `<br><span style="font-size:12px;color:var(--text2)">${bank.tmemo}</span>` : '');
   if (bank.tpayType) {
-    const r = document.querySelector(`input[name="expPayType"][value="${bank.tpayType}"]`);
+    let r = document.querySelector(`input[name="expPayType"][value="${bank.tpayType}"]`);
+    if (!r) r = ensurePayTypeRadio('expPayType', bank.tpayType);
     if (r) r.checked = true;
   }
   ['ev1','ev2','ev3','ev4','ev5','ev6'].forEach((id,i) => {
@@ -6645,9 +6660,13 @@ function editExpHist(i) {
   document.getElementById('expTotal').value   = d.total   || '';
   document.getElementById('expMemo').value    = d.memo    || '';
   document.getElementById('expNote').value    = d.note    || '';
-  // 결제조건
-  const pr = document.querySelector(`input[name="expPayType"][value="${d.payType||'즉시결제'}"]`);
-  if (pr) pr.checked = true;
+  // 결제조건 — 저장된 값이 라디오에 없으면 동적으로 추가 (사용자 정의 payType 지원)
+  {
+    const val = d.payType || '즉시결제';
+    let pr = document.querySelector(`input[name="expPayType"][value="${val}"]`);
+    if (!pr) pr = ensurePayTypeRadio('expPayType', val);
+    if (pr) pr.checked = true;
+  }
   // 증빙자료
   ['ev1','ev2','ev3','ev4','ev5','ev6'].forEach((id,j) => {
     const el = document.getElementById(id); if (el) el.checked = d['ev'+(j+1)] || false;
@@ -6910,7 +6929,8 @@ function applyIncBankTemplate(bank) {
     bank.bank+' &nbsp;|&nbsp; 계좌번호: <strong>'+bank.acct+'</strong>'+
     (bank.tmemo ? '<br><span style="font-size:12px;color:var(--text2)">'+bank.tmemo+'</span>' : '');
   if (bank.tpayType) {
-    const r = document.querySelector('input[name="incPayType"][value="'+bank.tpayType+'"]');
+    let r = document.querySelector('input[name="incPayType"][value="'+bank.tpayType+'"]');
+    if (!r) r = ensurePayTypeRadio('incPayType', bank.tpayType);
     if (r) r.checked = true;
   }
   ['iev1','iev2','iev3','iev4','iev5','iev6'].forEach((id,i) => {
@@ -7112,8 +7132,12 @@ function editIncHist(i) {
   document.getElementById('incMemo').value      = d.memo      || '';
   document.getElementById('incRightMemo').value = d.rightMemo || '';
   document.getElementById('incNote').value      = d.note      || '';
-  const pr = document.querySelector('input[name="incPayType"][value="'+(d.payType||'즉시결제')+'"]');
-  if (pr) pr.checked = true;
+  {
+    const val = d.payType || '즉시결제';
+    let pr = document.querySelector('input[name="incPayType"][value="'+val+'"]');
+    if (!pr) pr = ensurePayTypeRadio('incPayType', val);
+    if (pr) pr.checked = true;
+  }
   ['iev1','iev2','iev3','iev4','iev5','iev6'].forEach((id,j) => {
     const el = document.getElementById(id); if (el) el.checked = d['ev'+(j+1)] || false;
   });
