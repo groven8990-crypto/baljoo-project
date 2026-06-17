@@ -698,7 +698,7 @@
 
       <div style="margin-bottom:14px">
         <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">송금내역</label>
-        <input class="inp" id="expDesc" placeholder="예: 4/6 누룽지 480g 2봉 발주건">
+        <input class="inp" id="expDesc" placeholder="예: 4/6 누룽지 480g 2봉 발주건" oninput="syncExpMemoDesc()">
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
@@ -6272,6 +6272,21 @@ function applyBankTemplate(bank) {
   }
   if (bank.tnote) document.getElementById('expNote').value = bank.tnote;
 }
+// 송금내역 입력 시 메모 첫 줄을 자동 동기화
+// — 메모가 "* 뭐든\n* 예금주명 ..." 패턴이면 첫 줄을 "* {desc}"로 교체
+function syncExpMemoDesc(){
+  const memoEl = document.getElementById('expMemo');
+  if (!memoEl) return;
+  const cur = memoEl.value || '';
+  if (!cur) return;
+  // 다음 줄이 '* 예금주명'으로 시작해야 자동 생성된 메모로 판정 → 안전하게 첫 줄만 교체
+  const lines = cur.split('\n');
+  if (lines.length < 2) return;
+  if (!/^\*\s*예금주명/.test(lines[1])) return;
+  const desc = document.getElementById('expDesc')?.value || '';
+  lines[0] = '* ' + desc;
+  memoEl.value = lines.join('\n');
+}
 
 function getExpVendorName() {
   return document.getElementById('expVendor').value.trim();
@@ -6353,9 +6368,18 @@ function _doPreviewExpense(d, attachImgUrl) {
     '</table>';
 
   // 오른쪽(재무회계과 MEMO): 사용자가 직접 편집한 d.memo 우선, 없으면 송금내역 / 예금주명 / 은행 / 계좌번호 자동 조립
+  // 안전망: 자동 생성된 메모인데 첫 줄이 `* ` (빈 송금내역) 그대로 남아있으면 d.desc 로 채움
+  let memoForRight = d.memo || '';
+  if (memoForRight && d.desc) {
+    const ls = memoForRight.split('\n');
+    if (ls.length >= 2 && /^\*\s*$/.test(ls[0]) && /^\*\s*예금주명/.test(ls[1])) {
+      ls[0] = '* ' + d.desc;
+      memoForRight = ls.join('\n');
+    }
+  }
   let rightContent;
-  if (d.memo && String(d.memo).trim()) {
-    rightContent = escHtml(d.memo).replace(/\n/g, '<br>');
+  if (memoForRight && String(memoForRight).trim()) {
+    rightContent = escHtml(memoForRight).replace(/\n/g, '<br>');
   } else {
     const rightParts = [];
     if (d.desc)           rightParts.push('* ' + d.desc);
