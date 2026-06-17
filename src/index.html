@@ -2332,21 +2332,32 @@ function dlOne(gk){
   const dlBtn = card?.querySelector('button.btn-sm');
   const prevText = dlBtn?.textContent;
   if (dlBtn) { dlBtn.disabled = true; dlBtn.textContent = '⏳ 저장 중...'; }
-  _poWriteWorkbook(wb, fname, a).then(()=>{
+  _poWriteWorkbook(wb, fname, a).then((info)=>{
     if (card) card.classList.add('done');
     const mk=document.getElementById('dlm_'+ekey(gk));
     if(mk){
       const nowTime = new Date().toTimeString().slice(0,5);
-      mk.title = `오늘 ${nowTime} 다운로드 완료`;
+      mk.title = `${nowTime} 저장: ${info?.path || fname}`;
+      mk.textContent = info?.mode==='folder' ? `✅ 폴더 저장` : `✅ 다운로드`;
       mk.style.display = 'inline-flex';
     }
     logDownload(v, a, orders, fname);  // 다운로드 이력 저장
+    _poShowToast(info?.mode==='folder'
+      ? `✅ 폴더에 저장됨: ${info.path}`
+      : `✅ 다운로드: ${info?.path||fname}`);
   }).catch(err => {
     console.error('발주서 다운로드 실패:', err);
     alert('발주서 저장 실패: ' + (err?.message||err));
   }).finally(()=>{
     if (dlBtn) { dlBtn.disabled = false; dlBtn.textContent = prevText || '⬇ 다운로드'; }
   });
+}
+function _poShowToast(msg){
+  const t=document.createElement('div');
+  t.textContent=msg;
+  t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e3a6e;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.2);max-width:90vw;word-break:break-all;text-align:center';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 4500);
 }
 
 // ── 발주서 저장 폴더 (지출결의서와 동일 패턴) ──
@@ -2421,13 +2432,17 @@ async function _poWriteWorkbook(wb, fname, alias){
       const fh = await subDir.getFileHandle(safeName, {create:true});
       const w = await fh.createWritable();
       await w.write(blob); await w.close();
-      return;
+      console.log('[발주서] 폴더 저장 완료:', _poSaveDirHandle?.name + '/' + (subDir?.name||'') + '/' + safeName);
+      return {ok:true, path: (_poSaveDirHandle?.name||'?') + '/' + (subDir?.name||'?') + '/' + safeName, mode:'folder'};
     } catch(e) {
       console.warn('폴더 저장 실패, 다운로드로 폴백:', e);
+      // 폴백으로 진행
     }
   }
   // 폴더 미지정 or 실패 → 기존 다운로드
+  console.log('[발주서] 브라우저 다운로드:', safeName, '(_poSaveDirHandle=', !!_poSaveDirHandle, ')');
   XLSX.writeFile(wb, safeName);
+  return {ok:true, path: 'Downloads/' + safeName, mode:'download'};
 }
 
 // ── 발주서 다운로드 이력 ──
