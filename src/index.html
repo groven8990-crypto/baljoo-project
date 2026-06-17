@@ -2355,7 +2355,7 @@ function dlOne(gk){
 function _poShowToast(msg){
   const t=document.createElement('div');
   t.textContent=msg;
-  t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e3a6e;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.2);max-width:90vw;word-break:break-all;text-align:center';
+  t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e3a6e;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.2);max-width:90vw;word-break:break-all;text-align:center;white-space:pre-line;line-height:1.5';
   document.body.appendChild(t);
   setTimeout(()=>t.remove(), 4500);
 }
@@ -2366,7 +2366,7 @@ async function _updatePoFolderLabel(){
   const nameEl = document.getElementById('poSaveFolderName');
   if (!nameEl) return;
   if (_poSaveDirHandle) {
-    nameEl.textContent = '📂 ' + _poSaveDirHandle.name + ' (그로븐·옐로우브릿지 서브폴더 자동 생성)';
+    nameEl.textContent = '📂 ' + _poSaveDirHandle.name + ' (선택 폴더에 바로 저장)';
     nameEl.style.color = 'var(--primary)';
   } else {
     nameEl.textContent = '저장 폴더 미설정';
@@ -7791,7 +7791,7 @@ function reconExportXlsx() {
       <button class="btn btn-green" onclick="srExportImage()" id="srImageBtn" disabled>🖼 이미지(PNG) 저장</button>
       <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
         <span id="srSaveFolderName" style="font-size:11px;color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
-        <button class="btn btn-sm" onclick="pickSrSaveFolder()" title="PNG 저장할 폴더를 선택합니다 (그로븐·옐로우브릿지 서브폴더 자동 생성)">📁 폴더 설정</button>
+        <button class="btn btn-sm" onclick="pickSrSaveFolder()" title="PNG 저장할 폴더를 선택합니다 (선택 폴더에 바로 저장)">📁 폴더 설정</button>
       </div>
     </div>
   </div>
@@ -9456,7 +9456,7 @@ async function _updateSrFolderLabel(){
   const nameEl = document.getElementById('srSaveFolderName');
   if (!nameEl) return;
   if (_srSaveDirHandle) {
-    nameEl.textContent = '📂 ' + _srSaveDirHandle.name + ' (그로븐·옐로우브릿지 서브폴더 자동 생성)';
+    nameEl.textContent = '📂 ' + _srSaveDirHandle.name + ' (선택 폴더에 바로 저장)';
     nameEl.style.color = 'var(--primary)';
   } else {
     nameEl.textContent = '저장 폴더 미설정';
@@ -9503,10 +9503,10 @@ async function _getSrSubDirHandle(label){
       const granted = await _srSaveDirHandle.requestPermission({mode:'readwrite'});
       if (granted !== 'granted') return null;
     } else if (perm !== 'granted') return null;
-    // 라벨 그대로 서브폴더로 (그로븐 / 옐로우브릿지)
-    return await _srSaveDirHandle.getDirectoryHandle(label, {create:true});
+    // 선택한 폴더에 바로 저장 (서브폴더 만들지 않음)
+    return _srSaveDirHandle;
   } catch(e) {
-    console.warn('매출보고 서브폴더 접근 실패:', e);
+    console.warn('매출보고 폴더 접근 실패:', e);
     return null;
   }
 }
@@ -9516,9 +9516,6 @@ function srExportImage(){
   if(typeof html2canvas!=='function'){alert('이미지 변환 라이브러리(html2canvas)를 찾을 수 없어요.');return;}
   const dateStr=(document.getElementById('srReportDate').value||_localISO()).replace(/-/g,'').slice(2);  // YYMMDD
   const headerEl=document.getElementById('srReportHeader');
-  // 저장 묶음 정의
-  //   그로븐 → 헤더 + 그로븐 섹션
-  //   옐로우브릿지 → 옐로우브릿지 섹션 + 디네트(B2B) 섹션 (헤더 없음)
   const groups=[
     {label:'그로븐',       includeHeader:true,  sectionIds:['srGrobnSection']},
     {label:'옐로우브릿지', includeHeader:false, sectionIds:['srYbSection','srDinetteSection']}
@@ -9533,10 +9530,12 @@ function srExportImage(){
       link.download=`${dateStr}-매출보고.png`;
       link.href=canvas.toDataURL('image/png');
       document.body.appendChild(link);link.click();document.body.removeChild(link);
+      _poShowToast(`✅ 다운로드: Downloads/${dateStr}-매출보고.png`);
     }).catch(e=>alert('이미지 저장 실패: '+e.message));
     return;
   }
   (async()=>{
+    const saved=[];
     for(const g of targets){
       const tmp=document.createElement('div');
       tmp.style.cssText='background:#fff;padding:22px;width:680px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
@@ -9554,18 +9553,20 @@ function srExportImage(){
         const canvas=await html2canvas(tmp,{backgroundColor:'#ffffff',scale:2,useCORS:true});
         const fileName=`${dateStr}-매출보고_${g.label}.png`;
         const blob=await new Promise(res=>canvas.toBlob(res,'image/png'));
-        const subDir=await _getSrSubDirHandle(g.label);
-        if (subDir && blob) {
-          // 사용자 지정 폴더의 브랜드 서브폴더에 직접 저장
-          const fileHandle=await subDir.getFileHandle(fileName,{create:true});
+        const dir=await _getSrSubDirHandle(g.label);
+        if (dir && blob) {
+          const fileHandle=await dir.getFileHandle(fileName,{create:true});
           const w=await fileHandle.createWritable();
           await w.write(blob); await w.close();
+          saved.push((_srSaveDirHandle?.name||'?')+'/'+fileName);
+          console.log('[매출보고] 폴더 저장 완료:', (_srSaveDirHandle?.name||'?')+'/'+fileName);
         } else {
-          // 폴더 미지정 → 기존 다운로드
           const link=document.createElement('a');
           link.download=fileName;
           link.href=canvas.toDataURL('image/png');
           document.body.appendChild(link);link.click();document.body.removeChild(link);
+          saved.push('Downloads/'+fileName);
+          console.log('[매출보고] 브라우저 다운로드:', fileName, '(_srSaveDirHandle=', !!_srSaveDirHandle, ')');
         }
       }catch(e){
         alert(`${g.label} 이미지 저장 실패: ${e.message}`);
@@ -9574,6 +9575,7 @@ function srExportImage(){
       }
       await new Promise(r=>setTimeout(r,250));
     }
+    if (saved.length) _poShowToast('✅ '+saved.length+'장 저장됨\n'+saved.join('\n'));
   })();
 }
 
