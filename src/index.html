@@ -811,18 +811,20 @@
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">예금주명</label><input class="inp" id="bnHolder" placeholder="예: 공덕농협농산물가공사업소"></div>
-        <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">결제조건 (기본값) <span style="color:var(--text3);font-weight:400">— 직접 입력 가능</span></label>
-          <input class="inp" id="bnPayType" list="payTypeOptions" placeholder="예: 즉시결제, 외상, 선금, 15일결제 등" value="즉시결제">
+        <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">결제조건 (기본값)</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select class="inp" id="bnPayType" style="flex:1">
+              <option value="즉시결제">즉시결제</option>
+              <option value="외상">외상</option>
+              <option value="선금">선금</option>
+              <option value="15일결제">15일결제</option>
+              <option value="당월말결제">당월말결제</option>
+              <option value="주결제">주결제</option>
+            </select>
+            <input class="inp" id="bnPayTypeCustom" placeholder="직접 입력 (선택)" style="flex:1" title="값을 입력하면 위 드롭다운 대신 이 값이 사용돼요">
+          </div>
         </div>
       </div>
-      <datalist id="payTypeOptions">
-        <option value="즉시결제">
-        <option value="외상">
-        <option value="선금">
-        <option value="15일결제">
-        <option value="당월말결제">
-        <option value="주결제">
-      </datalist>
       <div style="margin-bottom:10px">
         <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:6px">증빙자료 기본 체크</label>
         <div style="display:flex;gap:12px;flex-wrap:wrap">
@@ -1054,8 +1056,18 @@
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">예금주명</label><input class="inp" id="incbnHolder" placeholder="예: 공덕농협농산물가공사업소"></div>
-        <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">결제조건 (기본값) <span style="color:var(--text3);font-weight:400">— 직접 입력 가능</span></label>
-          <input class="inp" id="incbnPayType" list="payTypeOptions" placeholder="예: 즉시결제, 외상, 선금, 15일결제 등" value="즉시결제">
+        <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">결제조건 (기본값)</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select class="inp" id="incbnPayType" style="flex:1">
+              <option value="즉시결제">즉시결제</option>
+              <option value="외상">외상</option>
+              <option value="선금">선금</option>
+              <option value="15일결제">15일결제</option>
+              <option value="당월말결제">당월말결제</option>
+              <option value="주결제">주결제</option>
+            </select>
+            <input class="inp" id="incbnPayTypeCustom" placeholder="직접 입력 (선택)" style="flex:1" title="값을 입력하면 위 드롭다운 대신 이 값이 사용돼요">
+          </div>
         </div>
       </div>
       <div id="incbnError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
@@ -7430,14 +7442,14 @@ function addIncBankInfo() {
   const bank   = document.getElementById('incbnBank').value.trim();
   const acct   = document.getElementById('incbnAcct').value.trim();
   const holder = document.getElementById('incbnHolder').value.trim();
-  const tpayType = document.getElementById('incbnPayType').value;
+  const tpayType = (document.getElementById('incbnPayTypeCustom')?.value||'').trim() || document.getElementById('incbnPayType').value;
   const errEl  = document.getElementById('incbnError');
   if (!name||!bank||!acct||!holder) { errEl.textContent='거래처, 은행, 계좌번호, 예금주를 모두 입력해주세요.'; return; }
   errEl.textContent='';
   const banks = loadBankInfo();
   banks.push({ name, bank, acct, holder, tpayType, tev1:false,tev2:false,tev3:false,tev4:false,tev5:false,tev6:false });
   saveBankInfo(banks);
-  ['incbnName','incbnBank','incbnAcct','incbnHolder'].forEach(id=>document.getElementById(id).value='');
+  ['incbnName','incbnBank','incbnAcct','incbnHolder','incbnPayTypeCustom'].forEach(id=>document.getElementById(id).value='');
   renderIncBankList();
   renderBankList(); // 지출결의서 계좌목록도 갱신
 }
@@ -7482,7 +7494,7 @@ function addBankInfo() {
   const holder  = document.getElementById('bnHolder').value.trim();
   const tmemo   = document.getElementById('bnMemo').value.trim();
   const tnote   = document.getElementById('bnNote').value.trim();
-  const tpayType= document.getElementById('bnPayType').value;
+  const tpayType= (document.getElementById('bnPayTypeCustom')?.value||'').trim() || document.getElementById('bnPayType').value;
   const errEl   = document.getElementById('bnError');
   if (!name||!bank||!acct||!holder) { errEl.textContent='발주처, 은행, 계좌번호, 예금주를 모두 입력해주세요.'; return; }
   errEl.textContent='';
@@ -7495,7 +7507,7 @@ function addBankInfo() {
   const banks = loadBankInfo();
   banks.push({name,bank,acct,holder,tmemo,tnote,tpayType,tev1,tev2,tev3,tev4,tev5,tev6});
   saveBankInfo(banks);
-  ['bnName','bnBank','bnAcct','bnHolder','bnMemo','bnNote'].forEach(id=>document.getElementById(id).value='');
+  ['bnName','bnBank','bnAcct','bnHolder','bnMemo','bnNote','bnPayTypeCustom'].forEach(id=>document.getElementById(id).value='');
   ['bnEv1','bnEv2','bnEv3','bnEv4','bnEv5','bnEv6'].forEach(id=>document.getElementById(id).checked=false);
   renderBankList();
 }
@@ -7511,7 +7523,15 @@ function editBankInfo(i) {
   document.getElementById('bnHolder').value  = b.holder  || '';
   document.getElementById('bnMemo').value    = b.tmemo   || '';
   document.getElementById('bnNote').value    = b.tnote   || '';
-  document.getElementById('bnPayType').value = b.tpayType|| '즉시결제';
+  // 결제조건: 드롭다운에 있으면 선택, 없으면 직접입력 칸에 넣음
+  {
+    const pt = b.tpayType || '즉시결제';
+    const sel = document.getElementById('bnPayType');
+    const cus = document.getElementById('bnPayTypeCustom');
+    const presets = Array.from(sel.options).map(o=>o.value);
+    if (presets.includes(pt)) { sel.value = pt; if (cus) cus.value = ''; }
+    else { sel.value = '즉시결제'; if (cus) cus.value = pt; }
+  }
   ['bnEv1','bnEv2','bnEv3','bnEv4','bnEv5','bnEv6'].forEach((id,j)=>{
     document.getElementById(id).checked = b['tev'+(j+1)] || false;
   });
