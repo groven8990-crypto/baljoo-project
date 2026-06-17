@@ -268,7 +268,7 @@
         📥 발주서 목록
         <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
           <span id="poSaveFolderName" style="font-size:11px;font-weight:400;color:var(--text3);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
-          <button class="btn btn-sm" onclick="pickPoSaveFolder()" title="발주서 저장할 폴더 선택 (그로븐·옐로우브릿지 서브폴더 자동 생성)">📁 폴더 설정</button>
+          <button class="btn btn-sm" onclick="pickPoSaveFolder()" title="발주서 저장할 폴더 선택 (선택한 폴더에 바로 저장)">📁 폴더 설정</button>
         </div>
       </div>
       <div id="genListArea"></div>
@@ -2382,7 +2382,7 @@ async function _restorePoSaveFolder(){
     const nameEl = document.getElementById('poSaveFolderName');
     if (nameEl) {
       if (perm === 'granted') {
-        nameEl.textContent = '📂 ' + handle.name + ' (그로븐·옐로우브릿지 서브폴더 자동 생성)';
+        nameEl.textContent = '📂 ' + handle.name + ' (선택 폴더에 바로 저장)';
         nameEl.style.color = 'var(--success)';
       } else {
         nameEl.textContent = '📂 ' + handle.name + ' (재실행 시 승인 필요 — 다운로드 시 자동 요청)';
@@ -2413,11 +2413,10 @@ async function _getPoSubDirHandle(alias){
       const granted = await _poSaveDirHandle.requestPermission({mode:'readwrite'});
       if (granted !== 'granted') return null;
     } else if (perm !== 'granted') return null;
-    // 별칭 → 스토어명 변환 (로또상회→그로븐, 자꾸가게→옐로우브릿지)
-    const subName = aliasToStore(alias);
-    return await _poSaveDirHandle.getDirectoryHandle(subName, {create:true});
+    // 선택한 폴더에 바로 저장 (서브폴더 만들지 않음)
+    return _poSaveDirHandle;
   } catch(e) {
-    console.warn('발주서 서브폴더 접근 실패:', e);
+    console.warn('발주서 폴더 접근 실패:', e);
     return null;
   }
 }
@@ -2432,8 +2431,8 @@ async function _poWriteWorkbook(wb, fname, alias){
       const fh = await subDir.getFileHandle(safeName, {create:true});
       const w = await fh.createWritable();
       await w.write(blob); await w.close();
-      console.log('[발주서] 폴더 저장 완료:', _poSaveDirHandle?.name + '/' + (subDir?.name||'') + '/' + safeName);
-      return {ok:true, path: (_poSaveDirHandle?.name||'?') + '/' + (subDir?.name||'?') + '/' + safeName, mode:'folder'};
+      console.log('[발주서] 폴더 저장 완료:', (_poSaveDirHandle?.name||'?') + '/' + safeName);
+      return {ok:true, path: (_poSaveDirHandle?.name||'?') + '/' + safeName, mode:'folder'};
     } catch(e) {
       console.warn('폴더 저장 실패, 다운로드로 폴백:', e);
       // 폴백으로 진행
@@ -9473,7 +9472,7 @@ async function _restoreSrSaveFolder(){
     const nameEl = document.getElementById('srSaveFolderName');
     if (nameEl) {
       if (perm === 'granted') {
-        nameEl.textContent = '📂 ' + handle.name + ' (그로븐·옐로우브릿지 서브폴더 자동 생성)';
+        nameEl.textContent = '📂 ' + handle.name + ' (선택 폴더에 바로 저장)';
         nameEl.style.color = 'var(--success)';
       } else {
         nameEl.textContent = '📂 ' + handle.name + ' (재실행 시 승인 필요 — 저장 버튼 클릭 시 자동 요청)';
