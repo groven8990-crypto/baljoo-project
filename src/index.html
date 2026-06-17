@@ -1151,8 +1151,39 @@
     canvas.width = viewport.width; canvas.height = viewport.height;
     const ctx = canvas.getContext('2d');
     await page.render({canvasContext: ctx, viewport}).promise;
-    return canvas.toDataURL('image/png');
+    // 아래쪽 여백/희박한 영역 자동 트림 — 행별 픽셀 밀도 검사
+    return _autoTrimCanvas(canvas).toDataURL('image/png');
   };
+  // 콘텐츠 밀도가 임계값을 넘는 마지막 행까지만 남기고 자르기
+  function _autoTrimCanvas(canvas, densityThreshold, paddingPx){
+    const w = canvas.width, h = canvas.height;
+    if (w < 4 || h < 4) return canvas;
+    const ctx = canvas.getContext('2d');
+    let imgData;
+    try { imgData = ctx.getImageData(0, 0, w, h); }
+    catch(e) { console.warn('canvas 픽셀 접근 실패, 트림 건너뜀:', e); return canvas; }
+    const data = imgData.data;
+    const dense = densityThreshold == null ? 0.10 : densityThreshold;  // 행 폭의 10% 이상이 비백색이면 콘텐츠 있는 행
+    const pad   = paddingPx == null ? 16 : paddingPx;
+    // 가장 아래에 있는 '콘텐츠 있는 행' 찾기
+    let lastContentRow = -1;
+    for (let y = h - 1; y >= 0; y--) {
+      let nonWhite = 0;
+      const rowStart = y * w * 4;
+      for (let x = 0; x < w; x++) {
+        const i = rowStart + x * 4;
+        if (data[i] < 240 || data[i+1] < 240 || data[i+2] < 240) nonWhite++;
+      }
+      if (nonWhite / w >= dense) { lastContentRow = y; break; }
+    }
+    if (lastContentRow < 0) return canvas;  // 전부 비어있으면 그대로
+    const newH = Math.min(h, lastContentRow + pad);
+    if (newH >= h - 4) return canvas;  // 자를 게 거의 없으면 원본
+    const out = document.createElement('canvas');
+    out.width = w; out.height = newH;
+    out.getContext('2d').drawImage(canvas, 0, 0);
+    return out;
+  }
 </script>
 
 
