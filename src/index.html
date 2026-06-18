@@ -2300,12 +2300,13 @@ function buildRows(vk,orders,alias){
       const h = ['마켓','상품번호','옵션코드','옵션명','수량','수령자명','우편번호','배송주소','배송 상세주소\n(선택입력)','휴대전화','추가연락처\n(선택입력)','쇼핑몰명\n(도매매 전용)','전달사항','배송요청사항\n(도매매 전용)','통관고유번호\n(해외직배송 전용)'];
       return [h, ...orders.map(o => {
         // 상품번호 추출 우선순위:
-        // ① vendor_code 가 '발주처]번호[/...]' 형태로 의미있는 상품번호를 가지면 그걸 사용
-        // ② 그렇지 않으면 mapped_code(사용자 등록 코드) 사용
+        // ① 사용자가 코드 등록한 경우 mapped_code 우선 (사용자 의도 존중)
+        // ② mapped_code가 없거나 형식이 부실하면 원본 vendor_code 사용
         const origVc = String(o.vendor_code || '');
-        const origAfter = origVc.includes(']') ? origVc.split(']')[1] : origVc;
-        const origHasGoodPN = origAfter.trim().length > 0 && /[\dA-Za-z]/.test(origAfter);
-        const vc = origHasGoodPN ? origVc : String(o.mapped_code || origVc);
+        const mc = String(o.mapped_code || '').trim();
+        const mcAfter = mc.includes(']') ? mc.split(']')[1] : mc;
+        const mcHasGoodPN = mcAfter.trim().length > 0 && /[\dA-Za-z]/.test(mcAfter);
+        const vc = mcHasGoodPN ? mc : origVc;
         const afterBracket = vc.includes(']') ? vc.split(']')[1] : vc;
         let sepIdx = afterBracket.indexOf('/');
         if (sepIdx < 0) sepIdx = afterBracket.indexOf(':');
