@@ -9795,7 +9795,7 @@ function wrWeekRange(anyDate){
 function wrMergeAggs(snaps, brandKey){
   // snaps: [{grAgg, ybAgg, dnAgg, ...}]
   // brandKey: 'grAgg' | 'ybAgg'
-  const platMap={}, prodMap={};
+  const platMap={}, prodMap={}, garlicMap={};
   let totalSales=0, count=0;
   for (const s of snaps) {
     const a = s[brandKey]; if (!a) continue;
@@ -9811,8 +9811,18 @@ function wrMergeAggs(snaps, brandKey){
       prodMap[p].count += v.count||0;
       prodMap[p].sales += v.sales||0;
     }
+    // 깐마늘 상세 (플랫폼×옵션) — real/review 분리도 같이 누적
+    for (const [k,v] of Object.entries(a.garlicMap||{})) {
+      if (!garlicMap[k]) garlicMap[k] = {platform:v.platform, option:v.option, count:0, sales:0, realCount:0, realSales:0, reviewCount:0, reviewSales:0};
+      garlicMap[k].count       += v.count||0;
+      garlicMap[k].sales       += v.sales||0;
+      garlicMap[k].realCount   += v.realCount||0;
+      garlicMap[k].realSales   += v.realSales||0;
+      garlicMap[k].reviewCount += v.reviewCount||0;
+      garlicMap[k].reviewSales += v.reviewSales||0;
+    }
   }
-  return {totalSales, count, platMap, prodMap};
+  return {totalSales, count, platMap, prodMap, garlicMap};
 }
 function wrMergeDinette(snaps){
   let sales=0, count=0;
