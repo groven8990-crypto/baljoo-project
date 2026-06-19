@@ -9655,7 +9655,23 @@ const LS_PURCHASE_PRICES = 'yb_purchase_prices';
 function srLoadPurchaseDB(){ try { return JSON.parse(localStorage.getItem(LS_PURCHASE_PRICES)||'{}'); } catch { return {}; } }
 function srSavePurchaseDB(db){ try { localStorage.setItem(LS_PURCHASE_PRICES, JSON.stringify(db)); } catch(e){} }
 function srPurchaseKey(o){
-  return [o.vendor_key||'', o.item_name||'', o.option_name||''].join('|');
+  const n = srNormalizeForPurchase(o);
+  return [o.vendor_key||'', n.item, n.option].join('|');
+}
+// 그룹핑 키 정규화 — 같은 상품인데 파싱이 들쭉날쭉(option_name이 빈칸/'깐마늘1kg'/'1kg' 등 섞임)인 케이스를 통일
+// 특히 동일(깐마늘)은 select_opt → disp_opt → vendor_code → option_name → code_qty 순으로 kg 감지
+function srNormalizeForPurchase(o){
+  if (o.vendor_key === '동일') {
+    let kg = 0;
+    const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kg = parseInt(m1[1]);
+    if (!kg) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kg = parseInt(m[1]); }
+    if (!kg) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kg = parseInt(m[1]); }
+    if (!kg) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kg = parseInt(m[1]); }
+    if (!kg && o.code_qty && o.code_qty > 1) kg = o.code_qty;
+    if (!kg) kg = 1;
+    return { item: '깐마늘', option: kg + 'kg' };
+  }
+  return { item: o.item_name||'', option: o.option_name||'' };
 }
 function srUpdatePurchaseEntry(key, patch){
   const db = srLoadPurchaseDB();
@@ -9669,6 +9685,18 @@ function srBrandFromAlias(alias){
   if (a.includes('자꾸가게')) return '옐로우브릿지';
   return '기타';
 }
+// 1건 주문이 실제로 몇 매입단위(팩/봉/개)인지 계산
+//  - 동일/깐마늘: 1건 = kg 봉 N개 (옵션 2kg → 2봉)
+//  - 그 외: 1건 = code_qty 팩/개 (예: '13개,140g' → code_qty=13)
+function srPurchaseUnits(o){
+  if (o.vendor_key === '동일') {
+    const n = srNormalizeForPurchase(o);
+    const m = n.option.match(/(\d+)/);
+    const kg = m ? parseInt(m[1]) : 1;
+    return (Number(o.qty)||1) * (kg || 1);
+  }
+  return (Number(o.qty)||1) * (Number(o.code_qty)||1);
+}
 // 발주서 결과 기반: 발주처+품목+옵션 단위로 묶어서 매입/수수료/부가세/순이익 행 생성
 function srBuildProfitRows(orders){
   const db = srLoadPurchaseDB();
@@ -9676,16 +9704,17 @@ function srBuildProfitRows(orders){
   for (const o of orders) {
     if (!o.vendor_key) continue;  // unmatched 제외
     const key = srPurchaseKey(o);
+    const norm = srNormalizeForPurchase(o);
     if (!map[key]) {
       const saved = db[key] || {};
       map[key] = {
         key,
         brand:    srBrandFromAlias(o.alias),
         vendor:   o.vendor_key,
-        item:     o.item_name||'',
-        option:   o.option_name||'',
+        item:     norm.item,
+        option:   norm.option,
         count:    0,                              // 주문건수 (행 수)
-        qtySum:   0,                              // 총 수량 (Σ o.qty)
+        qtySum:   0,                              // 매입 수량 = Σ (o.qty × kg or code_qty)
         sales:    0,                              // 매출액 합계
         fee:      0,                              // 플랫폼 수수료 합계
         unit:     Number(saved.unit)||0,
@@ -9695,7 +9724,7 @@ function srBuildProfitRows(orders){
     const r = map[key];
     const amt = Number(o.order_amt)||0;
     r.count  += 1;
-    r.qtySum += Number(o.qty)||1;
+    r.qtySum += srPurchaseUnits(o);
     r.sales  += amt;
     const plat = (typeof srPlatform==='function') ? srPlatform(o) : '';
     r.fee += Math.round(amt * srFee(plat));
@@ -9740,7 +9769,7 @@ function srRenderProfitPanel(orders){
     <div><div style="font-size:11px;color:#666">순이익</div><div style="font-size:18px;font-weight:700;color:${sum.profit>=0?'#16A34A':'#DC2626'};margin-top:2px">${sum.profit.toLocaleString()}원</div></div>
   </div>`;
   // 헬프 텍스트
-  const hint = `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">매입단가는 발주처+품목+옵션 단위로 자동 저장돼요. 한 번 입력하면 다음번 같은 조합에 자동 적용. <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b></div>`;
+  const hint = `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">매입단가는 <b>옵션 1개(1봉/1팩)당 가격</b>만 넣으면 됩니다. 시스템이 <b>매입수량(주문건수 × kg/팩수)</b>을 자동으로 곱해요. 발주처+품목+옵션 단위로 저장 — 다음번 같은 조합에 자동 적용. <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b></div>`;
   // 표
   const HEAD_BG='#F3F4F6', HEAD_FG='#374151';
   const trs = rows.map((r,i) => {
@@ -9754,7 +9783,7 @@ function srRenderProfitPanel(orders){
       <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px">${r.qtySum}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${r.sales.toLocaleString()}</td>
       <td style="padding:4px 4px;border-bottom:1px solid #eee">
-        <input type="number" min="0" step="1" value="${r.unit||''}" placeholder="단가" data-key="${escHtml(r.key)}" data-role="unit"
+        <input type="number" min="0" step="1" value="${r.unit||''}" placeholder="1개 가격" title="옵션 1봉/팩/개당 매입 단가 (시스템이 수량을 자동으로 곱해요)" data-key="${escHtml(r.key)}" data-role="unit"
           style="width:80px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
           oninput="srOnPurchaseInputChange(this)">
       </td>
@@ -9777,9 +9806,9 @@ function srRenderProfitPanel(orders){
       <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">품목</th>
       <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">옵션</th>
       <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">건수</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">수량</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="실제 매입수량 (주문건수 × kg/팩/개수)">매입<br>수량</th>
       <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">매출</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">매입단가</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="옵션 1개(1봉/1팩)당 매입 단가">매입단가<br>(1개당)</th>
       <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">매입</th>
       <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">수수료</th>
       <th style="padding:7px 8px;text-align:center;font-weight:700;border-bottom:2px solid #D1D5DB" title="체크 시 매출/매입 부가세 차감">과세</th>
