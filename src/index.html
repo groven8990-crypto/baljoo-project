@@ -8074,7 +8074,6 @@ function reconExportXlsx() {
   </div><!-- /srsub-sales -->
   <!-- 매입 보고 패널 -->
   <div class="sr-sub-content" id="srsub-profit">
-    <div id="srVendorSummary"></div>
     <div id="srProfitPanel"></div>
   </div><!-- /srsub-profit -->
   <div class="card" style="margin-top:14px">
@@ -9673,8 +9672,10 @@ function srLoadOverridesDB(){ try { return JSON.parse(localStorage.getItem(LS_PU
 function srSaveOverridesDB(db){ try { localStorage.setItem(LS_PURCHASE_OVERRIDES, JSON.stringify(db)); } catch(e){} }
 function srOverrideKey(rowKey, orderNo){ return String(rowKey)+'||'+String(orderNo||''); }
 function srPurchaseKey(o){
+  // 사업자(그로븐/옐로우브릿지)별로 따로 묶어야 함 — 같은 발주처+옵션이라도 사업자가 다르면 별도 행
   const n = srNormalizeForPurchase(o);
-  return [o.vendor_key||'', n.item, n.option].join('|');
+  const biz = srBrandFromAlias(o.alias);
+  return [biz, o.vendor_key||'', n.item, n.option].join('|');
 }
 // 그룹핑 키 정규화 — 같은 상품인데 파싱이 들쭉날쭉(option_name이 빈칸/'깐마늘1kg'/'1kg' 등 섞임)인 케이스를 통일
 // 특히 동일(깐마늘)은 select_opt → disp_opt → vendor_code → option_name → code_qty 순으로 kg 감지
@@ -9806,205 +9807,196 @@ function switchSrSubTab(name){
   const c = document.getElementById('srsub-'+name); if (c) c.classList.add('active');
   const b = document.getElementById('stab-sr'+name); if (b) b.classList.add('active');
 }
-// 발주처별 매출/매입/순이익 요약 표
-function srRenderVendorSummary(rows){
-  const el = document.getElementById('srVendorSummary');
-  if (!el) return;
-  if (!rows || rows.length === 0) { el.innerHTML = ''; return; }
-  const byVendor = {};
-  for (const r of rows) {
-    const k = r.brand + '||' + r.vendor;
-    if (!byVendor[k]) byVendor[k] = {brand:r.brand, vendor:r.vendor, count:0, sales:0, purchase:0, fee:0, vat:0, profit:0};
-    const m = byVendor[k];
-    m.count    += r.count;
-    m.sales    += r.sales;
-    m.purchase += r.purchase;
-    m.fee      += r.fee;
-    m.vat      += r.vat;
-    m.profit   += r.profit;
-  }
-  const list = Object.values(byVendor).sort((a,b)=>b.profit - a.profit);
-  const sum = list.reduce((s,m)=>{
-    s.count+=m.count; s.sales+=m.sales; s.purchase+=m.purchase; s.fee+=m.fee; s.vat+=m.vat; s.profit+=m.profit; return s;
-  }, {count:0, sales:0, purchase:0, fee:0, vat:0, profit:0});
-  const HEAD_BG='#F3F4F6', HEAD_FG='#374151';
-  const trs = list.map((m,i) => `<tr style="background:${i%2===0?'#fff':'#FAFAFA'}">
-    <td style="padding:7px 10px;font-size:12px;color:#6B7280">${escHtml(m.brand)}</td>
-    <td style="padding:7px 10px;font-size:12px;font-weight:700">${escHtml(m.vendor)}</td>
-    <td style="padding:7px 10px;text-align:right;font-size:12px">${m.count}</td>
-    <td style="padding:7px 10px;text-align:right;font-size:12px;color:#1A56DB;font-variant-numeric:tabular-nums">${m.sales.toLocaleString()}</td>
-    <td style="padding:7px 10px;text-align:right;font-size:12px;color:#7B4B00;font-variant-numeric:tabular-nums">${m.purchase.toLocaleString()}</td>
-    <td style="padding:7px 10px;text-align:right;font-size:12px;color:#92400E;font-variant-numeric:tabular-nums">${m.fee.toLocaleString()}</td>
-    <td style="padding:7px 10px;text-align:right;font-size:12px;color:#6B21A8;font-variant-numeric:tabular-nums">${m.vat.toLocaleString()}</td>
-    <td style="padding:7px 10px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#16A34A':'#DC2626'}">${m.profit.toLocaleString()}</td>
-  </tr>`).join('');
-  el.innerHTML = `<div class="card" style="background:#fff;padding:18px;max-width:1200px;margin:0 auto 14px">
-    <div style="font-size:15px;font-weight:700;color:#212121;margin-bottom:10px">🏪 발주처별 요약 — 어디서 가장 많이 남는지</div>
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;background:#fff">
-      <thead><tr style="background:${HEAD_BG};color:${HEAD_FG}">
-        <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">브랜드</th>
-        <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">발주처</th>
-        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">주문건수</th>
-        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">매출</th>
-        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">매입(배송포함)</th>
-        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">수수료</th>
-        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">부가세</th>
-        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB;color:#16A34A">순이익</th>
-      </tr></thead>
-      <tbody>${trs}</tbody>
-      <tfoot><tr style="background:#E5E7EB;font-weight:700">
-        <td colspan="2" style="padding:9px 10px;color:#1F2937">합계</td>
-        <td style="padding:9px 10px;text-align:right">${sum.count}</td>
-        <td style="padding:9px 10px;text-align:right;color:#1A56DB;font-variant-numeric:tabular-nums">${sum.sales.toLocaleString()}</td>
-        <td style="padding:9px 10px;text-align:right;color:#7B4B00;font-variant-numeric:tabular-nums">${sum.purchase.toLocaleString()}</td>
-        <td style="padding:9px 10px;text-align:right;color:#92400E;font-variant-numeric:tabular-nums">${sum.fee.toLocaleString()}</td>
-        <td style="padding:9px 10px;text-align:right;color:#6B21A8;font-variant-numeric:tabular-nums">${sum.vat.toLocaleString()}</td>
-        <td style="padding:9px 10px;text-align:right;font-size:14px;font-variant-numeric:tabular-nums;color:${sum.profit>=0?'#16A34A':'#DC2626'}">${sum.profit.toLocaleString()}</td>
-      </tr></tfoot>
-    </table></div>
-  </div>`;
-}
+// ══════════════════════════════════════════════════════════
+// 📦 매입 / 순이익 — 사업자별 섹션 + 발주처별 요약 + 상세 입력
+// ══════════════════════════════════════════════════════════
+const _srExpandedRows = new Set();
+function _srBizCode(biz){ return biz==='그로븐' ? 'grobn' : (biz==='옐로우브릿지' ? 'yb' : 'other'); }
+function _srBizColor(biz){ return biz==='그로븐' ? '#1E3A5F' : (biz==='옐로우브릿지' ? '#3A1E5F' : '#475569'); }
+function _srBizSubtitle(biz){ return biz==='그로븐' ? '로또상회' : (biz==='옐로우브릿지' ? '자꾸가게' : biz); }
 function srRenderProfitPanel(orders){
   const el = document.getElementById('srProfitPanel');
   if (!el) return;
   const rows = srBuildProfitRows(orders || []);
-  if (rows.length === 0) { el.innerHTML=''; srRenderVendorSummary([]); return; }
-  srRenderVendorSummary(rows);
-  const HEAD_BG='#F3F4F6', HEAD_FG='#374151';
-  const trs = rows.map((r,i) => {
-    const cls = !r.unit ? 'background:#FEF9C3' : (i%2===0?'background:#fff':'background:#FAFAFA');
-    return `<tr data-rowkey="${_srEsc(r.key)}" style="${cls}">
-      <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:center">
-        <button type="button" data-key="${_srEsc(r.key)}" onclick="srToggleProfitDetail(this)" style="border:1px solid #D1D5DB;background:#fff;cursor:pointer;font-size:11px;padding:1px 6px;border-radius:3px" title="사람별 계산 보기">▶</button>
-      </td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;color:#6B7280">${escHtml(r.brand)}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;font-weight:600">${escHtml(r.vendor)}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px">${escHtml(r.item||'-')}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;color:#6B7280">${escHtml(r.option||'-')}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px">${r.count}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px">${r.qtySum}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${r.sales.toLocaleString()}</td>
-      <td style="padding:4px 4px;border-bottom:1px solid #eee">
-        <input type="number" min="0" step="1" value="${r.unit||''}" placeholder="1개 가격" title="옵션 1봉/팩/개당 매입 단가 (시스템이 수량을 자동으로 곱해요)"
-          data-key="${_srEsc(r.key)}" data-role="unit"
-          style="width:80px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
-          oninput="srOnPurchaseInputChange(this)">
-      </td>
-      <td data-cell="itemCost" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#7B4B00">${r.itemCost.toLocaleString()}</td>
-      <td style="padding:4px 4px;border-bottom:1px solid #eee">
-        <input type="number" min="0" step="1" value="${r.shipFee||''}" placeholder="0" title="박스 1개당 배송비"
-          data-key="${_srEsc(r.key)}" data-role="shipFee"
-          style="width:65px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
-          oninput="srOnPurchaseInputChange(this)">
-      </td>
-      <td style="padding:4px 4px;border-bottom:1px solid #eee">
-        <input type="number" min="0" step="1" value="${r.consol||''}" placeholder="없음" title="박스 1개에 들어가는 최대 단위수량 (예: 깐마늘 10 = 10kg까지 1박스). 비우면 주문 1건당 1박스"
-          data-key="${_srEsc(r.key)}" data-role="consol"
-          style="width:55px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
-          oninput="srOnPurchaseInputChange(this)">
-      </td>
-      <td data-cell="shipTotal" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#7B4B00">${r.shipTotal.toLocaleString()}</td>
-      <td data-cell="purchase" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#7B4B00;font-weight:600">${r.purchase.toLocaleString()}</td>
-      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#92400E">${r.fee.toLocaleString()}</td>
-      <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:center">
-        <input type="checkbox" ${r.taxable?'checked':''} data-key="${_srEsc(r.key)}" data-role="taxable" onchange="srOnPurchaseInputChange(this)" style="cursor:pointer">
-      </td>
-      <td data-cell="vat" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#6B21A8">${r.vat.toLocaleString()}</td>
-      <td data-cell="profit" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;font-weight:700;color:${r.profit>=0?'#16A34A':'#DC2626'}">${r.profit.toLocaleString()}</td>
-    </tr>`;
-  }).join('');
-  const tableHtml = `<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff" id="srProfitTable">
-    <thead><tr style="background:${HEAD_BG};color:${HEAD_FG}">
-      <th style="padding:7px 4px;text-align:center;font-weight:700;border-bottom:2px solid #D1D5DB" title="사람별 계산 보기">📋</th>
-      <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">브랜드</th>
-      <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">발주처</th>
-      <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">품목</th>
-      <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">옵션</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">건수</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="실제 매입수량 (주문건수 × kg/팩/개수)">매입<br>수량</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">매출</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="옵션 1개(1봉/1팩)당 매입 단가">매입단가<br>(1개당)</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="배송비 제외 매입가">매입가</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="박스 1개당 배송비">배송비<br>(1박스)</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="박스 1개에 들어가는 최대 단위수량 (비우면 주문 1건당 1박스)">합배송<br>한도</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="Σ주문별 ceil(매입수량/한도)×배송비">총배송비</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="매입가 + 총배송비">총매입</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">수수료</th>
-      <th style="padding:7px 8px;text-align:center;font-weight:700;border-bottom:2px solid #D1D5DB" title="체크 시 매출/매입 부가세 차감">과세</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">부가세</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB;color:#16A34A">순이익</th>
-    </tr></thead>
-    <tbody>${trs}</tbody>
-    <tfoot id="srProfitFoot"></tfoot>
-  </table>`;
-  el.innerHTML = `<div class="card" style="background:#fff;padding:18px;max-width:1200px;margin:14px auto">
-    <div style="font-size:15px;font-weight:700;color:#212121;margin-bottom:10px">📦 매입 / 순이익</div>
-    <div id="srProfitSummary"></div>
-    <div id="srProfitHint"></div>
-    <div style="overflow-x:auto">${tableHtml}</div>
+  if (rows.length === 0) { el.innerHTML=''; return; }
+  const focusMeta = _srCaptureFocus();
+  const dateStr = document.getElementById('srReportDate')?.value || _localISO();
+  const titleDate = String(dateStr).replace(/-/g,'.');
+  const allBiz = [...new Set(rows.map(r=>r.brand))];
+  const bizOrder = {'그로븐':0, '옐로우브릿지':1, '기타':2};
+  allBiz.sort((a,b)=>(bizOrder[a]==null?9:bizOrder[a])-(bizOrder[b]==null?9:bizOrder[b]));
+  const T = rows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=r.fee;s.vat+=r.vat;s.profit+=r.profit;s.count+=r.count;return s;}, {sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
+  const noPriceCnt = rows.filter(r=>!r.unit).length;
+  el.innerHTML = `<div class="card" style="background:#fff;padding:22px;max-width:1200px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
+    <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 매입 + 순이익 보고</div>
+    <div style="font-size:11px;color:#888;margin-top:2px">발주서 기준 자동 집계 · 매입단가/배송비/한도는 한 번 입력하면 자동 저장</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px">
+      <div><div style="font-size:11px;color:#666">총 매출</div><div style="font-size:18px;font-weight:700;color:#1A56DB;margin-top:2px">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#888;margin-top:2px">${T.count.toLocaleString()}건</div></div>
+      <div><div style="font-size:11px;color:#666">총 매입<span style="font-size:10px;color:#999"> (배송포함)</span></div><div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${T.purchase.toLocaleString()}원</div></div>
+      <div><div style="font-size:11px;color:#666">수수료</div><div style="font-size:18px;font-weight:700;color:#92400E;margin-top:2px">${T.fee.toLocaleString()}원</div></div>
+      <div><div style="font-size:11px;color:#666">납부 부가세</div><div style="font-size:18px;font-weight:700;color:#6B21A8;margin-top:2px">${T.vat.toLocaleString()}원</div></div>
+      <div><div style="font-size:11px;color:#666">순이익</div><div style="font-size:22px;font-weight:700;color:${T.profit>=0?'#16A34A':'#DC2626'};margin-top:2px">${T.profit.toLocaleString()}원</div></div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:10px">매입단가는 <b>옵션 1개당 가격</b>만 넣으면 됩니다. 배송비/합배송 한도까지 같이 입력 → 박스수 자동 계산. ▶ 누르면 사람별로 확인·수정 가능.${noPriceCnt>0?` <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b>`:''}</div>
+    ${allBiz.map(biz => _srBuildBizSectionHtml(biz, rows.filter(r=>r.brand===biz))).join('')}
   </div>`;
-  srUpdateProfitTotals(rows);
+  // 펼쳐져있던 행 복원
+  Array.from(_srExpandedRows).forEach(key => {
+    const sel = CSS && CSS.escape ? CSS.escape(key) : key;
+    const tr = document.querySelector(`tr[data-rowkey="${sel}"]`);
+    if (!tr) { _srExpandedRows.delete(key); return; }
+    const btn = tr.querySelector('button[data-toggle-key]');
+    if (btn) { const r = rows.find(x=>x.key===key); if (r) srOpenProfitDetail(tr, btn, r); }
+  });
+  _srRestoreFocus(focusMeta);
 }
-// 상단 요약 + 합계 줄 + 미입력 안내 — 행 input은 건드리지 않음
-function srUpdateProfitTotals(rows){
-  const sum = rows.reduce((s,r)=>{
-    s.sales += r.sales; s.itemCost += r.itemCost; s.ship += r.ship;
-    s.purchase += r.purchase; s.fee += r.fee; s.vat += r.vat; s.profit += r.profit;
-    return s;
-  }, {sales:0, itemCost:0, ship:0, purchase:0, fee:0, vat:0, profit:0});
-  const noPriceCnt = rows.filter(r => !r.unit).length;
-  const summaryEl = document.getElementById('srProfitSummary');
-  if (summaryEl) {
-    summaryEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;background:#EBF0F8;padding:14px;border-radius:6px;margin-bottom:12px">
-      <div><div style="font-size:11px;color:#666">총 매출</div><div style="font-size:16px;font-weight:700;color:#1A56DB;margin-top:2px">${sum.sales.toLocaleString()}원</div></div>
-      <div><div style="font-size:11px;color:#666">총 매입 <span style="font-size:10px;color:#999">(배송비포함)</span></div><div style="font-size:16px;font-weight:700;color:#7B4B00;margin-top:2px">${sum.purchase.toLocaleString()}원</div></div>
-      <div><div style="font-size:11px;color:#666">수수료</div><div style="font-size:16px;font-weight:700;color:#92400E;margin-top:2px">${sum.fee.toLocaleString()}원</div></div>
-      <div><div style="font-size:11px;color:#666">납부 부가세</div><div style="font-size:16px;font-weight:700;color:#6B21A8;margin-top:2px">${sum.vat.toLocaleString()}원</div></div>
-      <div><div style="font-size:11px;color:#666">순이익</div><div style="font-size:18px;font-weight:700;color:${sum.profit>=0?'#16A34A':'#DC2626'};margin-top:2px">${sum.profit.toLocaleString()}원</div></div>
-    </div>`;
+function _srBuildBizSectionHtml(biz, bizRows){
+  const color = _srBizColor(biz);
+  const subtitle = _srBizSubtitle(biz);
+  const T = bizRows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=r.fee;s.vat+=r.vat;s.profit+=r.profit;s.count+=r.count;return s;}, {sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
+  const byVendor = {};
+  for (const r of bizRows) {
+    if (!byVendor[r.vendor]) byVendor[r.vendor] = {vendor:r.vendor, count:0, sales:0, purchase:0, fee:0, vat:0, profit:0};
+    const m = byVendor[r.vendor];
+    m.count+=r.count; m.sales+=r.sales; m.purchase+=r.purchase; m.fee+=r.fee; m.vat+=r.vat; m.profit+=r.profit;
   }
-  const hintEl = document.getElementById('srProfitHint');
-  if (hintEl) {
-    hintEl.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">매입단가는 <b>옵션 1개(1봉/1팩)당 가격</b>만 넣으면 됩니다. 시스템이 <b>매입수량</b>을 자동으로 곱해요. 배송비는 우리가 부담한 1회분만 입력. 발주처+품목+옵션 단위로 저장 — 다음번 같은 조합에 자동 적용. <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b></div>`;
-  }
-  const footEl = document.getElementById('srProfitFoot');
-  // 발주처별 요약도 같이 갱신
-  srRenderVendorSummary(rows);
-  if (footEl) {
-    footEl.innerHTML = `<tr style="background:#E5E7EB;font-weight:700">
-      <td colspan="7" style="padding:8px;color:#1F2937">합계</td>
-      <td style="padding:8px;text-align:right;color:#1A56DB;font-variant-numeric:tabular-nums">${sum.sales.toLocaleString()}</td>
-      <td style="padding:8px;text-align:right;color:#6B7280">—</td>
-      <td style="padding:8px;text-align:right;color:#7B4B00;font-variant-numeric:tabular-nums">${sum.itemCost.toLocaleString()}</td>
-      <td style="padding:8px;text-align:right;color:#7B4B00;font-variant-numeric:tabular-nums">${sum.ship.toLocaleString()}</td>
-      <td style="padding:8px;text-align:right;color:#7B4B00;font-weight:700;font-variant-numeric:tabular-nums">${sum.purchase.toLocaleString()}</td>
-      <td style="padding:8px;text-align:right;color:#92400E;font-variant-numeric:tabular-nums">${sum.fee.toLocaleString()}</td>
-      <td style="padding:8px;text-align:center;color:#6B7280">—</td>
-      <td style="padding:8px;text-align:right;color:#6B21A8;font-variant-numeric:tabular-nums">${sum.vat.toLocaleString()}</td>
-      <td style="padding:8px;text-align:right;font-variant-numeric:tabular-nums;color:${sum.profit>=0?'#16A34A':'#DC2626'};font-size:13px">${sum.profit.toLocaleString()}</td>
-    </tr>`;
-  }
+  const vendorList = Object.values(byVendor).sort((a,b)=>b.profit-a.profit);
+  const HBG='#F1F5F9', HFG='#334155';
+  const vendorTrs = vendorList.map((m,i)=>`<tr style="background:${i%2===0?'#fff':'#F8FAFC'}">
+    <td style="padding:7px 12px;font-size:12px;font-weight:600;border-bottom:1px solid #eee">${escHtml(m.vendor)}</td>
+    <td style="padding:7px 12px;text-align:right;font-size:12px;border-bottom:1px solid #eee">${m.count}건</td>
+    <td style="padding:7px 12px;text-align:right;font-size:12px;color:#1A56DB;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.sales.toLocaleString()}원</td>
+    <td style="padding:7px 12px;text-align:right;font-size:12px;color:#7B4B00;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.purchase.toLocaleString()}원</td>
+    <td style="padding:7px 12px;text-align:right;font-size:12px;color:#92400E;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.fee.toLocaleString()}원</td>
+    <td style="padding:7px 12px;text-align:right;font-size:12px;color:#6B21A8;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.vat.toLocaleString()}원</td>
+    <td style="padding:7px 12px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#16A34A':'#DC2626'};border-bottom:1px solid #eee">${m.profit.toLocaleString()}원</td>
+  </tr>`).join('');
+  const detailRows = bizRows.slice().sort((a,b)=>b.profit-a.profit);
+  const detailTrs = detailRows.map((r,i)=>_srBuildDetailRowHtml(r,i)).join('');
+  return `<div style="margin-top:22px">
+    <div style="background:${color};color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      🏢 ${escHtml(biz)} <span style="font-size:11px;opacity:.8;font-weight:400">(${escHtml(subtitle)})</span>
+      <span style="margin-left:auto;font-size:12px;font-weight:400">매출 <b>${T.sales.toLocaleString()}</b> · 매입 <b>${T.purchase.toLocaleString()}</b> · 순이익 <b style="color:${T.profit>=0?'#86EFAC':'#FCA5A5'}">${T.profit.toLocaleString()}</b></span>
+    </div>
+    <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0">
+      <thead><tr style="background:${HBG}">
+        <th style="padding:8px 12px;text-align:left;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">발주처</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">주문건수</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">매출</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">매입(배송포함)</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">수수료</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">부가세</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;color:#16A34A;border-bottom:1px solid #e2e8f0">순이익</th>
+      </tr></thead>
+      <tbody>${vendorTrs}</tbody>
+      <tfoot><tr style="background:#E2E8F0;font-weight:700">
+        <td style="padding:8px 12px;font-size:12px">${escHtml(biz)} 합계</td>
+        <td style="padding:8px 12px;text-align:right;font-size:12px">${T.count}건</td>
+        <td style="padding:8px 12px;text-align:right;font-size:12px;color:#1A56DB;font-variant-numeric:tabular-nums">${T.sales.toLocaleString()}원</td>
+        <td style="padding:8px 12px;text-align:right;font-size:12px;color:#7B4B00;font-variant-numeric:tabular-nums">${T.purchase.toLocaleString()}원</td>
+        <td style="padding:8px 12px;text-align:right;font-size:12px;color:#92400E;font-variant-numeric:tabular-nums">${T.fee.toLocaleString()}원</td>
+        <td style="padding:8px 12px;text-align:right;font-size:12px;color:#6B21A8;font-variant-numeric:tabular-nums">${T.vat.toLocaleString()}원</td>
+        <td style="padding:8px 12px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:${T.profit>=0?'#16A34A':'#DC2626'}">${T.profit.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>
+    <div style="margin-top:8px;font-size:11px;color:var(--text3)">📋 ${escHtml(biz)} 상세 — 매입단가/배송비/합배송한도 입력. ▶ 누르면 사람별 검산.</div>
+    <div style="overflow-x:auto;margin-top:4px">
+      <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #e2e8f0">
+        <thead><tr style="background:${HBG};color:${HFG}">
+          <th style="padding:6px 4px;text-align:center;border-bottom:1px solid #D1D5DB">📋</th>
+          <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #D1D5DB">발주처</th>
+          <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #D1D5DB">품목</th>
+          <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #D1D5DB">옵션</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">건수</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB" title="실제 매입수량">매입<br>수량</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">매출</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB" title="옵션 1개당 매입단가">매입단가<br>(1개당)</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">매입가</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB" title="박스 1개당 배송비">배송비<br>(1박스)</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB" title="박스 1개당 최대 단위수량 (비우면 주문 1건당 1박스)">합배송<br>한도</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">총배송비</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">총매입</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">수수료</th>
+          <th style="padding:6px 8px;text-align:center;border-bottom:1px solid #D1D5DB" title="체크 시 부가세 차감">과세</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">부가세</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;color:#16A34A">순이익</th>
+        </tr></thead>
+        <tbody>${detailTrs}</tbody>
+      </table>
+    </div>
+  </div>`;
 }
-// 행 1개의 계산된 셀(매입가/총매입/부가세/순이익)만 다시 칠함 — input은 건드리지 않음
-function srUpdateProfitRow(row){
-  const tr = document.querySelector(`tr[data-rowkey="${CSS && CSS.escape ? CSS.escape(row.key) : row.key}"]`);
+function _srBuildDetailRowHtml(r, i){
+  const cls = !r.unit ? 'background:#FEF9C3' : (i%2===0?'background:#fff':'background:#FAFAFA');
+  return `<tr data-rowkey="${_srEsc(r.key)}" style="${cls}">
+    <td style="padding:4px 4px;border-bottom:1px solid #eee;text-align:center">
+      <button type="button" data-toggle-key="${_srEsc(r.key)}" onclick="srToggleProfitDetail(this)" style="border:1px solid #D1D5DB;background:#fff;cursor:pointer;font-size:11px;padding:1px 6px;border-radius:3px" title="사람별 검산">▶</button>
+    </td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;font-weight:600">${escHtml(r.vendor)}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee">${escHtml(r.item||'-')}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#6B7280">${escHtml(r.option||'-')}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${r.count}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${r.qtySum}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums">${r.sales.toLocaleString()}</td>
+    <td style="padding:3px 3px;border-bottom:1px solid #eee">
+      <input type="number" min="0" step="1" value="${r.unit||''}" placeholder="1개 가격" title="옵션 1개당 매입단가"
+        data-key="${_srEsc(r.key)}" data-role="unit"
+        style="width:70px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
+        oninput="srOnPurchaseInputChange(this)">
+    </td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00">${r.itemCost.toLocaleString()}</td>
+    <td style="padding:3px 3px;border-bottom:1px solid #eee">
+      <input type="number" min="0" step="1" value="${r.shipFee||''}" placeholder="0" title="박스 1개당 배송비"
+        data-key="${_srEsc(r.key)}" data-role="shipFee"
+        style="width:55px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
+        oninput="srOnPurchaseInputChange(this)">
+    </td>
+    <td style="padding:3px 3px;border-bottom:1px solid #eee">
+      <input type="number" min="0" step="1" value="${r.consol||''}" placeholder="없음" title="박스 1개에 들어가는 최대 단위수량 (비우면 주문 1건당 1박스)"
+        data-key="${_srEsc(r.key)}" data-role="consol"
+        style="width:48px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
+        oninput="srOnPurchaseInputChange(this)">
+    </td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00">${r.shipTotal.toLocaleString()}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00;font-weight:600">${r.purchase.toLocaleString()}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#92400E">${r.fee.toLocaleString()}</td>
+    <td style="padding:3px 4px;border-bottom:1px solid #eee;text-align:center">
+      <input type="checkbox" ${r.taxable?'checked':''} data-key="${_srEsc(r.key)}" data-role="taxable" onchange="srOnPurchaseInputChange(this)" style="cursor:pointer">
+    </td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#6B21A8">${r.vat.toLocaleString()}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${r.profit>=0?'#16A34A':'#DC2626'}">${r.profit.toLocaleString()}</td>
+  </tr>`;
+}
+function srToggleProfitDetail(btn){
+  const key = btn.getAttribute('data-toggle-key');
+  if (!key) return;
+  const sel = CSS && CSS.escape ? CSS.escape(key) : key;
+  const tr = document.querySelector(`tr[data-rowkey="${sel}"]`);
   if (!tr) return;
-  const setCell = (name, val, color) => {
-    const td = tr.querySelector(`td[data-cell="${name}"]`);
-    if (td) {
-      td.textContent = Number(val||0).toLocaleString();
-      if (color) td.style.color = color;
-    }
-  };
-  setCell('itemCost',  row.itemCost);
-  setCell('shipTotal', row.shipTotal);
-  setCell('purchase',  row.purchase);
-  setCell('vat',       row.vat);
-  setCell('profit',    row.profit, row.profit>=0?'#16A34A':'#DC2626');
-  // 미입력 강조용 배경색도 갱신
-  tr.style.background = !row.unit ? '#FEF9C3' : '';
+  const nextRow = tr.nextElementSibling;
+  if (nextRow && nextRow.classList.contains('sr-profit-detail') && nextRow.getAttribute('data-rowkey') === key) {
+    nextRow.remove(); btn.textContent = '▶';
+    _srExpandedRows.delete(key);
+    return;
+  }
+  const rows = srBuildProfitRows(Array.isArray(allOrders) ? allOrders : []);
+  const r = rows.find(x => x.key === key);
+  if (!r) return;
+  srOpenProfitDetail(tr, btn, r);
+  _srExpandedRows.add(key);
 }
-// 내용만 만드는 함수 — 토글/재렌더 시 둘 다 사용
+function srOpenProfitDetail(tr, btn, r){
+  const key = r.key;
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains('sr-profit-detail') && next.getAttribute('data-rowkey') === key) return;
+  const colspan = tr.children.length;
+  const detailRow = document.createElement('tr');
+  detailRow.classList.add('sr-profit-detail');
+  detailRow.setAttribute('data-rowkey', key);
+  detailRow.innerHTML = `<td colspan="${colspan}" style="padding:10px 14px;background:#F9FAFB;border-bottom:1px solid #ddd"><div class="sr-detail-wrap" data-rowkey="${_srEsc(key)}">${srBuildDetailInnerHtml(r)}</div></td>`;
+  tr.parentNode.insertBefore(detailRow, tr.nextSibling);
+  btn.textContent = '▼';
+}
 function srBuildDetailInnerHtml(r){
   const dRows = r.orderDetail.map((d, i) => {
     const ovTag = d.boxesOverridden ? `<span style="font-size:9px;color:#7C3AED;margin-left:4px" title="자동 계산값: ${d.boxesComputed}박스">✏️수정됨</span>` : '';
@@ -10025,7 +10017,7 @@ function srBuildDetailInnerHtml(r){
     </tr>`;
   }).join('');
   const totalBoxes = r.orderDetail.reduce((s,d)=>s+d.boxes,0);
-  const formula = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">계산식: <b>박스수</b> = ceil(매입수량 ÷ ${r.consol||'없음'}) · <b>매입가</b> = 매입수량 × ${r.unit.toLocaleString()}원 · <b>배송비</b> = 박스수 × ${r.shipFee.toLocaleString()}원 <span style="color:#7C3AED;margin-left:6px">· 박스수 칸에 직접 입력하면 그 주문만 수동 보정 (✏️ 표시)</span></div>`;
+  const formula = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">계산식: <b>박스수</b> = ceil(매입수량 ÷ ${r.consol||'없음'}) · <b>매입가</b> = 매입수량 × ${r.unit.toLocaleString()}원 · <b>배송비</b> = 박스수 × ${r.shipFee.toLocaleString()}원 <span style="color:#7C3AED;margin-left:6px">· 박스수에 직접 입력하면 그 주문만 수동 보정</span></div>`;
   return `<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📋 ${escHtml(r.brand)} · ${escHtml(r.vendor)} · ${escHtml(r.item)} · ${escHtml(r.option)} — 사람별 계산</div>
     ${formula}
     <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #E5E7EB;border-radius:4px">
@@ -10049,31 +10041,44 @@ function srBuildDetailInnerHtml(r){
       </tr></tfoot>
     </table>`;
 }
-// ▶ 상세 토글 — 사람별 매입 계산 펼침/접힘
-function srToggleProfitDetail(btn){
-  const key = btn.getAttribute('data-key');
-  if (!key) return;
-  const sel = CSS && CSS.escape ? CSS.escape(key) : key;
-  const tr = document.querySelector(`tr[data-rowkey="${sel}"]`);
-  if (!tr) return;
-  const nextRow = tr.nextElementSibling;
-  if (nextRow && nextRow.classList.contains('sr-profit-detail') && nextRow.getAttribute('data-rowkey') === key) {
-    nextRow.remove();
-    btn.textContent = '▶';
-    return;
+function _srCaptureFocus(){
+  const a = document.activeElement;
+  if (!a || !a.matches) return null;
+  if (a.matches('input[data-key][data-role]')) {
+    return {type:'main', key:a.getAttribute('data-key'), role:a.getAttribute('data-role'), s:a.selectionStart, e:a.selectionEnd};
   }
-  const rows = srBuildProfitRows(Array.isArray(allOrders) ? allOrders : []);
-  const r = rows.find(x => x.key === key);
-  if (!r) return;
-  const colspan = tr.children.length;
-  const detailRow = document.createElement('tr');
-  detailRow.classList.add('sr-profit-detail');
-  detailRow.setAttribute('data-rowkey', key);
-  detailRow.innerHTML = `<td colspan="${colspan}" style="padding:10px 14px;background:#F9FAFB;border-bottom:1px solid #ddd"><div class="sr-detail-wrap" data-rowkey="${_srEsc(key)}">${srBuildDetailInnerHtml(r)}</div></td>`;
-  tr.parentNode.insertBefore(detailRow, tr.nextSibling);
-  btn.textContent = '▼';
+  if (a.matches('input[data-rowkey][data-orderno]')) {
+    return {type:'detail', rowKey:a.getAttribute('data-rowkey'), orderNo:a.getAttribute('data-orderno'), s:a.selectionStart, e:a.selectionEnd};
+  }
+  return null;
 }
-// 박스수 인라인 수정 — 그 주문만 보정 저장
+function _srRestoreFocus(m){
+  if (!m) return;
+  setTimeout(()=>{
+    let el;
+    if (m.type==='main') {
+      const ks = CSS && CSS.escape ? CSS.escape(m.key) : m.key;
+      el = document.querySelector(`input[data-key="${ks}"][data-role="${m.role}"]`);
+    } else if (m.type==='detail') {
+      const ks = CSS && CSS.escape ? CSS.escape(m.rowKey) : m.rowKey;
+      const os = CSS && CSS.escape ? CSS.escape(m.orderNo) : m.orderNo;
+      el = document.querySelector(`input[data-rowkey="${ks}"][data-orderno="${os}"]`);
+    }
+    if (el) { el.focus(); try { el.setSelectionRange(m.s, m.e); } catch(_) {} }
+  }, 0);
+}
+function srOnPurchaseInputChange(elInput){
+  const key  = elInput.getAttribute('data-key');
+  const role = elInput.getAttribute('data-role');
+  if (!key || !role) return;
+  if (role === 'unit' || role === 'shipFee' || role === 'consol') {
+    const v = Math.max(0, parseFloat(elInput.value)||0);
+    srUpdatePurchaseEntry(key, { [role]: v });
+  } else if (role === 'taxable') {
+    srUpdatePurchaseEntry(key, { taxable: !!elInput.checked });
+  }
+  srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+}
 function srOnDetailBoxChange(input){
   const rowKey = input.getAttribute('data-rowkey');
   const orderNo = input.getAttribute('data-orderno');
@@ -10089,7 +10094,7 @@ function srOnDetailBoxChange(input){
     ovDB[k].boxes = v;
     srSaveOverridesDB(ovDB);
   }
-  srRerenderProfitAfterChange(rowKey);
+  srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
 }
 function srRestoreDetailBox(btn){
   const rowKey = btn.getAttribute('data-rowkey');
@@ -10097,42 +10102,7 @@ function srRestoreDetailBox(btn){
   const ovDB = srLoadOverridesDB();
   const k = srOverrideKey(rowKey, orderNo);
   if (ovDB[k]) { delete ovDB[k].boxes; if (!Object.keys(ovDB[k]).length) delete ovDB[k]; srSaveOverridesDB(ovDB); }
-  srRerenderProfitAfterChange(rowKey);
-}
-function srRerenderProfitAfterChange(rowKey){
-  const rows = srBuildProfitRows(Array.isArray(allOrders) ? allOrders : []);
-  const r = rows.find(x => x.key === rowKey);
-  if (r) srUpdateProfitRow(r);
-  srUpdateProfitTotals(rows);
-  // 상세 패널 내부도 갱신 (열려있을 때만)
-  const sel = CSS && CSS.escape ? CSS.escape(rowKey) : rowKey;
-  const wrap = document.querySelector(`.sr-detail-wrap[data-rowkey="${sel}"]`);
-  if (wrap && r) {
-    // 포커스 위치 보존 — 박스 input 노드만 살리고 다른 셀만 다시 그림
-    const focusedOrderNo = (document.activeElement && document.activeElement.matches && document.activeElement.matches('input[data-rowkey][data-orderno]')) ? document.activeElement.getAttribute('data-orderno') : null;
-    wrap.innerHTML = srBuildDetailInnerHtml(r);
-    if (focusedOrderNo != null) {
-      const sel2 = CSS && CSS.escape ? CSS.escape(focusedOrderNo) : focusedOrderNo;
-      const focusEl = wrap.querySelector(`input[data-orderno="${sel2}"]`);
-      if (focusEl) { focusEl.focus(); focusEl.select && focusEl.select(); }
-    }
-  }
-}
-function srOnPurchaseInputChange(elInput){
-  const key  = elInput.getAttribute('data-key');
-  const role = elInput.getAttribute('data-role');
-  if (!key || !role) return;
-  if (role === 'unit' || role === 'shipFee' || role === 'consol') {
-    const v = Math.max(0, parseFloat(elInput.value)||0);
-    srUpdatePurchaseEntry(key, { [role]: v });
-  } else if (role === 'taxable') {
-    srUpdatePurchaseEntry(key, { taxable: !!elInput.checked });
-  }
-  // 행/합계 점진적 갱신 — input 노드는 그대로 두고 계산 셀만 다시 칠함
-  const rows = srBuildProfitRows(Array.isArray(allOrders) ? allOrders : []);
-  const updated = rows.find(r => r.key === key);
-  if (updated) srUpdateProfitRow(updated);
-  srUpdateProfitTotals(rows);
+  srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
 }
 
 function srSaveCurrentSnapshot(){
