@@ -2429,6 +2429,40 @@ function _poShowToast(msg){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(), 4500);
 }
+// PNG 저장용 — clone 내부 input들을 텍스트로 교체 + ▶ 토글 버튼 제거
+function _srStripInputsForExport(clone){
+  if (!clone) return;
+  clone.querySelectorAll('input[type="number"]').forEach(inp => {
+    const span = document.createElement('span');
+    const v = inp.value;
+    span.textContent = (v === '' || v == null) ? '-' : Number(v).toLocaleString();
+    span.style.cssText = 'display:inline-block;padding:3px 6px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;color:#374151;min-width:50px';
+    inp.parentNode.replaceChild(span, inp);
+  });
+  clone.querySelectorAll('input[type="checkbox"]').forEach(inp => {
+    const span = document.createElement('span');
+    span.textContent = inp.checked ? '✓' : '';
+    span.style.cssText = 'font-size:13px;color:#6B21A8;font-weight:700';
+    inp.parentNode.replaceChild(span, inp);
+  });
+  // ▶ 상세 토글 버튼 제거 (PNG에선 의미 없음)
+  clone.querySelectorAll('button[data-toggle-key]').forEach(btn => btn.remove());
+}
+// 원본의 canvas 비트맵을 clone 쪽 canvas에 그대로 복사 (cloneNode는 빈 캔버스)
+function _srCopyCanvasContents(original, clone){
+  if (!original || !clone) return;
+  const origCanvases = original.querySelectorAll('canvas');
+  const cloneCanvases = clone.querySelectorAll('canvas');
+  origCanvases.forEach((oc, i) => {
+    const cc = cloneCanvases[i];
+    if (!cc) return;
+    cc.width = oc.width;
+    cc.height = oc.height;
+    try {
+      cc.getContext('2d').drawImage(oc, 0, 0);
+    } catch(e) { console.warn('canvas 복사 실패:', e); }
+  });
+}
 
 // ── 발주서 저장 폴더 (지출결의서와 동일 패턴) ──
 let _poSaveDirHandle = null;
@@ -10366,7 +10400,12 @@ function srExportImage(){
     if (profitEl && profitEl.innerHTML.trim()) {
       const tmp = document.createElement('div');
       tmp.style.cssText='background:#fff;padding:22px;width:1240px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
-      tmp.appendChild(profitEl.cloneNode(true));
+      const cloned = profitEl.cloneNode(true);
+      tmp.appendChild(cloned);
+      // input을 텍스트로 교체 (저장본에 입력칸 안 보이게)
+      _srStripInputsForExport(cloned);
+      // 차트 캔버스는 cloneNode가 비트맵을 못 복사하니 원본에서 그대로 그려와야 함
+      _srCopyCanvasContents(profitEl, cloned);
       const foot=document.createElement('div');
       foot.style.cssText='margin-top:18px;font-size:10px;color:#888;text-align:right';
       foot.textContent=`발주일자 ${document.getElementById('srReportDate').value||_localISO()} 기준 · 발주 자동화 시스템`;
