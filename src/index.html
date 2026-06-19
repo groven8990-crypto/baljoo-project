@@ -9651,9 +9651,14 @@ let _srLastSnapshot = null;
 // 📦 매입 / 순이익 (Purchase + Net Profit)
 // ══════════════════════════════════════════════════════════
 const LS_PURCHASE_PRICES = 'yb_purchase_prices';
-// 저장 형식: { "vendor|item|option": { unit: number, taxable: bool, updatedAt: string } }
+const LS_PURCHASE_OVERRIDES = 'yb_purchase_overrides';
+// PRICES 저장 형식: { "vendor|item|option": { unit, shipFee, consol, taxable, updatedAt } }
+// OVERRIDES 저장 형식: { "vendor|item|option||order_no": { boxes? }, ... }  (주문별 수동 보정)
 function srLoadPurchaseDB(){ try { return JSON.parse(localStorage.getItem(LS_PURCHASE_PRICES)||'{}'); } catch { return {}; } }
 function srSavePurchaseDB(db){ try { localStorage.setItem(LS_PURCHASE_PRICES, JSON.stringify(db)); } catch(e){} }
+function srLoadOverridesDB(){ try { return JSON.parse(localStorage.getItem(LS_PURCHASE_OVERRIDES)||'{}'); } catch { return {}; } }
+function srSaveOverridesDB(db){ try { localStorage.setItem(LS_PURCHASE_OVERRIDES, JSON.stringify(db)); } catch(e){} }
+function srOverrideKey(rowKey, orderNo){ return String(rowKey)+'||'+String(orderNo||''); }
 function srPurchaseKey(o){
   const n = srNormalizeForPurchase(o);
   return [o.vendor_key||'', n.item, n.option].join('|');
@@ -9736,6 +9741,7 @@ function srBuildProfitRows(orders){
     r.qtySum += units;
     r.orderDetail.push({
       recv_name: o.recv_name||'(이름없음)',
+      order_no: String(o.order_no||''),
       qty: Number(o.qty)||1,
       units,
       salesAmt: amt
@@ -9745,21 +9751,24 @@ function srBuildProfitRows(orders){
     r.fee += Math.round(amt * srFee(plat));
   }
   // 파생 계산
+  const ovDB = srLoadOverridesDB();
   for (const r of Object.values(map)) {
     r.itemCost = r.qtySum * r.unit;             // 매입가 (배송비 제외)
-    // 총배송비 = Σ over orders of ceil(units / consol) × shipFee
-    //   consol === 0 이면 합배송 한도 없음 → 주문 1건당 무조건 1박스
     let shipTotal = 0;
     for (const d of r.orderDetail) {
-      const boxes = r.consol > 0 ? Math.max(1, Math.ceil(d.units / r.consol)) : 1;
-      d.boxes = boxes;
+      const computed = r.consol > 0 ? Math.max(1, Math.ceil(d.units / r.consol)) : 1;
+      // 주문별 수동 보정 적용
+      const ov = ovDB[srOverrideKey(r.key, d.order_no)] || {};
+      d.boxesComputed = computed;
+      d.boxesOverridden = (ov.boxes != null && !isNaN(ov.boxes));
+      d.boxes = d.boxesOverridden ? Number(ov.boxes) : computed;
       d.itemCost = d.units * r.unit;
-      d.shipCost = boxes * r.shipFee;
+      d.shipCost = d.boxes * r.shipFee;
       d.totalCost = d.itemCost + d.shipCost;
       shipTotal += d.shipCost;
     }
     r.shipTotal = shipTotal;
-    r.purchase = r.itemCost + shipTotal;        // 총매입 (=매입가+배송비)
+    r.purchase = r.itemCost + shipTotal;
     if (r.taxable) {
       r.saleVat     = Math.round(r.sales / 11);
       r.purchaseVat = Math.round(r.purchase / 11);
@@ -9914,42 +9923,29 @@ function srUpdateProfitRow(row){
   // 미입력 강조용 배경색도 갱신
   tr.style.background = !row.unit ? '#FEF9C3' : '';
 }
-// ▶ 상세 토글 — 사람별 매입 계산 펼침/접힘
-function srToggleProfitDetail(btn){
-  const key = btn.getAttribute('data-key');
-  if (!key) return;
-  const sel = CSS && CSS.escape ? CSS.escape(key) : key;
-  const tr = document.querySelector(`tr[data-rowkey="${sel}"]`);
-  if (!tr) return;
-  // 이미 펼쳐져 있으면 닫기
-  const nextRow = tr.nextElementSibling;
-  if (nextRow && nextRow.classList.contains('sr-profit-detail') && nextRow.getAttribute('data-rowkey') === key) {
-    nextRow.remove();
-    btn.textContent = '▶';
-    return;
-  }
-  // 데이터 재계산
-  const rows = srBuildProfitRows(Array.isArray(allOrders) ? allOrders : []);
-  const r = rows.find(x => x.key === key);
-  if (!r) return;
-  const colspan = tr.children.length;
-  // 사람별 표
-  const dRows = r.orderDetail.map((d, i) => `
-    <tr style="background:${i%2===0?'#fff':'#FAFAFA'}">
+// 내용만 만드는 함수 — 토글/재렌더 시 둘 다 사용
+function srBuildDetailInnerHtml(r){
+  const dRows = r.orderDetail.map((d, i) => {
+    const ovTag = d.boxesOverridden ? `<span style="font-size:9px;color:#7C3AED;margin-left:4px" title="자동 계산값: ${d.boxesComputed}박스">✏️수정됨</span>` : '';
+    const restoreBtn = d.boxesOverridden ? `<button type="button" onclick="srRestoreDetailBox(this)" data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}" title="자동 계산으로 되돌리기 (${d.boxesComputed}박스)" style="border:none;background:none;cursor:pointer;color:#7C3AED;font-size:11px;padding:0 4px">↺</button>` : '';
+    return `<tr style="background:${d.boxesOverridden?'#F3E8FF':(i%2===0?'#fff':'#FAFAFA')}">
       <td style="padding:5px 8px;font-size:11px">${escHtml(d.recv_name)}</td>
       <td style="padding:5px 8px;text-align:right;font-size:11px">${d.qty}</td>
       <td style="padding:5px 8px;text-align:right;font-size:11px;color:#7B4B00">${d.units}</td>
-      <td style="padding:5px 8px;text-align:right;font-size:11px">${d.boxes}박스</td>
+      <td style="padding:3px 6px;text-align:right;font-size:11px;white-space:nowrap">
+        <input type="number" min="0" step="1" value="${d.boxes}"
+          data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}"
+          oninput="srOnDetailBoxChange(this)"
+          style="width:50px;padding:2px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums;${d.boxesOverridden?'background:#FAF5FF;color:#6B21A8;font-weight:600':''}">박스${ovTag}${restoreBtn}
+      </td>
       <td style="padding:5px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${d.itemCost.toLocaleString()}</td>
       <td style="padding:5px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#92400E">${d.shipCost.toLocaleString()}</td>
       <td style="padding:5px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;font-weight:600;color:#7B4B00">${d.totalCost.toLocaleString()}</td>
-    </tr>`).join('');
-  const formula = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">계산식: <b>박스수</b> = ceil(매입수량 ÷ ${r.consol||'없음'}) · <b>매입가</b> = 매입수량 × ${r.unit.toLocaleString()}원 · <b>배송비</b> = 박스수 × ${r.shipFee.toLocaleString()}원</div>`;
-  const detailRow = document.createElement('tr');
-  detailRow.classList.add('sr-profit-detail');
-  detailRow.setAttribute('data-rowkey', key);
-  detailRow.innerHTML = `<td colspan="${colspan}" style="padding:10px 14px;background:#F9FAFB;border-bottom:1px solid #ddd">
-    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📋 ${escHtml(r.brand)} · ${escHtml(r.vendor)} · ${escHtml(r.item)} · ${escHtml(r.option)} — 사람별 계산</div>
+    </tr>`;
+  }).join('');
+  const totalBoxes = r.orderDetail.reduce((s,d)=>s+d.boxes,0);
+  const formula = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">계산식: <b>박스수</b> = ceil(매입수량 ÷ ${r.consol||'없음'}) · <b>매입가</b> = 매입수량 × ${r.unit.toLocaleString()}원 · <b>배송비</b> = 박스수 × ${r.shipFee.toLocaleString()}원 <span style="color:#7C3AED;margin-left:6px">· 박스수 칸에 직접 입력하면 그 주문만 수동 보정 (✏️ 표시)</span></div>`;
+  return `<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📋 ${escHtml(r.brand)} · ${escHtml(r.vendor)} · ${escHtml(r.item)} · ${escHtml(r.option)} — 사람별 계산</div>
     ${formula}
     <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #E5E7EB;border-radius:4px">
       <thead><tr style="background:#F3F4F6;color:#374151">
@@ -9965,15 +9961,81 @@ function srToggleProfitDetail(btn){
       <tfoot><tr style="background:#E5E7EB;font-weight:700">
         <td style="padding:6px 8px;color:#1F2937;font-size:11px" colspan="2">합계</td>
         <td style="padding:6px 8px;text-align:right;color:#7B4B00;font-size:11px">${r.qtySum}</td>
-        <td style="padding:6px 8px;text-align:right;font-size:11px">${r.orderDetail.reduce((s,d)=>s+d.boxes,0)}박스</td>
+        <td style="padding:6px 8px;text-align:right;font-size:11px">${totalBoxes}박스</td>
         <td style="padding:6px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${r.itemCost.toLocaleString()}</td>
         <td style="padding:6px 8px;text-align:right;font-size:11px;color:#92400E;font-variant-numeric:tabular-nums">${r.shipTotal.toLocaleString()}</td>
         <td style="padding:6px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;font-weight:700;color:#7B4B00">${r.purchase.toLocaleString()}</td>
       </tr></tfoot>
-    </table>
-  </td>`;
+    </table>`;
+}
+// ▶ 상세 토글 — 사람별 매입 계산 펼침/접힘
+function srToggleProfitDetail(btn){
+  const key = btn.getAttribute('data-key');
+  if (!key) return;
+  const sel = CSS && CSS.escape ? CSS.escape(key) : key;
+  const tr = document.querySelector(`tr[data-rowkey="${sel}"]`);
+  if (!tr) return;
+  const nextRow = tr.nextElementSibling;
+  if (nextRow && nextRow.classList.contains('sr-profit-detail') && nextRow.getAttribute('data-rowkey') === key) {
+    nextRow.remove();
+    btn.textContent = '▶';
+    return;
+  }
+  const rows = srBuildProfitRows(Array.isArray(allOrders) ? allOrders : []);
+  const r = rows.find(x => x.key === key);
+  if (!r) return;
+  const colspan = tr.children.length;
+  const detailRow = document.createElement('tr');
+  detailRow.classList.add('sr-profit-detail');
+  detailRow.setAttribute('data-rowkey', key);
+  detailRow.innerHTML = `<td colspan="${colspan}" style="padding:10px 14px;background:#F9FAFB;border-bottom:1px solid #ddd"><div class="sr-detail-wrap" data-rowkey="${_srEsc(key)}">${srBuildDetailInnerHtml(r)}</div></td>`;
   tr.parentNode.insertBefore(detailRow, tr.nextSibling);
   btn.textContent = '▼';
+}
+// 박스수 인라인 수정 — 그 주문만 보정 저장
+function srOnDetailBoxChange(input){
+  const rowKey = input.getAttribute('data-rowkey');
+  const orderNo = input.getAttribute('data-orderno');
+  if (rowKey == null) return;
+  const ovDB = srLoadOverridesDB();
+  const k = srOverrideKey(rowKey, orderNo);
+  const raw = input.value;
+  if (raw === '' || isNaN(parseFloat(raw))) {
+    if (ovDB[k]) { delete ovDB[k].boxes; if (!Object.keys(ovDB[k]).length) delete ovDB[k]; srSaveOverridesDB(ovDB); }
+  } else {
+    const v = Math.max(0, parseFloat(raw));
+    ovDB[k] = ovDB[k] || {};
+    ovDB[k].boxes = v;
+    srSaveOverridesDB(ovDB);
+  }
+  srRerenderProfitAfterChange(rowKey);
+}
+function srRestoreDetailBox(btn){
+  const rowKey = btn.getAttribute('data-rowkey');
+  const orderNo = btn.getAttribute('data-orderno');
+  const ovDB = srLoadOverridesDB();
+  const k = srOverrideKey(rowKey, orderNo);
+  if (ovDB[k]) { delete ovDB[k].boxes; if (!Object.keys(ovDB[k]).length) delete ovDB[k]; srSaveOverridesDB(ovDB); }
+  srRerenderProfitAfterChange(rowKey);
+}
+function srRerenderProfitAfterChange(rowKey){
+  const rows = srBuildProfitRows(Array.isArray(allOrders) ? allOrders : []);
+  const r = rows.find(x => x.key === rowKey);
+  if (r) srUpdateProfitRow(r);
+  srUpdateProfitTotals(rows);
+  // 상세 패널 내부도 갱신 (열려있을 때만)
+  const sel = CSS && CSS.escape ? CSS.escape(rowKey) : rowKey;
+  const wrap = document.querySelector(`.sr-detail-wrap[data-rowkey="${sel}"]`);
+  if (wrap && r) {
+    // 포커스 위치 보존 — 박스 input 노드만 살리고 다른 셀만 다시 그림
+    const focusedOrderNo = (document.activeElement && document.activeElement.matches && document.activeElement.matches('input[data-rowkey][data-orderno]')) ? document.activeElement.getAttribute('data-orderno') : null;
+    wrap.innerHTML = srBuildDetailInnerHtml(r);
+    if (focusedOrderNo != null) {
+      const sel2 = CSS && CSS.escape ? CSS.escape(focusedOrderNo) : focusedOrderNo;
+      const focusEl = wrap.querySelector(`input[data-orderno="${sel2}"]`);
+      if (focusEl) { focusEl.focus(); focusEl.select && focusEl.select(); }
+    }
+  }
 }
 function srOnPurchaseInputChange(elInput){
   const key  = elInput.getAttribute('data-key');
