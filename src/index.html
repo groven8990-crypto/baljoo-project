@@ -2278,7 +2278,14 @@ function buildRows(vk,orders,alias){
         ...orders.map(o=>[combined(o),effQty(o),o.recv_name,o.recv_phone,o.addr,o.memo,'','',s.name,s.phone,s.addr])];
     case '공덕농협':
       return [['고객주문번호','품목명','박스수량','주문자성명','주문자전화번호','주문자주소(전체, 분할)','받는분성명','받는분전화번호','받는분기타연락처','받는분주소(전체, 분할)','배송메세지1','박스타입'],
-        ...orders.map(o=>[o.order_no,combined(o),effQty(o),s.name,s.phone,s.addr,o.recv_name,o.recv_phone,'',o.addr,o.memo,''])];
+        ...orders.map(o => {
+          // 품목명에 수량+단위까지 합쳐서 한 줄 (박스수량 컬럼은 비움)
+          // 단위: 원본 상품명에서 "N봉/개/박스/팩/병/세트" 패턴 감지, 없으면 '개' 기본값
+          const um = String(o.product||'').match(/\d+\s*(봉|박스|팩|개|병|세트|set|EA)/i);
+          const unit = um ? um[1] : '개';
+          const itemFull = combined(o) + ' ' + effQty(o) + unit;
+          return [o.order_no, itemFull, '', s.name, s.phone, s.addr, o.recv_name, o.recv_phone, '', o.addr, o.memo, ''];
+        })];
     case '푸드엔드베스트':
       return [['예약구분','집하예정일','보내는분성명','보내는분전화번호','보내는분기타연락처','보내는분우편번호','보내는분주소(전체, 분할)','받는분성명','받는분전화번호','받는분기타연락처','받는분우편번호','받는분주소(전체, 분할)','운송장번호','고객주문번호','품목명','박스수량','박스타입','기본운임','배송메세지1','배송메세지2','운임구분'],
         ...orders.map(o=>['','',s.name,s.phone,'',s.zip,s.addr,o.recv_name,o.recv_phone,'',o.zip,o.addr,'',o.order_no,foodenItem(o),1,'','',o.memo,'',''])];
