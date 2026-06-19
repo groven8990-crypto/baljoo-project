@@ -9636,19 +9636,23 @@ function srRender(){
           </div>
         </div>
       </div>
-      <div id="srGrobnSection">${srBrandSection('로또상회 (그로븐)', '#1E3A5F', grAgg)}</div>
-      <div id="srYbSection">${srBrandSection('자꾸가게 (옐로우브릿지)', '#3A1E5F', ybAgg)}</div>
+      <div id="srGrobnSection">${srBrandSection('그로븐 (로또상회)', '#1E3A5F', grAgg)}</div>
+      <div id="srYbSection">${srBrandSection('옐로우브릿지 (자꾸가게)', '#3A1E5F', ybAgg)}</div>
       <div id="srDinetteSection">${srDinetteSection(dnAgg)}</div>
       <div style="margin-top:18px;font-size:10px;color:#888;text-align:right">발주일자 ${dateStr} 기준 · 발주 자동화 시스템</div>
     </div>`;
   document.getElementById('srReport').innerHTML=html;
   document.getElementById('srImageBtn').disabled=false;
   srRenderProfitPanel(allOrders);
+  // 매입/순이익도 같이 스냅샷에 저장 — 이력 다시 봐도 그날 값 그대로
+  const profitRows = srBuildProfitRows(allOrders);
+  const profitSummary = profitRows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=r.fee;s.vat+=r.vat;s.profit+=r.profit;s.count+=r.count;return s;},{sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
   // 미리보기만 — 이력 저장은 사용자가 명시적으로 💾 이력에 저장 눌러야 함
   _srLastSnapshot = {
     date: dateStr,
     grAgg, ybAgg, dnAgg,
     selfSales, selfCnt, totalSales, totalCnt,
+    profitRows, profitSummary,
     savedAt: Date.now()
   };
   const saveBtn = document.getElementById('srSaveBtn'); if (saveBtn) saveBtn.disabled = false;
@@ -9783,14 +9787,9 @@ function srBuildProfitRows(orders){
     }
     r.shipTotal = shipTotal;
     r.purchase = r.itemCost + shipTotal;
-    if (r.taxable) {
-      r.saleVat     = Math.round(r.sales / 11);
-      r.purchaseVat = Math.round(r.purchase / 11);
-      r.vat         = r.saleVat - r.purchaseVat;
-    } else {
-      r.saleVat = 0; r.purchaseVat = 0; r.vat = 0;
-    }
-    r.profit = r.sales - r.purchase - r.fee - r.vat;
+    // 면세사업자 — 부가세 계산/표시 안 함
+    r.saleVat = 0; r.purchaseVat = 0; r.vat = 0;
+    r.profit = r.sales - r.purchase - r.fee;
   }
   return Object.values(map).sort((a,b)=>{
     if (a.brand !== b.brand) return a.brand.localeCompare(b.brand);
@@ -9830,11 +9829,10 @@ function srRenderProfitPanel(orders){
   el.innerHTML = `<div class="card" style="background:#fff;padding:22px;max-width:1200px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
     <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 매입 + 순이익 보고</div>
     <div style="font-size:11px;color:#888;margin-top:2px">발주서 기준 자동 집계 · 매입단가/배송비/한도는 한 번 입력하면 자동 저장</div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px">
       <div><div style="font-size:11px;color:#666">총 매출</div><div style="font-size:18px;font-weight:700;color:#1A56DB;margin-top:2px">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#888;margin-top:2px">${T.count.toLocaleString()}건</div></div>
-      <div><div style="font-size:11px;color:#666">총 매입<span style="font-size:10px;color:#999"> (배송포함)</span></div><div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${T.purchase.toLocaleString()}원</div></div>
-      <div><div style="font-size:11px;color:#666">수수료</div><div style="font-size:18px;font-weight:700;color:#92400E;margin-top:2px">${T.fee.toLocaleString()}원</div></div>
-      <div><div style="font-size:11px;color:#666">납부 부가세</div><div style="font-size:18px;font-weight:700;color:#6B21A8;margin-top:2px">${T.vat.toLocaleString()}원</div></div>
+      <div><div style="font-size:11px;color:#666">총 매입</div><div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${T.purchase.toLocaleString()}원</div></div>
+      <div><div style="font-size:11px;color:#666">판매수수료</div><div style="font-size:18px;font-weight:700;color:#92400E;margin-top:2px">${T.fee.toLocaleString()}원</div></div>
       <div><div style="font-size:11px;color:#666">순이익</div><div style="font-size:22px;font-weight:700;color:${T.profit>=0?'#16A34A':'#DC2626'};margin-top:2px">${T.profit.toLocaleString()}원</div></div>
     </div>
     <div style="font-size:11px;color:var(--text3);margin-top:10px">매입단가는 <b>옵션 1개당 가격</b>만 넣으면 됩니다. 배송비/합배송 한도까지 같이 입력 → 박스수 자동 계산. ▶ 누르면 사람별로 확인·수정 가능.${noPriceCnt>0?` <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b>`:''}</div>
@@ -9868,7 +9866,6 @@ function _srBuildBizSectionHtml(biz, bizRows){
     <td style="padding:7px 12px;text-align:right;font-size:12px;color:#1A56DB;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.sales.toLocaleString()}원</td>
     <td style="padding:7px 12px;text-align:right;font-size:12px;color:#7B4B00;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.purchase.toLocaleString()}원</td>
     <td style="padding:7px 12px;text-align:right;font-size:12px;color:#92400E;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.fee.toLocaleString()}원</td>
-    <td style="padding:7px 12px;text-align:right;font-size:12px;color:#6B21A8;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.vat.toLocaleString()}원</td>
     <td style="padding:7px 12px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#16A34A':'#DC2626'};border-bottom:1px solid #eee">${m.profit.toLocaleString()}원</td>
   </tr>`).join('');
   const detailRows = bizRows.slice().sort((a,b)=>b.profit-a.profit);
@@ -9883,9 +9880,8 @@ function _srBuildBizSectionHtml(biz, bizRows){
         <th style="padding:8px 12px;text-align:left;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">발주처</th>
         <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">주문건수</th>
         <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">매출</th>
-        <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">매입(배송포함)</th>
-        <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">수수료</th>
-        <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">부가세</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">매입</th>
+        <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">판매수수료</th>
         <th style="padding:8px 12px;text-align:right;font-size:11px;color:#16A34A;border-bottom:1px solid #e2e8f0">순이익</th>
       </tr></thead>
       <tbody>${vendorTrs}</tbody>
@@ -9895,7 +9891,6 @@ function _srBuildBizSectionHtml(biz, bizRows){
         <td style="padding:8px 12px;text-align:right;font-size:12px;color:#1A56DB;font-variant-numeric:tabular-nums">${T.sales.toLocaleString()}원</td>
         <td style="padding:8px 12px;text-align:right;font-size:12px;color:#7B4B00;font-variant-numeric:tabular-nums">${T.purchase.toLocaleString()}원</td>
         <td style="padding:8px 12px;text-align:right;font-size:12px;color:#92400E;font-variant-numeric:tabular-nums">${T.fee.toLocaleString()}원</td>
-        <td style="padding:8px 12px;text-align:right;font-size:12px;color:#6B21A8;font-variant-numeric:tabular-nums">${T.vat.toLocaleString()}원</td>
         <td style="padding:8px 12px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:${T.profit>=0?'#16A34A':'#DC2626'}">${T.profit.toLocaleString()}원</td>
       </tr></tfoot>
     </table>
@@ -9916,9 +9911,7 @@ function _srBuildBizSectionHtml(biz, bizRows){
           <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB" title="박스 1개당 최대 단위수량 (비우면 주문 1건당 1박스)">합배송<br>한도</th>
           <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">총배송비</th>
           <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">총매입</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">수수료</th>
-          <th style="padding:6px 8px;text-align:center;border-bottom:1px solid #D1D5DB" title="체크 시 부가세 차감">과세</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">부가세</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">판매수수료</th>
           <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;color:#16A34A">순이익</th>
         </tr></thead>
         <tbody>${detailTrs}</tbody>
@@ -9960,10 +9953,6 @@ function _srBuildDetailRowHtml(r, i){
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00">${r.shipTotal.toLocaleString()}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00;font-weight:600">${r.purchase.toLocaleString()}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#92400E">${r.fee.toLocaleString()}</td>
-    <td style="padding:3px 4px;border-bottom:1px solid #eee;text-align:center">
-      <input type="checkbox" ${r.taxable?'checked':''} data-key="${_srEsc(r.key)}" data-role="taxable" onchange="srOnPurchaseInputChange(this)" style="cursor:pointer">
-    </td>
-    <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#6B21A8">${r.vat.toLocaleString()}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${r.profit>=0?'#16A34A':'#DC2626'}">${r.profit.toLocaleString()}</td>
   </tr>`;
 }
@@ -10188,6 +10177,8 @@ function srExportImage(){
   const el=document.getElementById('srReportContent');
   if(!el){alert('먼저 보고서를 생성해주세요');return;}
   if(typeof html2canvas!=='function'){alert('이미지 변환 라이브러리(html2canvas)를 찾을 수 없어요.');return;}
+  // 품목명 확인 알림 — 매번 한 번씩 띄움
+  if (!confirm('🏷️ 품목명 확인하셨어요?\n\n• 이상한 이름(잘린 상품명/오타)이 있는지 보고서 한번 훑어보세요\n• 발견하면 "🏷️ 상품명 별칭 관리" 에서 등록해주세요\n\n그대로 저장할까요?')) return;
   const dateStr=(document.getElementById('srReportDate').value||_localISO()).replace(/-/g,'').slice(2);  // YYMMDD
   const headerEl=document.getElementById('srReportHeader');
   const groups=[
