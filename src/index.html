@@ -9721,7 +9721,7 @@ function srBuildProfitRows(orders){
         qtySum:     0,                              // 매입 수량 = Σ (o.qty × kg or code_qty)
         sales:      0,                              // 매출액 합계
         fee:        0,                              // 플랫폼 수수료 합계
-        orderUnits: [],                             // 주문별 매입수량 — 배송비 합배송 계산용
+        orderDetail: [],                            // [{recv_name, qty, units, salesAmt}] — 상세 보기용
         unit:       Number(saved.unit)||0,
         // 구버전 호환: 예전엔 ship 한 컬럼만 있었어 → shipFee로 이전
         shipFee:    Number(saved.shipFee != null ? saved.shipFee : saved.ship)||0,
@@ -9734,7 +9734,12 @@ function srBuildProfitRows(orders){
     const units = srPurchaseUnits(o);
     r.count  += 1;
     r.qtySum += units;
-    r.orderUnits.push(units);
+    r.orderDetail.push({
+      recv_name: o.recv_name||'(이름없음)',
+      qty: Number(o.qty)||1,
+      units,
+      salesAmt: amt
+    });
     r.sales  += amt;
     const plat = (typeof srPlatform==='function') ? srPlatform(o) : '';
     r.fee += Math.round(amt * srFee(plat));
@@ -9745,9 +9750,13 @@ function srBuildProfitRows(orders){
     // 총배송비 = Σ over orders of ceil(units / consol) × shipFee
     //   consol === 0 이면 합배송 한도 없음 → 주문 1건당 무조건 1박스
     let shipTotal = 0;
-    for (const u of r.orderUnits) {
-      const boxes = r.consol > 0 ? Math.max(1, Math.ceil(u / r.consol)) : 1;
-      shipTotal += boxes * r.shipFee;
+    for (const d of r.orderDetail) {
+      const boxes = r.consol > 0 ? Math.max(1, Math.ceil(d.units / r.consol)) : 1;
+      d.boxes = boxes;
+      d.itemCost = d.units * r.unit;
+      d.shipCost = boxes * r.shipFee;
+      d.totalCost = d.itemCost + d.shipCost;
+      shipTotal += d.shipCost;
     }
     r.shipTotal = shipTotal;
     r.purchase = r.itemCost + shipTotal;        // 총매입 (=매입가+배송비)
@@ -9777,6 +9786,9 @@ function srRenderProfitPanel(orders){
   const trs = rows.map((r,i) => {
     const cls = !r.unit ? 'background:#FEF9C3' : (i%2===0?'background:#fff':'background:#FAFAFA');
     return `<tr data-rowkey="${_srEsc(r.key)}" style="${cls}">
+      <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:center">
+        <button type="button" data-key="${_srEsc(r.key)}" onclick="srToggleProfitDetail(this)" style="border:1px solid #D1D5DB;background:#fff;cursor:pointer;font-size:11px;padding:1px 6px;border-radius:3px" title="사람별 계산 보기">▶</button>
+      </td>
       <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;color:#6B7280">${escHtml(r.brand)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;font-weight:600">${escHtml(r.vendor)}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px">${escHtml(r.item||'-')}</td>
@@ -9815,6 +9827,7 @@ function srRenderProfitPanel(orders){
   }).join('');
   const tableHtml = `<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff" id="srProfitTable">
     <thead><tr style="background:${HEAD_BG};color:${HEAD_FG}">
+      <th style="padding:7px 4px;text-align:center;font-weight:700;border-bottom:2px solid #D1D5DB" title="사람별 계산 보기">📋</th>
       <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">브랜드</th>
       <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">발주처</th>
       <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">품목</th>
@@ -9869,7 +9882,7 @@ function srUpdateProfitTotals(rows){
   const footEl = document.getElementById('srProfitFoot');
   if (footEl) {
     footEl.innerHTML = `<tr style="background:#E5E7EB;font-weight:700">
-      <td colspan="6" style="padding:8px;color:#1F2937">합계</td>
+      <td colspan="7" style="padding:8px;color:#1F2937">합계</td>
       <td style="padding:8px;text-align:right;color:#1A56DB;font-variant-numeric:tabular-nums">${sum.sales.toLocaleString()}</td>
       <td style="padding:8px;text-align:right;color:#6B7280">—</td>
       <td style="padding:8px;text-align:right;color:#7B4B00;font-variant-numeric:tabular-nums">${sum.itemCost.toLocaleString()}</td>
@@ -9900,6 +9913,67 @@ function srUpdateProfitRow(row){
   setCell('profit',    row.profit, row.profit>=0?'#16A34A':'#DC2626');
   // 미입력 강조용 배경색도 갱신
   tr.style.background = !row.unit ? '#FEF9C3' : '';
+}
+// ▶ 상세 토글 — 사람별 매입 계산 펼침/접힘
+function srToggleProfitDetail(btn){
+  const key = btn.getAttribute('data-key');
+  if (!key) return;
+  const sel = CSS && CSS.escape ? CSS.escape(key) : key;
+  const tr = document.querySelector(`tr[data-rowkey="${sel}"]`);
+  if (!tr) return;
+  // 이미 펼쳐져 있으면 닫기
+  const nextRow = tr.nextElementSibling;
+  if (nextRow && nextRow.classList.contains('sr-profit-detail') && nextRow.getAttribute('data-rowkey') === key) {
+    nextRow.remove();
+    btn.textContent = '▶';
+    return;
+  }
+  // 데이터 재계산
+  const rows = srBuildProfitRows(Array.isArray(allOrders) ? allOrders : []);
+  const r = rows.find(x => x.key === key);
+  if (!r) return;
+  const colspan = tr.children.length;
+  // 사람별 표
+  const dRows = r.orderDetail.map((d, i) => `
+    <tr style="background:${i%2===0?'#fff':'#FAFAFA'}">
+      <td style="padding:5px 8px;font-size:11px">${escHtml(d.recv_name)}</td>
+      <td style="padding:5px 8px;text-align:right;font-size:11px">${d.qty}</td>
+      <td style="padding:5px 8px;text-align:right;font-size:11px;color:#7B4B00">${d.units}</td>
+      <td style="padding:5px 8px;text-align:right;font-size:11px">${d.boxes}박스</td>
+      <td style="padding:5px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${d.itemCost.toLocaleString()}</td>
+      <td style="padding:5px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#92400E">${d.shipCost.toLocaleString()}</td>
+      <td style="padding:5px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;font-weight:600;color:#7B4B00">${d.totalCost.toLocaleString()}</td>
+    </tr>`).join('');
+  const formula = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">계산식: <b>박스수</b> = ceil(매입수량 ÷ ${r.consol||'없음'}) · <b>매입가</b> = 매입수량 × ${r.unit.toLocaleString()}원 · <b>배송비</b> = 박스수 × ${r.shipFee.toLocaleString()}원</div>`;
+  const detailRow = document.createElement('tr');
+  detailRow.classList.add('sr-profit-detail');
+  detailRow.setAttribute('data-rowkey', key);
+  detailRow.innerHTML = `<td colspan="${colspan}" style="padding:10px 14px;background:#F9FAFB;border-bottom:1px solid #ddd">
+    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📋 ${escHtml(r.brand)} · ${escHtml(r.vendor)} · ${escHtml(r.item)} · ${escHtml(r.option)} — 사람별 계산</div>
+    ${formula}
+    <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #E5E7EB;border-radius:4px">
+      <thead><tr style="background:#F3F4F6;color:#374151">
+        <th style="padding:5px 8px;text-align:left;font-size:11px;border-bottom:1px solid #D1D5DB">받는사람</th>
+        <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">주문수량</th>
+        <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">매입수량</th>
+        <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">박스수</th>
+        <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">매입가</th>
+        <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">배송비</th>
+        <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">합계</th>
+      </tr></thead>
+      <tbody>${dRows}</tbody>
+      <tfoot><tr style="background:#E5E7EB;font-weight:700">
+        <td style="padding:6px 8px;color:#1F2937;font-size:11px" colspan="2">합계</td>
+        <td style="padding:6px 8px;text-align:right;color:#7B4B00;font-size:11px">${r.qtySum}</td>
+        <td style="padding:6px 8px;text-align:right;font-size:11px">${r.orderDetail.reduce((s,d)=>s+d.boxes,0)}박스</td>
+        <td style="padding:6px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${r.itemCost.toLocaleString()}</td>
+        <td style="padding:6px 8px;text-align:right;font-size:11px;color:#92400E;font-variant-numeric:tabular-nums">${r.shipTotal.toLocaleString()}</td>
+        <td style="padding:6px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;font-weight:700;color:#7B4B00">${r.purchase.toLocaleString()}</td>
+      </tr></tfoot>
+    </table>
+  </td>`;
+  tr.parentNode.insertBefore(detailRow, tr.nextSibling);
+  btn.textContent = '▼';
 }
 function srOnPurchaseInputChange(elInput){
   const key  = elInput.getAttribute('data-key');
