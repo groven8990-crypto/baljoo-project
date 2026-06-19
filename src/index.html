@@ -9759,6 +9759,74 @@ function srPurchaseUnits(o){
   return (Number(o.qty)||1) * (Number(o.code_qty)||1);
 }
 // 발주서 결과 기반: 발주처+품목+옵션 단위로 묶어서 매입/수수료/부가세/순이익 행 생성
+// B2B 업체 → 발주처(공급처) 매핑 — 사용자가 수정 가능
+const LS_B2B_VENDOR_MAP = 'yb_b2b_vendor_map';
+function srLoadB2BVendorMap(){
+  try { const m = JSON.parse(localStorage.getItem(LS_B2B_VENDOR_MAP)||'{}'); return Object.assign({'디네트':'일비'}, m); }
+  catch { return {'디네트':'일비'}; }
+}
+function srSaveB2BVendorMap(m){
+  try { localStorage.setItem(LS_B2B_VENDOR_MAP, JSON.stringify(m||{})); } catch(e){}
+}
+function srGetB2BVendor(b2bName){
+  const m = srLoadB2BVendorMap();
+  return m[b2bName] || '';
+}
+function srSetB2BVendor(b2bName, vendor){
+  const m = srLoadB2BVendorMap();
+  m[b2bName] = vendor;
+  srSaveB2BVendorMap(m);
+}
+// 디네트(B2B) 발주서를 매입/순이익 행으로 변환
+//  - 사업자: 옐로우브릿지 (디네트는 옐로우브릿지가 디네트한테 판매)
+//  - 발주처: B2B 매핑에서 가져옴 (기본 일비, 사용자 수정 가능)
+//  - 품목: 박대 / 옵션: 규격(4P/3P/2P+)
+//  - 수수료: 0 (B2B - 플랫폼 수수료 없음)
+function _srBuildDinetteProfitRows(db){
+  if (!Array.isArray(srDinetteRows) || srDinetteRows.length === 0) return [];
+  const vendor = srGetB2BVendor('디네트') || '일비';
+  const bySpec = {};
+  for (let i = 0; i < srDinetteRows.length; i++) {
+    const r = srDinetteRows[i];
+    const spec = String(r[3]||'').trim();
+    if (!(spec in SR_DINETTE_SPEC)) continue;
+    const qty = parseInt(r[4]) || SR_DINETTE_UNIT[spec];
+    const price = (typeof srDinettePrice==='function') ? srDinettePrice(spec, qty) : 0;
+    if (!bySpec[spec]) bySpec[spec] = { orders: [], totalSales: 0 };
+    bySpec[spec].orders.push({
+      recv_name: String(r[0]||'').trim() || '(이름없음)',
+      order_no: `dinette-${spec}-${i}`,
+      qty,
+      units: qty,
+      salesAmt: price
+    });
+    bySpec[spec].totalSales += price;
+  }
+  const out = [];
+  for (const [spec, info] of Object.entries(bySpec)) {
+    const key = ['옐로우브릿지', vendor, '박대', spec].join('|');
+    const saved = (db || {})[key] || {};
+    out.push({
+      key,
+      brand: '옐로우브릿지',
+      vendor,
+      item: '박대',
+      option: spec,
+      isB2B: true,        // UI에서 B2B 표시용
+      b2bName: '디네트',
+      count: info.orders.length,
+      qtySum: info.orders.reduce((s,o)=>s+o.qty, 0),
+      sales: info.totalSales,
+      fee: 0,             // B2B 수수료 없음
+      orderDetail: info.orders,
+      unit:    Number(saved.unit)||0,
+      shipFee: Number(saved.shipFee != null ? saved.shipFee : saved.ship)||0,
+      consol:  Number(saved.consol)||0,
+      taxable: !!saved.taxable
+    });
+  }
+  return out;
+}
 function srBuildProfitRows(orders){
   const db = srLoadPurchaseDB();
   const map = {};  // key → row
@@ -9801,6 +9869,11 @@ function srBuildProfitRows(orders){
     r.sales  += amt;
     const plat = (typeof srPlatform==='function') ? srPlatform(o) : '';
     r.fee += Math.round(amt * srFee(plat));
+  }
+  // 디네트(B2B) 행 추가 — 박대를 디네트한테 판매, 발주처는 일비(기본). 수정 가능.
+  const dinetteExtraRows = _srBuildDinetteProfitRows(db);
+  for (const dr of dinetteExtraRows) {
+    map[dr.key] = dr;
   }
   // 파생 계산
   const ovDB = srLoadOverridesDB();
@@ -9855,6 +9928,37 @@ const _srExpandedRows = new Set();
 function _srBizCode(biz){ return biz==='그로븐' ? 'grobn' : (biz==='옐로우브릿지' ? 'yb' : 'other'); }
 function _srBizColor(biz){ return biz==='그로븐' ? '#1E3A5F' : (biz==='옐로우브릿지' ? '#3A1E5F' : '#475569'); }
 function _srBizSubtitle(biz){ return biz==='그로븐' ? '로또상회' : (biz==='옐로우브릿지' ? '자꾸가게' : biz); }
+// B2B 업체 → 발주처 매핑 편집 UI (디네트가 업로드돼있을 때만 표시)
+function _srBuildB2BMappingUI(){
+  if (!Array.isArray(srDinetteRows) || srDinetteRows.length === 0) return '';
+  const map = srLoadB2BVendorMap();
+  // 현재 B2B 업체별로 표시 (지금은 디네트만 있음, 나중에 확장 가능)
+  const b2bs = ['디네트'];
+  const rows = b2bs.map(b => `<div style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;font-size:11px">
+    <span style="color:#6B7280">B2B</span>
+    <b style="color:#7B4B00">${escHtml(b)}</b>
+    <span style="color:#9CA3AF">→ 발주처</span>
+    <input type="text" value="${escHtml(map[b]||'')}" placeholder="예: 일비" data-b2b="${escHtml(b)}" oninput="srOnB2BVendorChange(this)" style="width:80px;padding:2px 6px;font-size:11px;border:1px solid #D1D5DB;border-radius:3px">
+  </div>`).join('');
+  return `<div style="margin-top:8px;padding:8px 10px;background:#F9FAFB;border:1px dashed #E5E7EB;border-radius:6px;display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+    <span style="font-size:11px;color:var(--text3)">📦 B2B 업체별 매입 발주처 설정 (입력하면 자동 저장):</span>
+    ${rows}
+  </div>`;
+}
+function srOnB2BVendorChange(input){
+  const b2b = input.getAttribute('data-b2b');
+  const v = (input.value||'').trim();
+  srSetB2BVendor(b2b, v);
+  // 발주처가 바뀌면 키 자체가 달라지므로 풀 재렌더 필요
+  // 입력 포커스 보존 (data-b2b 기준으로 다시 찾음)
+  setTimeout(()=>{
+    srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+    setTimeout(()=>{
+      const newInp = document.querySelector(`input[data-b2b="${b2b}"]`);
+      if (newInp) { newInp.focus(); try{ newInp.setSelectionRange(newInp.value.length, newInp.value.length); }catch(_){} }
+    }, 0);
+  }, 0);
+}
 // 상단 5개 카드 inner HTML
 function _srBuildTopCardsHtml(T){
   return `<div><div style="font-size:11px;color:#666">총 매출</div><div style="font-size:18px;font-weight:700;color:#1A56DB;margin-top:2px">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#888;margin-top:2px">${T.count.toLocaleString()}건</div></div>
@@ -9970,9 +10074,10 @@ function srRenderProfitPanel(orders){
   const noPriceCnt = rows.filter(r=>!r.unit).length;
   el.innerHTML = `<div class="card" style="background:#fff;padding:22px;max-width:1200px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
     <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 매입 + 순이익 보고</div>
-    <div style="font-size:11px;color:#888;margin-top:2px">발주서 기준 자동 집계 · 매입단가/배송비/한도는 한 번 입력하면 자동 저장</div>
+    <div class="sr-profit-helper" style="font-size:11px;color:#888;margin-top:2px">발주서 기준 자동 집계 · 매입단가/배송비/한도는 한 번 입력하면 자동 저장</div>
     <div id="srProfitTopCards" style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px">${_srBuildTopCardsHtml(T)}</div>
-    <div style="font-size:11px;color:var(--text3);margin-top:10px">매입단가는 <b>옵션 1개당 가격</b>만 넣으면 됩니다. 배송비/합배송 한도까지 같이 입력 → 박스수 자동 계산. ▶ 누르면 사람별로 확인·수정 가능.${noPriceCnt>0?` <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b>`:''}</div>
+    <div class="sr-profit-helper" style="font-size:11px;color:var(--text3);margin-top:10px">매입단가는 <b>옵션 1개당 가격</b>만 넣으면 됩니다. 배송비/합배송 한도까지 같이 입력 → 박스수 자동 계산. ▶ 누르면 사람별로 확인·수정 가능.${noPriceCnt>0?` <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b>`:''}</div>
+    <div class="sr-profit-helper">${_srBuildB2BMappingUI()}</div>
     <!-- 거래처 매입 비중 차트 (전체) -->
     <div style="display:grid;grid-template-columns:280px 1fr;gap:20px;margin-top:18px;align-items:center;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:14px">
       <div style="position:relative;height:240px"><canvas id="srProfitVendorChart"></canvas></div>
@@ -10408,6 +10513,8 @@ function srExportImage(){
       cloned.querySelectorAll('.sr-biz-detail-section').forEach(el => el.remove());
       // 펼쳐져있던 사람별 상세도 제거
       cloned.querySelectorAll('.sr-profit-detail').forEach(el => el.remove());
+      // 실무자용 도움말 텍스트 제거 (보고받는 사람한텐 노이즈)
+      cloned.querySelectorAll('.sr-profit-helper').forEach(el => el.remove());
       // 차트 캔버스는 cloneNode가 비트맵을 못 복사하니 원본에서 그대로 그려와야 함
       _srCopyCanvasContents(profitEl, cloned);
       // 상세 제거 후 남은 잔여 input/checkbox 정리
