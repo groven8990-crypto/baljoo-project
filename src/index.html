@@ -9662,12 +9662,16 @@ function srPurchaseKey(o){
 // 특히 동일(깐마늘)은 select_opt → disp_opt → vendor_code → option_name → code_qty 순으로 kg 감지
 function srNormalizeForPurchase(o){
   if (o.vendor_key === '동일') {
+    // 실제 주문 옵션을 따라가야 함 — 발주서에서 강제로 '1kg'로 통일된 option_name보다
+    // 고객이 실제 고른 select_opt / disp_opt / vendor_code / code_qty를 우선
     let kg = 0;
     const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kg = parseInt(m1[1]);
     if (!kg) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kg = parseInt(m[1]); }
     if (!kg) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kg = parseInt(m[1]); }
-    if (!kg) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kg = parseInt(m[1]); }
+    // option_name 은 '1kg'으로 굳어진 경우가 있어 마지막 폴백
+    // → code_qty(>1) 가 있으면 그게 진짜 kg일 가능성 (코드 등록 시 N kg → code_qty=N)
     if (!kg && o.code_qty && o.code_qty > 1) kg = o.code_qty;
+    if (!kg) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kg = parseInt(m[1]); }
     if (!kg) kg = 1;
     return { item: '깐마늘', option: kg + 'kg' };
   }
