@@ -9045,7 +9045,7 @@ const SR_PRODUCT_KEYWORDS = {
   // 잡화꿀 (국내산 사양천연 등)
   '잡화꿀':'잡화꿀','사양꿀':'잡화꿀','국내산 사양 천':'잡화꿀'
 };
-const SR_FEE_MAP = {'쿠팡':0.1084,'지마켓':0.12,'옥션':0.12,'11번가':0.12,'네이버':0.02};
+const SR_FEE_MAP = {'쿠팡':0.11,'지마켓':0.12,'옥션':0.12,'11번가':0.12,'네이버':0.0363};
 function srPlatform(o){
   // 1순위: 별도 쇼핑몰/마켓/판매처 컬럼
   if (o && typeof o === 'object' && o.shop_mall) {
@@ -9627,9 +9627,11 @@ function srRender(){
       <div id="srYbSection">${srBrandSection('자꾸가게 (옐로우브릿지)', '#3A1E5F', ybAgg)}</div>
       <div id="srDinetteSection">${srDinetteSection(dnAgg)}</div>
       <div style="margin-top:18px;font-size:10px;color:#888;text-align:right">발주일자 ${dateStr} 기준 · 발주 자동화 시스템</div>
-    </div>`;
+    </div>
+    <div id="srProfitPanel"></div>`;
   document.getElementById('srReport').innerHTML=html;
   document.getElementById('srImageBtn').disabled=false;
+  srRenderProfitPanel(allOrders);
   // 미리보기만 — 이력 저장은 사용자가 명시적으로 💾 이력에 저장 눌러야 함
   _srLastSnapshot = {
     date: dateStr,
@@ -9644,6 +9646,179 @@ function srRender(){
   statusEl.innerHTML=`<span style="color:var(--success)">✅ 보고서 생성 — 로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건 · 디네트 ${dnAgg.count}건 · 총 ${totalCnt}건 / 매출 ${totalSales.toLocaleString()}원</span>${histHint}${sumAmt}`;
 }
 let _srLastSnapshot = null;
+
+// ══════════════════════════════════════════════════════════
+// 📦 매입 / 순이익 (Purchase + Net Profit)
+// ══════════════════════════════════════════════════════════
+const LS_PURCHASE_PRICES = 'yb_purchase_prices';
+// 저장 형식: { "vendor|item|option": { unit: number, taxable: bool, updatedAt: string } }
+function srLoadPurchaseDB(){ try { return JSON.parse(localStorage.getItem(LS_PURCHASE_PRICES)||'{}'); } catch { return {}; } }
+function srSavePurchaseDB(db){ try { localStorage.setItem(LS_PURCHASE_PRICES, JSON.stringify(db)); } catch(e){} }
+function srPurchaseKey(o){
+  return [o.vendor_key||'', o.item_name||'', o.option_name||''].join('|');
+}
+function srUpdatePurchaseEntry(key, patch){
+  const db = srLoadPurchaseDB();
+  const prev = db[key] || {};
+  db[key] = { ...prev, ...patch, updatedAt: new Date().toISOString() };
+  srSavePurchaseDB(db);
+}
+function srBrandFromAlias(alias){
+  const a = String(alias||'');
+  if (a.includes('로또상회')) return '그로븐';
+  if (a.includes('자꾸가게')) return '옐로우브릿지';
+  return '기타';
+}
+// 발주서 결과 기반: 발주처+품목+옵션 단위로 묶어서 매입/수수료/부가세/순이익 행 생성
+function srBuildProfitRows(orders){
+  const db = srLoadPurchaseDB();
+  const map = {};  // key → row
+  for (const o of orders) {
+    if (!o.vendor_key) continue;  // unmatched 제외
+    const key = srPurchaseKey(o);
+    if (!map[key]) {
+      const saved = db[key] || {};
+      map[key] = {
+        key,
+        brand:    srBrandFromAlias(o.alias),
+        vendor:   o.vendor_key,
+        item:     o.item_name||'',
+        option:   o.option_name||'',
+        count:    0,                              // 주문건수 (행 수)
+        qtySum:   0,                              // 총 수량 (Σ o.qty)
+        sales:    0,                              // 매출액 합계
+        fee:      0,                              // 플랫폼 수수료 합계
+        unit:     Number(saved.unit)||0,
+        taxable:  !!saved.taxable
+      };
+    }
+    const r = map[key];
+    const amt = Number(o.order_amt)||0;
+    r.count  += 1;
+    r.qtySum += Number(o.qty)||1;
+    r.sales  += amt;
+    const plat = (typeof srPlatform==='function') ? srPlatform(o) : '';
+    r.fee += Math.round(amt * srFee(plat));
+  }
+  // 파생 계산
+  for (const r of Object.values(map)) {
+    r.purchase = r.qtySum * r.unit;
+    if (r.taxable) {
+      r.saleVat     = Math.round(r.sales / 11);
+      r.purchaseVat = Math.round(r.purchase / 11);
+      r.vat         = r.saleVat - r.purchaseVat;
+    } else {
+      r.saleVat = 0; r.purchaseVat = 0; r.vat = 0;
+    }
+    r.profit = r.sales - r.purchase - r.fee - r.vat;
+  }
+  return Object.values(map).sort((a,b)=>{
+    if (a.brand !== b.brand) return a.brand.localeCompare(b.brand);
+    if (a.vendor !== b.vendor) return a.vendor.localeCompare(b.vendor);
+    if (a.item !== b.item) return a.item.localeCompare(b.item);
+    return a.option.localeCompare(b.option);
+  });
+}
+function srRenderProfitPanel(orders){
+  const el = document.getElementById('srProfitPanel');
+  if (!el) return;
+  const rows = srBuildProfitRows(orders || []);
+  if (rows.length === 0) { el.innerHTML=''; return; }
+  // 합계
+  const sum = rows.reduce((s,r)=>{
+    s.sales += r.sales; s.purchase += r.purchase; s.fee += r.fee; s.vat += r.vat; s.profit += r.profit;
+    return s;
+  }, {sales:0, purchase:0, fee:0, vat:0, profit:0});
+  // 미입력(매입단가 0) 행 카운트
+  const noPriceCnt = rows.filter(r => !r.unit).length;
+  // 상단 요약 박스
+  const summaryHtml = `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;background:#EBF0F8;padding:14px;border-radius:6px;margin-bottom:12px">
+    <div><div style="font-size:11px;color:#666">총 매출</div><div style="font-size:16px;font-weight:700;color:#1A56DB;margin-top:2px">${sum.sales.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#666">총 매입</div><div style="font-size:16px;font-weight:700;color:#7B4B00;margin-top:2px">${sum.purchase.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#666">수수료</div><div style="font-size:16px;font-weight:700;color:#92400E;margin-top:2px">${sum.fee.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#666">납부 부가세</div><div style="font-size:16px;font-weight:700;color:#6B21A8;margin-top:2px">${sum.vat.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#666">순이익</div><div style="font-size:18px;font-weight:700;color:${sum.profit>=0?'#16A34A':'#DC2626'};margin-top:2px">${sum.profit.toLocaleString()}원</div></div>
+  </div>`;
+  // 헬프 텍스트
+  const hint = `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">매입단가는 발주처+품목+옵션 단위로 자동 저장돼요. 한 번 입력하면 다음번 같은 조합에 자동 적용. <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b></div>`;
+  // 표
+  const HEAD_BG='#F3F4F6', HEAD_FG='#374151';
+  const trs = rows.map((r,i) => {
+    const cls = !r.unit ? 'background:#FEF9C3' : (i%2===0?'background:#fff':'background:#FAFAFA');
+    return `<tr style="${cls}">
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;color:#6B7280">${escHtml(r.brand)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;font-weight:600">${escHtml(r.vendor)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px">${escHtml(r.item||'-')}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:11px;color:#6B7280">${escHtml(r.option||'-')}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px">${r.count}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px">${r.qtySum}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${r.sales.toLocaleString()}</td>
+      <td style="padding:4px 4px;border-bottom:1px solid #eee">
+        <input type="number" min="0" step="1" value="${r.unit||''}" placeholder="단가" data-key="${escHtml(r.key)}" data-role="unit"
+          style="width:80px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
+          oninput="srOnPurchaseInputChange(this)">
+      </td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#7B4B00">${r.purchase.toLocaleString()}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#92400E">${r.fee.toLocaleString()}</td>
+      <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:center">
+        <label style="display:inline-flex;align-items:center;gap:3px;font-size:10px;cursor:pointer;color:#6B21A8">
+          <input type="checkbox" ${r.taxable?'checked':''} data-key="${escHtml(r.key)}" data-role="taxable" onchange="srOnPurchaseInputChange(this)" style="cursor:pointer">
+          ${r.taxable?'과세':''}
+        </label>
+      </td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#6B21A8">${r.vat.toLocaleString()}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;font-weight:700;color:${r.profit>=0?'#16A34A':'#DC2626'}">${r.profit.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+  const tableHtml = `<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff">
+    <thead><tr style="background:${HEAD_BG};color:${HEAD_FG}">
+      <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">브랜드</th>
+      <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">발주처</th>
+      <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">품목</th>
+      <th style="padding:7px 8px;text-align:left;font-weight:700;border-bottom:2px solid #D1D5DB">옵션</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">건수</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">수량</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">매출</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">매입단가</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">매입</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">수수료</th>
+      <th style="padding:7px 8px;text-align:center;font-weight:700;border-bottom:2px solid #D1D5DB" title="체크 시 매출/매입 부가세 차감">과세</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">부가세</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB;color:#16A34A">순이익</th>
+    </tr></thead>
+    <tbody>${trs}</tbody>
+    <tfoot><tr style="background:#E5E7EB;font-weight:700">
+      <td colspan="6" style="padding:8px;color:#1F2937">합계</td>
+      <td style="padding:8px;text-align:right;color:#1A56DB;font-variant-numeric:tabular-nums">${sum.sales.toLocaleString()}</td>
+      <td style="padding:8px;text-align:right;color:#6B7280">—</td>
+      <td style="padding:8px;text-align:right;color:#7B4B00;font-variant-numeric:tabular-nums">${sum.purchase.toLocaleString()}</td>
+      <td style="padding:8px;text-align:right;color:#92400E;font-variant-numeric:tabular-nums">${sum.fee.toLocaleString()}</td>
+      <td style="padding:8px;text-align:center;color:#6B7280">—</td>
+      <td style="padding:8px;text-align:right;color:#6B21A8;font-variant-numeric:tabular-nums">${sum.vat.toLocaleString()}</td>
+      <td style="padding:8px;text-align:right;font-variant-numeric:tabular-nums;color:${sum.profit>=0?'#16A34A':'#DC2626'};font-size:13px">${sum.profit.toLocaleString()}</td>
+    </tr></tfoot>
+  </table>`;
+  el.innerHTML = `<div class="card" style="background:#fff;padding:18px;max-width:1200px;margin:14px auto">
+    <div style="font-size:15px;font-weight:700;color:#212121;margin-bottom:10px">📦 매입 / 순이익</div>
+    ${summaryHtml}
+    ${hint}
+    <div style="overflow-x:auto">${tableHtml}</div>
+  </div>`;
+}
+function srOnPurchaseInputChange(elInput){
+  const key  = elInput.getAttribute('data-key');
+  const role = elInput.getAttribute('data-role');
+  if (!key || !role) return;
+  if (role === 'unit') {
+    const v = Math.max(0, parseFloat(elInput.value)||0);
+    srUpdatePurchaseEntry(key, { unit: v });
+  } else if (role === 'taxable') {
+    srUpdatePurchaseEntry(key, { taxable: !!elInput.checked });
+  }
+  // 표 + 합계 다시 그리기 (전체 재렌더 — 행 수가 적어 비용 미미)
+  srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+}
+
 function srSaveCurrentSnapshot(){
   if (!_srLastSnapshot) { alert('먼저 📊 보고서 생성을 눌러주세요'); return; }
   // 입력칸의 보고일자가 스냅샷과 다르면 — 사용자가 날짜만 바꾸고 보고서 재생성을 안 누른 케이스
