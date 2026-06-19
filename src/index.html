@@ -24,6 +24,7 @@
   .sub-tab-btn{padding:7px 16px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--text2);border-radius:20px;font-family:inherit;transition:all .15s}
   .sub-tab-btn:hover{background:var(--bg)}.sub-tab-btn.active{background:var(--text);color:#fff;border-color:var(--text)}
   .sub-content{display:none}.sub-content.active{display:block}
+  .sr-sub-content{display:none}.sr-sub-content.active{display:block}
   .container{max-width:900px;margin:0 auto;padding:28px 20px 60px}
   /* progress */
   .progress{display:flex;align-items:center;margin-bottom:28px}
@@ -8002,6 +8003,13 @@ function reconExportXlsx() {
       </div>
     </div>
   </div>
+  <!-- ── 서브탭: 매출 보고 / 매입 보고 ── -->
+  <div class="sub-tab-nav" style="margin-top:6px">
+    <button class="sub-tab-btn active" id="stab-srsales"  onclick="switchSrSubTab('sales')">📈 매출 보고</button>
+    <button class="sub-tab-btn"        id="stab-srprofit" onclick="switchSrSubTab('profit')">📦 매입 / 순이익</button>
+  </div>
+  <!-- 매출 보고 패널 -->
+  <div class="sr-sub-content active" id="srsub-sales">
   <div class="card">
     <div class="card-title">🐟 디네트 발주서 (박대) 업로드 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택</span></div>
     <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">규격 컬럼(D열)에 <code>4p</code> / <code>3p</code> / <code>2p+</code> 가, 수량(E열)이 들어있는 발주 엑셀이에요. 묶음 할인 자동 계산해서 보고서에 합쳐줍니다.</div>
@@ -8063,6 +8071,12 @@ function reconExportXlsx() {
     </div>
   </div>
   <div id="srReport"></div>
+  </div><!-- /srsub-sales -->
+  <!-- 매입 보고 패널 -->
+  <div class="sr-sub-content" id="srsub-profit">
+    <div id="srVendorSummary"></div>
+    <div id="srProfitPanel"></div>
+  </div><!-- /srsub-profit -->
   <div class="card" style="margin-top:14px">
     <div class="card-title">📖 사용 방법</div>
     <div style="font-size:13px;color:var(--text2);line-height:1.7">
@@ -9627,8 +9641,7 @@ function srRender(){
       <div id="srYbSection">${srBrandSection('자꾸가게 (옐로우브릿지)', '#3A1E5F', ybAgg)}</div>
       <div id="srDinetteSection">${srDinetteSection(dnAgg)}</div>
       <div style="margin-top:18px;font-size:10px;color:#888;text-align:right">발주일자 ${dateStr} 기준 · 발주 자동화 시스템</div>
-    </div>
-    <div id="srProfitPanel"></div>`;
+    </div>`;
   document.getElementById('srReport').innerHTML=html;
   document.getElementById('srImageBtn').disabled=false;
   srRenderProfitPanel(allOrders);
@@ -9786,11 +9799,77 @@ function srBuildProfitRows(orders){
   });
 }
 function _srEsc(s){ return String(s||'').replace(/"/g, '&quot;'); }
+// 서브탭 전환
+function switchSrSubTab(name){
+  document.querySelectorAll('.sr-sub-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('#stab-srsales, #stab-srprofit').forEach(b=>b.classList.remove('active'));
+  const c = document.getElementById('srsub-'+name); if (c) c.classList.add('active');
+  const b = document.getElementById('stab-sr'+name); if (b) b.classList.add('active');
+}
+// 발주처별 매출/매입/순이익 요약 표
+function srRenderVendorSummary(rows){
+  const el = document.getElementById('srVendorSummary');
+  if (!el) return;
+  if (!rows || rows.length === 0) { el.innerHTML = ''; return; }
+  const byVendor = {};
+  for (const r of rows) {
+    const k = r.brand + '||' + r.vendor;
+    if (!byVendor[k]) byVendor[k] = {brand:r.brand, vendor:r.vendor, count:0, sales:0, purchase:0, fee:0, vat:0, profit:0};
+    const m = byVendor[k];
+    m.count    += r.count;
+    m.sales    += r.sales;
+    m.purchase += r.purchase;
+    m.fee      += r.fee;
+    m.vat      += r.vat;
+    m.profit   += r.profit;
+  }
+  const list = Object.values(byVendor).sort((a,b)=>b.profit - a.profit);
+  const sum = list.reduce((s,m)=>{
+    s.count+=m.count; s.sales+=m.sales; s.purchase+=m.purchase; s.fee+=m.fee; s.vat+=m.vat; s.profit+=m.profit; return s;
+  }, {count:0, sales:0, purchase:0, fee:0, vat:0, profit:0});
+  const HEAD_BG='#F3F4F6', HEAD_FG='#374151';
+  const trs = list.map((m,i) => `<tr style="background:${i%2===0?'#fff':'#FAFAFA'}">
+    <td style="padding:7px 10px;font-size:12px;color:#6B7280">${escHtml(m.brand)}</td>
+    <td style="padding:7px 10px;font-size:12px;font-weight:700">${escHtml(m.vendor)}</td>
+    <td style="padding:7px 10px;text-align:right;font-size:12px">${m.count}</td>
+    <td style="padding:7px 10px;text-align:right;font-size:12px;color:#1A56DB;font-variant-numeric:tabular-nums">${m.sales.toLocaleString()}</td>
+    <td style="padding:7px 10px;text-align:right;font-size:12px;color:#7B4B00;font-variant-numeric:tabular-nums">${m.purchase.toLocaleString()}</td>
+    <td style="padding:7px 10px;text-align:right;font-size:12px;color:#92400E;font-variant-numeric:tabular-nums">${m.fee.toLocaleString()}</td>
+    <td style="padding:7px 10px;text-align:right;font-size:12px;color:#6B21A8;font-variant-numeric:tabular-nums">${m.vat.toLocaleString()}</td>
+    <td style="padding:7px 10px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#16A34A':'#DC2626'}">${m.profit.toLocaleString()}</td>
+  </tr>`).join('');
+  el.innerHTML = `<div class="card" style="background:#fff;padding:18px;max-width:1200px;margin:0 auto 14px">
+    <div style="font-size:15px;font-weight:700;color:#212121;margin-bottom:10px">🏪 발주처별 요약 — 어디서 가장 많이 남는지</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;background:#fff">
+      <thead><tr style="background:${HEAD_BG};color:${HEAD_FG}">
+        <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">브랜드</th>
+        <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">발주처</th>
+        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">주문건수</th>
+        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">매출</th>
+        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">매입(배송포함)</th>
+        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">수수료</th>
+        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB">부가세</th>
+        <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #D1D5DB;color:#16A34A">순이익</th>
+      </tr></thead>
+      <tbody>${trs}</tbody>
+      <tfoot><tr style="background:#E5E7EB;font-weight:700">
+        <td colspan="2" style="padding:9px 10px;color:#1F2937">합계</td>
+        <td style="padding:9px 10px;text-align:right">${sum.count}</td>
+        <td style="padding:9px 10px;text-align:right;color:#1A56DB;font-variant-numeric:tabular-nums">${sum.sales.toLocaleString()}</td>
+        <td style="padding:9px 10px;text-align:right;color:#7B4B00;font-variant-numeric:tabular-nums">${sum.purchase.toLocaleString()}</td>
+        <td style="padding:9px 10px;text-align:right;color:#92400E;font-variant-numeric:tabular-nums">${sum.fee.toLocaleString()}</td>
+        <td style="padding:9px 10px;text-align:right;color:#6B21A8;font-variant-numeric:tabular-nums">${sum.vat.toLocaleString()}</td>
+        <td style="padding:9px 10px;text-align:right;font-size:14px;font-variant-numeric:tabular-nums;color:${sum.profit>=0?'#16A34A':'#DC2626'}">${sum.profit.toLocaleString()}</td>
+      </tr></tfoot>
+    </table></div>
+  </div>`;
+}
 function srRenderProfitPanel(orders){
   const el = document.getElementById('srProfitPanel');
   if (!el) return;
   const rows = srBuildProfitRows(orders || []);
-  if (rows.length === 0) { el.innerHTML=''; return; }
+  if (rows.length === 0) { el.innerHTML=''; srRenderVendorSummary([]); return; }
+  srRenderVendorSummary(rows);
   const HEAD_BG='#F3F4F6', HEAD_FG='#374151';
   const trs = rows.map((r,i) => {
     const cls = !r.unit ? 'background:#FEF9C3' : (i%2===0?'background:#fff':'background:#FAFAFA');
@@ -9889,6 +9968,8 @@ function srUpdateProfitTotals(rows){
     hintEl.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:8px">매입단가는 <b>옵션 1개(1봉/1팩)당 가격</b>만 넣으면 됩니다. 시스템이 <b>매입수량</b>을 자동으로 곱해요. 배송비는 우리가 부담한 1회분만 입력. 발주처+품목+옵션 단위로 저장 — 다음번 같은 조합에 자동 적용. <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b></div>`;
   }
   const footEl = document.getElementById('srProfitFoot');
+  // 발주처별 요약도 같이 갱신
+  srRenderVendorSummary(rows);
   if (footEl) {
     footEl.innerHTML = `<tr style="background:#E5E7EB;font-weight:700">
       <td colspan="7" style="padding:8px;color:#1F2937">합계</td>
