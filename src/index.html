@@ -10047,6 +10047,7 @@ function _srBuildBizSectionHtml(biz, bizRows){
   return `<div style="margin-top:22px" data-biz="${escHtml(biz)}">
     <div class="sr-biz-header" data-biz="${escHtml(biz)}" style="background:${color};color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">${_srBuildBizHeaderInner(biz, T)}</div>
     <div class="sr-biz-vendor-table" data-biz="${escHtml(biz)}">${_srBuildBizVendorTableInner(biz, bizRows)}</div>
+    <div class="sr-biz-detail-section">
     <div style="margin-top:8px;font-size:11px;color:var(--text3)">📋 ${escHtml(biz)} 상세 — 매입단가/배송비/합배송한도 입력. ▶ 누르면 사람별 검산.</div>
     <div style="overflow-x:auto;margin-top:4px">
       <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #e2e8f0">
@@ -10071,6 +10072,7 @@ function _srBuildBizSectionHtml(biz, bizRows){
         <tbody>${detailTrs}</tbody>
       </table>
     </div>
+    </div><!-- /sr-biz-detail-section -->
   </div>`;
 }
 function _srBuildDetailRowHtml(r, i){
@@ -10395,17 +10397,21 @@ function srExportImage(){
       }
       await new Promise(r=>setTimeout(r,250));
     }
-    // 📦 매입/순이익 페이지도 같이 저장 (별도 페이지)
+    // 📦 매입/순이익 페이지도 같이 저장 (별도 페이지) — 요약만, 폭 좁게
     const profitEl = document.getElementById('srProfitPanel');
     if (profitEl && profitEl.innerHTML.trim()) {
       const tmp = document.createElement('div');
-      tmp.style.cssText='background:#fff;padding:22px;width:1240px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
+      tmp.style.cssText='background:#fff;padding:22px;width:720px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
       const cloned = profitEl.cloneNode(true);
       tmp.appendChild(cloned);
-      // input을 텍스트로 교체 (저장본에 입력칸 안 보이게)
-      _srStripInputsForExport(cloned);
+      // 상세 입력표는 PNG에서 제거 (요약만 보임)
+      cloned.querySelectorAll('.sr-biz-detail-section').forEach(el => el.remove());
+      // 펼쳐져있던 사람별 상세도 제거
+      cloned.querySelectorAll('.sr-profit-detail').forEach(el => el.remove());
       // 차트 캔버스는 cloneNode가 비트맵을 못 복사하니 원본에서 그대로 그려와야 함
       _srCopyCanvasContents(profitEl, cloned);
+      // 상세 제거 후 남은 잔여 input/checkbox 정리
+      _srStripInputsForExport(cloned);
       const foot=document.createElement('div');
       foot.style.cssText='margin-top:18px;font-size:10px;color:#888;text-align:right';
       foot.textContent=`발주일자 ${document.getElementById('srReportDate').value||_localISO()} 기준 · 발주 자동화 시스템`;
