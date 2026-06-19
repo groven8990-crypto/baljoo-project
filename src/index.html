@@ -9717,19 +9717,24 @@ function srBuildProfitRows(orders){
         vendor:   o.vendor_key,
         item:     norm.item,
         option:   norm.option,
-        count:    0,                              // 주문건수 (행 수)
-        qtySum:   0,                              // 매입 수량 = Σ (o.qty × kg or code_qty)
-        sales:    0,                              // 매출액 합계
-        fee:      0,                              // 플랫폼 수수료 합계
-        unit:     Number(saved.unit)||0,
-        ship:     Number(saved.ship)||0,          // 배송비 (1회분, 행 단위)
-        taxable:  !!saved.taxable
+        count:      0,                              // 주문건수 (행 수)
+        qtySum:     0,                              // 매입 수량 = Σ (o.qty × kg or code_qty)
+        sales:      0,                              // 매출액 합계
+        fee:        0,                              // 플랫폼 수수료 합계
+        orderUnits: [],                             // 주문별 매입수량 — 배송비 합배송 계산용
+        unit:       Number(saved.unit)||0,
+        // 구버전 호환: 예전엔 ship 한 컬럼만 있었어 → shipFee로 이전
+        shipFee:    Number(saved.shipFee != null ? saved.shipFee : saved.ship)||0,
+        consol:     Number(saved.consol)||0,        // 합배송 한도 (단위 수량), 0이면 한도 없음 = 주문 1건당 1박스
+        taxable:    !!saved.taxable
       };
     }
     const r = map[key];
     const amt = Number(o.order_amt)||0;
+    const units = srPurchaseUnits(o);
     r.count  += 1;
-    r.qtySum += srPurchaseUnits(o);
+    r.qtySum += units;
+    r.orderUnits.push(units);
     r.sales  += amt;
     const plat = (typeof srPlatform==='function') ? srPlatform(o) : '';
     r.fee += Math.round(amt * srFee(plat));
@@ -9737,7 +9742,15 @@ function srBuildProfitRows(orders){
   // 파생 계산
   for (const r of Object.values(map)) {
     r.itemCost = r.qtySum * r.unit;             // 매입가 (배송비 제외)
-    r.purchase = r.itemCost + r.ship;           // 총매입 (=매입가+배송비)
+    // 총배송비 = Σ over orders of ceil(units / consol) × shipFee
+    //   consol === 0 이면 합배송 한도 없음 → 주문 1건당 무조건 1박스
+    let shipTotal = 0;
+    for (const u of r.orderUnits) {
+      const boxes = r.consol > 0 ? Math.max(1, Math.ceil(u / r.consol)) : 1;
+      shipTotal += boxes * r.shipFee;
+    }
+    r.shipTotal = shipTotal;
+    r.purchase = r.itemCost + shipTotal;        // 총매입 (=매입가+배송비)
     if (r.taxable) {
       r.saleVat     = Math.round(r.sales / 11);
       r.purchaseVat = Math.round(r.purchase / 11);
@@ -9779,11 +9792,18 @@ function srRenderProfitPanel(orders){
       </td>
       <td data-cell="itemCost" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#7B4B00">${r.itemCost.toLocaleString()}</td>
       <td style="padding:4px 4px;border-bottom:1px solid #eee">
-        <input type="number" min="0" step="1" value="${r.ship||''}" placeholder="0"
-          data-key="${_srEsc(r.key)}" data-role="ship"
-          style="width:70px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
+        <input type="number" min="0" step="1" value="${r.shipFee||''}" placeholder="0" title="박스 1개당 배송비"
+          data-key="${_srEsc(r.key)}" data-role="shipFee"
+          style="width:65px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
           oninput="srOnPurchaseInputChange(this)">
       </td>
+      <td style="padding:4px 4px;border-bottom:1px solid #eee">
+        <input type="number" min="0" step="1" value="${r.consol||''}" placeholder="없음" title="박스 1개에 들어가는 최대 단위수량 (예: 깐마늘 10 = 10kg까지 1박스). 비우면 주문 1건당 1박스"
+          data-key="${_srEsc(r.key)}" data-role="consol"
+          style="width:55px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
+          oninput="srOnPurchaseInputChange(this)">
+      </td>
+      <td data-cell="shipTotal" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#7B4B00">${r.shipTotal.toLocaleString()}</td>
       <td data-cell="purchase" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#7B4B00;font-weight:600">${r.purchase.toLocaleString()}</td>
       <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:#92400E">${r.fee.toLocaleString()}</td>
       <td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:center">
@@ -9804,8 +9824,10 @@ function srRenderProfitPanel(orders){
       <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">매출</th>
       <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="옵션 1개(1봉/1팩)당 매입 단가">매입단가<br>(1개당)</th>
       <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="배송비 제외 매입가">매입가</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="배송비를 우리가 부담한 금액 (1회분)">배송비</th>
-      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="매입가 + 배송비">총매입</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="박스 1개당 배송비">배송비<br>(1박스)</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="박스 1개에 들어가는 최대 단위수량 (비우면 주문 1건당 1박스)">합배송<br>한도</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="Σ주문별 ceil(매입수량/한도)×배송비">총배송비</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB" title="매입가 + 총배송비">총매입</th>
       <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">수수료</th>
       <th style="padding:7px 8px;text-align:center;font-weight:700;border-bottom:2px solid #D1D5DB" title="체크 시 매출/매입 부가세 차감">과세</th>
       <th style="padding:7px 8px;text-align:right;font-weight:700;border-bottom:2px solid #D1D5DB">부가세</th>
@@ -9871,10 +9893,11 @@ function srUpdateProfitRow(row){
       if (color) td.style.color = color;
     }
   };
-  setCell('itemCost', row.itemCost);
-  setCell('purchase', row.purchase);
-  setCell('vat',      row.vat);
-  setCell('profit',   row.profit, row.profit>=0?'#16A34A':'#DC2626');
+  setCell('itemCost',  row.itemCost);
+  setCell('shipTotal', row.shipTotal);
+  setCell('purchase',  row.purchase);
+  setCell('vat',       row.vat);
+  setCell('profit',    row.profit, row.profit>=0?'#16A34A':'#DC2626');
   // 미입력 강조용 배경색도 갱신
   tr.style.background = !row.unit ? '#FEF9C3' : '';
 }
@@ -9882,12 +9905,9 @@ function srOnPurchaseInputChange(elInput){
   const key  = elInput.getAttribute('data-key');
   const role = elInput.getAttribute('data-role');
   if (!key || !role) return;
-  if (role === 'unit') {
+  if (role === 'unit' || role === 'shipFee' || role === 'consol') {
     const v = Math.max(0, parseFloat(elInput.value)||0);
-    srUpdatePurchaseEntry(key, { unit: v });
-  } else if (role === 'ship') {
-    const v = Math.max(0, parseFloat(elInput.value)||0);
-    srUpdatePurchaseEntry(key, { ship: v });
+    srUpdatePurchaseEntry(key, { [role]: v });
   } else if (role === 'taxable') {
     srUpdatePurchaseEntry(key, { taxable: !!elInput.checked });
   }
