@@ -9873,6 +9873,88 @@ function srPurchaseUnits(o){
   return (Number(o.qty)||1) * (Number(o.code_qty)||1);
 }
 // 발주서 결과 기반: 발주처+품목+옵션 단위로 묶어서 매입/수수료/부가세/순이익 행 생성
+// 사업자별 광고비 (세부 내역 + 합계) — 매입/순이익에서 차감
+const LS_AD_COSTS = 'yb_ad_costs';
+function srLoadAdCosts(){
+  try { return JSON.parse(localStorage.getItem(LS_AD_COSTS)||'{}'); }
+  catch { return {}; }
+}
+function srSaveAdCosts(o){
+  try { localStorage.setItem(LS_AD_COSTS, JSON.stringify(o||{})); } catch(e){}
+}
+function srAdItemsFor(biz){
+  return (srLoadAdCosts()[biz]||[]).slice();
+}
+function srAdTotalFor(biz){
+  return srAdItemsFor(biz).reduce((s,a)=>s+(Number(a.amount)||0), 0);
+}
+function srAddAdItemAndRerender(biz){
+  const all = srLoadAdCosts();
+  all[biz] = all[biz] || [];
+  all[biz].push({desc:'', amount:0});
+  srSaveAdCosts(all);
+  _srRerenderAdAndTotals(biz);
+}
+function srUpdateAdItem(biz, idx, field, value){
+  const all = srLoadAdCosts();
+  if (!all[biz] || !all[biz][idx]) return;
+  if (field === 'amount') all[biz][idx].amount = Math.max(0, parseFloat(value)||0);
+  else all[biz][idx][field] = String(value||'');
+  srSaveAdCosts(all);
+  // 합계 + 비즈 헤더 + 상단 카드만 갱신 (input은 그대로 둠 — 포커스 보존)
+  const totalEl = document.querySelector(`.sr-biz-ad-section[data-biz="${CSS&&CSS.escape?CSS.escape(biz):biz}"] .sr-ad-total`);
+  if (totalEl) totalEl.textContent = srAdTotalFor(biz).toLocaleString() + '원';
+  _srRefreshBizHeaderAndTopCards(biz);
+}
+function srRemoveAdItemAndRerender(biz, idx){
+  const all = srLoadAdCosts();
+  if (!all[biz]) return;
+  all[biz].splice(idx, 1);
+  srSaveAdCosts(all);
+  _srRerenderAdAndTotals(biz);
+}
+function _srRerenderAdAndTotals(biz){
+  // 광고비 섹션 자체 다시 그림 (행 추가/삭제 시)
+  const sec = document.querySelector(`.sr-biz-ad-section[data-biz="${CSS&&CSS.escape?CSS.escape(biz):biz}"]`);
+  if (sec) sec.outerHTML = _srBuildAdCostUI(biz);
+  _srRefreshBizHeaderAndTopCards(biz);
+}
+function _srRefreshBizHeaderAndTopCards(biz){
+  // 비즈 헤더에 광고비/순이익 반영
+  const rows = srBuildProfitRows(Array.isArray(allOrders)?allOrders:[]);
+  const bizRows = rows.filter(r=>r.brand===biz);
+  const bizT = bizRows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=r.fee;s.vat+=r.vat;s.profit+=r.profit;s.count+=r.count;return s;},{sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
+  const headerEl = document.querySelector(`.sr-biz-header[data-biz="${CSS&&CSS.escape?CSS.escape(biz):biz}"]`);
+  if (headerEl) headerEl.innerHTML = _srBuildBizHeaderInner(biz, bizT);
+  // 상단 카드도 다시
+  const T = rows.reduce((s,x)=>{s.sales+=x.sales;s.purchase+=x.purchase;s.fee+=x.fee;s.vat+=x.vat;s.profit+=x.profit;s.count+=x.count;return s;},{sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
+  const topEl = document.getElementById('srProfitTopCards');
+  if (topEl) topEl.innerHTML = _srBuildTopCardsHtml(T);
+}
+function _srBuildAdCostUI(biz){
+  const items = srAdItemsFor(biz);
+  const total = srAdTotalFor(biz);
+  const bizSel = CSS&&CSS.escape?CSS.escape(biz):biz;
+  const itemsHtml = items.map((it, i) => `<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">
+    <input type="text" value="${escHtml(it.desc||'')}" placeholder="내역 (예: 네이버 광고)"
+      oninput="srUpdateAdItem('${escHtml(biz)}', ${i}, 'desc', this.value)"
+      style="flex:1;padding:5px 8px;font-size:12px;border:1px solid #D1D5DB;border-radius:4px">
+    <input type="number" value="${it.amount||''}" placeholder="금액" min="0" step="1"
+      oninput="srUpdateAdItem('${escHtml(biz)}', ${i}, 'amount', this.value)"
+      style="width:120px;padding:5px 8px;font-size:12px;text-align:right;border:1px solid #D1D5DB;border-radius:4px;font-variant-numeric:tabular-nums">
+    <button type="button" onclick="srRemoveAdItemAndRerender('${escHtml(biz)}', ${i})"
+      style="border:none;background:none;cursor:pointer;color:#DC2626;font-size:14px;padding:2px 6px" title="삭제">✕</button>
+  </div>`).join('');
+  return `<div class="sr-biz-ad-section" data-biz="${escHtml(biz)}" style="margin-top:8px;padding:10px 14px;background:#FEF7E0;border:1px solid #FCD34D;border-radius:6px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="font-size:13px;font-weight:700;color:#7C2D12">📢 광고비</div>
+      <div class="sr-ad-total" style="font-size:14px;color:#92400E;font-weight:700">${total.toLocaleString()}원</div>
+      <button type="button" class="sr-profit-helper" onclick="srAddAdItemAndRerender('${escHtml(biz)}')"
+        style="margin-left:auto;font-size:11px;padding:4px 10px;border:1px solid #92400E;background:#fff;color:#92400E;border-radius:4px;cursor:pointer">+ 내역 추가</button>
+    </div>
+    <div class="sr-profit-helper" style="margin-top:8px">${itemsHtml || '<div style="font-size:11px;color:var(--text3)">내역 없음 — + 내역 추가 눌러서 입력</div>'}</div>
+  </div>`;
+}
 // B2B 업체 → 발주처(공급처) 매핑 — 사용자가 수정 가능
 const LS_B2B_VENDOR_MAP = 'yb_b2b_vendor_map';
 function srLoadB2BVendorMap(){
@@ -10092,7 +10174,7 @@ function _srBuildTopCardsHtml(T){
   return `<div><div style="font-size:11px;color:#666">총 매출</div><div style="font-size:18px;font-weight:700;color:#1A56DB;margin-top:2px">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#888;margin-top:2px">${T.count.toLocaleString()}건</div></div>
     <div><div style="font-size:11px;color:#666">총 매입</div><div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${T.purchase.toLocaleString()}원</div></div>
     <div><div style="font-size:11px;color:#666">판매수수료</div><div style="font-size:18px;font-weight:700;color:#92400E;margin-top:2px">${T.fee.toLocaleString()}원</div></div>
-    <div><div style="font-size:11px;color:#666">납부 부가세</div><div style="font-size:18px;font-weight:700;color:#6B21A8;margin-top:2px">${T.vat.toLocaleString()}원</div><div style="font-size:10px;color:#888;margin-top:2px">(매출부가세 − 매입부가세)</div></div>
+    <div><div style="font-size:11px;color:#666">납부 부가세</div><div style="font-size:18px;font-weight:700;color:#6B21A8;margin-top:2px">${T.vat.toLocaleString()}원</div><div style="font-size:9px;color:#888;margin-top:2px;white-space:nowrap">(매출부가세 − 매입부가세)</div></div>
     <div><div style="font-size:11px;color:#666">순이익</div><div style="font-size:22px;font-weight:700;color:${T.profit>=0?'#16A34A':'#DC2626'};margin-top:2px">${T.profit.toLocaleString()}원</div></div>`;
 }
 // 사업자 헤더 스트립 inner HTML
