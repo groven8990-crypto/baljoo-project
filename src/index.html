@@ -10173,12 +10173,13 @@ function srOnB2BVendorChange(input){
 function _srBuildTopCardsHtml(T){
   const adTotal = srAdTotalFor('그로븐') + srAdTotalFor('옐로우브릿지') + srAdTotalFor('기타');
   const adjProfit = T.profit - adTotal;
-  return `<div><div style="font-size:11px;color:#666">총 매출</div><div style="font-size:18px;font-weight:700;color:#1A56DB;margin-top:2px">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#888;margin-top:2px">${T.count.toLocaleString()}건</div></div>
-    <div><div style="font-size:11px;color:#666">총 매입</div><div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${T.purchase.toLocaleString()}원</div></div>
-    <div><div style="font-size:11px;color:#666">판매수수료</div><div style="font-size:18px;font-weight:700;color:#92400E;margin-top:2px">${T.fee.toLocaleString()}원</div></div>
-    <div><div style="font-size:11px;color:#666">광고비</div><div style="font-size:18px;font-weight:700;color:#7C2D12;margin-top:2px">${adTotal.toLocaleString()}원</div></div>
-    <div><div style="font-size:11px;color:#666">납부 부가세</div><div style="font-size:18px;font-weight:700;color:#6B21A8;margin-top:2px">${T.vat.toLocaleString()}원</div><div style="font-size:9px;color:#888;margin-top:2px;white-space:nowrap">(매출부가세 − 매입부가세)</div></div>
-    <div><div style="font-size:11px;color:#666">순이익</div><div style="font-size:22px;font-weight:700;color:${adjProfit>=0?'#16A34A':'#DC2626'};margin-top:2px">${adjProfit.toLocaleString()}원</div></div>`;
+  // 2행 × 3열 — 1행: 총매출/총매입/판매수수료, 2행: 광고비/납부부가세/순이익
+  return `<div><div style="font-size:11px;color:#666">총 매출</div><div style="font-size:18px;font-weight:700;color:#1A56DB;margin-top:2px;white-space:nowrap">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#888;margin-top:2px">${T.count.toLocaleString()}건</div></div>
+    <div><div style="font-size:11px;color:#666">총 매입</div><div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px;white-space:nowrap">${T.purchase.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#666">판매수수료</div><div style="font-size:18px;font-weight:700;color:#92400E;margin-top:2px;white-space:nowrap">${T.fee.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#666">광고비</div><div style="font-size:18px;font-weight:700;color:#7C2D12;margin-top:2px;white-space:nowrap">${adTotal.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#666">납부 부가세</div><div style="font-size:18px;font-weight:700;color:#6B21A8;margin-top:2px;white-space:nowrap">${T.vat.toLocaleString()}원</div><div style="font-size:10px;color:#888;margin-top:2px;white-space:nowrap">(매출부가세 − 매입부가세)</div></div>
+    <div><div style="font-size:11px;color:#666">순이익</div><div style="font-size:22px;font-weight:700;color:${adjProfit>=0?'#16A34A':'#DC2626'};margin-top:2px;white-space:nowrap">${adjProfit.toLocaleString()}원</div></div>`;
 }
 // 사업자 헤더 스트립 inner HTML
 function _srBuildBizHeaderInner(biz, T){
@@ -10291,7 +10292,7 @@ function srRenderProfitPanel(orders){
   el.innerHTML = `<div class="card" style="background:#fff;padding:22px;max-width:1200px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
     <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 매입 + 순이익 보고</div>
     <div class="sr-profit-helper" style="font-size:11px;color:#888;margin-top:2px">발주서 기준 자동 집계 · 매입단가/배송비/한도는 한 번 입력하면 자동 저장</div>
-    <div id="srProfitTopCards" style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;background:#EBF0F8;padding:16px;margin-top:14px;border-radius:6px">${_srBuildTopCardsHtml(T)}</div>
+    <div id="srProfitTopCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px">${_srBuildTopCardsHtml(T)}</div>
     <div class="sr-profit-helper" style="font-size:11px;color:var(--text3);margin-top:10px">매입단가는 <b>옵션 1개당 가격</b>만 넣으면 됩니다. 배송비/합배송 한도까지 같이 입력 → 박스수 자동 계산. ▶ 누르면 사람별로 확인·수정 가능.${noPriceCnt>0?` <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b>`:''}</div>
     <div class="sr-profit-helper">${_srBuildB2BMappingUI()}</div>
     <!-- 거래처 매입 비중 차트 (전체) -->
@@ -10730,6 +10731,8 @@ function srExportImage(){
       cloned.querySelectorAll('.sr-biz-detail-section').forEach(el => el.remove());
       // 펼쳐져있던 사람별 상세도 제거
       cloned.querySelectorAll('.sr-profit-detail').forEach(el => el.remove());
+      // 광고비 박스(노란색)도 제거 — 헤더에 이미 광고 금액 들어가 있음
+      cloned.querySelectorAll('.sr-biz-ad-section').forEach(el => el.remove());
       // 실무자용 도움말 텍스트 제거 (보고받는 사람한텐 노이즈)
       cloned.querySelectorAll('.sr-profit-helper').forEach(el => el.remove());
       // 차트 캔버스는 cloneNode가 비트맵을 못 복사하니 원본에서 그대로 그려와야 함
