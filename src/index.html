@@ -10136,7 +10136,7 @@ function switchSrSubTab(name){
 // ══════════════════════════════════════════════════════════
 const _srExpandedRows = new Set();
 function _srBizCode(biz){ return biz==='그로븐' ? 'grobn' : (biz==='옐로우브릿지' ? 'yb' : 'other'); }
-function _srBizColor(biz){ return biz==='그로븐' ? '#1E3A5F' : (biz==='옐로우브릿지' ? '#3A1E5F' : '#475569'); }
+function _srBizColor(biz){ return biz==='그로븐' ? '#4F46E5' : (biz==='옐로우브릿지' ? '#8B5CF6' : '#64748B'); }
 function _srBizSubtitle(biz){ return biz==='그로븐' ? '로또상회' : (biz==='옐로우브릿지' ? '자꾸가게' : biz); }
 // B2B 업체 → 발주처 매핑 편집 UI (디네트가 업로드돼있을 때만 표시)
 function _srBuildB2BMappingUI(){
@@ -10174,12 +10174,12 @@ function _srBuildTopCardsHtml(T){
   const adTotal = srAdTotalFor('그로븐') + srAdTotalFor('옐로우브릿지') + srAdTotalFor('기타');
   const adjProfit = T.profit - adTotal;
   // 2행 × 3열 — 1행: 총매출/총매입/판매수수료, 2행: 광고비/납부부가세/순이익
-  return `<div><div style="font-size:11px;color:#666">총 매출</div><div style="font-size:18px;font-weight:700;color:#1A56DB;margin-top:2px;white-space:nowrap">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#888;margin-top:2px">${T.count.toLocaleString()}건</div></div>
-    <div><div style="font-size:11px;color:#666">총 매입</div><div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px;white-space:nowrap">${T.purchase.toLocaleString()}원</div></div>
-    <div><div style="font-size:11px;color:#666">판매수수료</div><div style="font-size:18px;font-weight:700;color:#92400E;margin-top:2px;white-space:nowrap">${T.fee.toLocaleString()}원</div></div>
-    <div><div style="font-size:11px;color:#666">광고비</div><div style="font-size:18px;font-weight:700;color:#7C2D12;margin-top:2px;white-space:nowrap">${adTotal.toLocaleString()}원</div></div>
-    <div><div style="font-size:11px;color:#666">납부 부가세</div><div style="font-size:18px;font-weight:700;color:#6B21A8;margin-top:2px;white-space:nowrap">${T.vat.toLocaleString()}원</div><div style="font-size:10px;color:#888;margin-top:2px;white-space:nowrap">(매출부가세 − 매입부가세)</div></div>
-    <div><div style="font-size:11px;color:#666">순이익</div><div style="font-size:22px;font-weight:700;color:${adjProfit>=0?'#16A34A':'#DC2626'};margin-top:2px;white-space:nowrap">${adjProfit.toLocaleString()}원</div></div>`;
+  return `<div><div style="font-size:11px;color:#64748B">총 매출</div><div style="font-size:18px;font-weight:700;color:#3B82F6;margin-top:2px;white-space:nowrap">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#94A3B8;margin-top:2px">${T.count.toLocaleString()}건</div></div>
+    <div><div style="font-size:11px;color:#64748B">총 매입</div><div style="font-size:18px;font-weight:700;color:#F59E0B;margin-top:2px;white-space:nowrap">${T.purchase.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#64748B">판매수수료</div><div style="font-size:18px;font-weight:700;color:#FB923C;margin-top:2px;white-space:nowrap">${T.fee.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#64748B">광고비</div><div style="font-size:18px;font-weight:700;color:#F472B6;margin-top:2px;white-space:nowrap">${adTotal.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#64748B">납부 부가세</div><div style="font-size:18px;font-weight:700;color:#A855F7;margin-top:2px;white-space:nowrap">${T.vat.toLocaleString()}원</div><div style="font-size:10px;color:#94A3B8;margin-top:2px;white-space:nowrap">(매출부가세 − 매입부가세)</div></div>
+    <div><div style="font-size:11px;color:#64748B">순이익</div><div style="font-size:22px;font-weight:700;color:${adjProfit>=0?'#22C55E':'#EF4444'};margin-top:2px;white-space:nowrap">${adjProfit.toLocaleString()}원</div></div>`;
 }
 // 사업자 헤더 스트립 inner HTML
 function _srBuildBizHeaderInner(biz, T){
@@ -10205,11 +10205,11 @@ function _srBuildBizVendorTableInner(biz, bizRows){
   const vendorTrs = vendorList.map((m,i)=>`<tr style="background:${i%2===0?'#fff':'#F8FAFC'}">
     <td style="padding:7px 12px;font-size:12px;font-weight:600;border-bottom:1px solid #eee">${escHtml(m.vendor)}</td>
     <td style="padding:7px 12px;text-align:right;font-size:12px;border-bottom:1px solid #eee">${m.count}건</td>
-    <td style="padding:7px 12px;text-align:right;font-size:12px;color:#1A56DB;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.sales.toLocaleString()}원</td>
-    <td style="padding:7px 12px;text-align:right;font-size:12px;color:#7B4B00;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.purchase.toLocaleString()}원</td>
-    <td style="padding:7px 12px;text-align:right;font-size:12px;color:#92400E;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.fee.toLocaleString()}원</td>
-    ${showVat?`<td style="padding:7px 12px;text-align:right;font-size:12px;color:#6B21A8;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.vat.toLocaleString()}원</td>`:''}
-    <td style="padding:7px 12px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#16A34A':'#DC2626'};border-bottom:1px solid #eee">${m.profit.toLocaleString()}원</td>
+    <td style="padding:7px 12px;text-align:right;font-size:12px;color:#3B82F6;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.sales.toLocaleString()}원</td>
+    <td style="padding:7px 12px;text-align:right;font-size:12px;color:#F59E0B;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.purchase.toLocaleString()}원</td>
+    <td style="padding:7px 12px;text-align:right;font-size:12px;color:#FB923C;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.fee.toLocaleString()}원</td>
+    ${showVat?`<td style="padding:7px 12px;text-align:right;font-size:12px;color:#A855F7;font-variant-numeric:tabular-nums;border-bottom:1px solid #eee">${m.vat.toLocaleString()}원</td>`:''}
+    <td style="padding:7px 12px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#22C55E':'#EF4444'};border-bottom:1px solid #eee">${m.profit.toLocaleString()}원</td>
   </tr>`).join('');
   return `<table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0">
     <thead><tr style="background:${HBG}">
@@ -10219,17 +10219,17 @@ function _srBuildBizVendorTableInner(biz, bizRows){
       <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">매입</th>
       <th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0">판매수수료</th>
       ${showVat?`<th style="padding:8px 12px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #e2e8f0;white-space:nowrap" title="매출부가세 − 매입부가세">납부 부가세</th>`:''}
-      <th style="padding:8px 12px;text-align:right;font-size:11px;color:#16A34A;border-bottom:1px solid #e2e8f0">순이익</th>
+      <th style="padding:8px 12px;text-align:right;font-size:11px;color:#22C55E;border-bottom:1px solid #e2e8f0">순이익</th>
     </tr></thead>
     <tbody>${vendorTrs}</tbody>
     <tfoot><tr style="background:#E2E8F0;font-weight:700">
       <td style="padding:8px 12px;font-size:12px">${escHtml(biz)} 합계</td>
       <td style="padding:8px 12px;text-align:right;font-size:12px">${T.count}건</td>
-      <td style="padding:8px 12px;text-align:right;font-size:12px;color:#1A56DB;font-variant-numeric:tabular-nums">${T.sales.toLocaleString()}원</td>
-      <td style="padding:8px 12px;text-align:right;font-size:12px;color:#7B4B00;font-variant-numeric:tabular-nums">${T.purchase.toLocaleString()}원</td>
-      <td style="padding:8px 12px;text-align:right;font-size:12px;color:#92400E;font-variant-numeric:tabular-nums">${T.fee.toLocaleString()}원</td>
-      ${showVat?`<td style="padding:8px 12px;text-align:right;font-size:12px;color:#6B21A8;font-variant-numeric:tabular-nums">${T.vat.toLocaleString()}원</td>`:''}
-      <td style="padding:8px 12px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:${T.profit>=0?'#16A34A':'#DC2626'}">${T.profit.toLocaleString()}원</td>
+      <td style="padding:8px 12px;text-align:right;font-size:12px;color:#3B82F6;font-variant-numeric:tabular-nums">${T.sales.toLocaleString()}원</td>
+      <td style="padding:8px 12px;text-align:right;font-size:12px;color:#F59E0B;font-variant-numeric:tabular-nums">${T.purchase.toLocaleString()}원</td>
+      <td style="padding:8px 12px;text-align:right;font-size:12px;color:#FB923C;font-variant-numeric:tabular-nums">${T.fee.toLocaleString()}원</td>
+      ${showVat?`<td style="padding:8px 12px;text-align:right;font-size:12px;color:#A855F7;font-variant-numeric:tabular-nums">${T.vat.toLocaleString()}원</td>`:''}
+      <td style="padding:8px 12px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:${T.profit>=0?'#22C55E':'#EF4444'}">${T.profit.toLocaleString()}원</td>
     </tr></tfoot>
   </table>`;
 }
@@ -10290,9 +10290,9 @@ function srRenderProfitPanel(orders){
   const T = rows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=r.fee;s.vat+=r.vat;s.profit+=r.profit;s.count+=r.count;return s;}, {sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
   const noPriceCnt = rows.filter(r=>!r.unit).length;
   el.innerHTML = `<div class="card" style="background:#fff;padding:22px;max-width:1200px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
-    <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 매입 + 순이익 보고</div>
+    <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 매입 + 순이익</div>
     <div class="sr-profit-helper" style="font-size:11px;color:#888;margin-top:2px">발주서 기준 자동 집계 · 매입단가/배송비/한도는 한 번 입력하면 자동 저장</div>
-    <div id="srProfitTopCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px">${_srBuildTopCardsHtml(T)}</div>
+    <div id="srProfitTopCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;background:#F0F9FF;padding:18px;margin-top:14px;border-radius:8px;border:1px solid #DBEAFE">${_srBuildTopCardsHtml(T)}</div>
     <div class="sr-profit-helper" style="font-size:11px;color:var(--text3);margin-top:10px">매입단가는 <b>옵션 1개당 가격</b>만 넣으면 됩니다. 배송비/합배송 한도까지 같이 입력 → 박스수 자동 계산. ▶ 누르면 사람별로 확인·수정 가능.${noPriceCnt>0?` <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b>`:''}</div>
     <div class="sr-profit-helper">${_srBuildB2BMappingUI()}</div>
     <!-- 거래처 매입 비중 차트 (전체) -->
