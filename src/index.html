@@ -8062,11 +8062,13 @@ function reconExportXlsx() {
       <span style="font-weight:600;color:#c2410c">🎉 행사기간 단가 적용</span>
       <span style="font-size:11px;color:var(--text3)">— 체크 시 4P 15,600 / 3P 17,900 / 2P+ 22,700 적용 (평소 16,100 / 18,400 / 23,200)</span>
     </label>
-    <!-- 디네트 판매단가 계산법 (틀리면 수정용) -->
-    <div style="margin-top:12px;background:#F8FAFC;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px">
-      <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px">💡 디네트 판매단가 계산법 <span style="font-size:11px;color:var(--text3);font-weight:400">(보고서에 사용 중)</span></div>
-      <div id="srDinettePricingInfo" style="font-size:11px;color:var(--text2);line-height:1.6"></div>
-    </div>
+    <!-- 디네트 판매단가 — 정책 바뀌면 직접 수정 (기본 접힘) -->
+    <details style="margin-top:12px;background:#F8FAFC;border:1px solid #e2e8f0;border-radius:6px;padding:8px 14px">
+      <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#374151;list-style:none;display:flex;align-items:center;gap:6px">
+        <span style="font-size:11px">▶</span> 💡 디네트 판매단가 / 계산법 <span style="font-size:11px;color:var(--text3);font-weight:400">(필요할 때 펼쳐서 수정)</span>
+      </summary>
+      <div id="srDinettePricingInfo" style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6"></div>
+    </details>
   </div>
   <div class="card">
     <div class="card-title">🧄 깐마늘 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택</span></div>
@@ -9412,6 +9414,51 @@ const SR_DINETTE_UNIT = {'4p':2, '3p':2, '2p+':8};
 const SR_DINETTE_DISC = 4000;  // 묶음 추가마다 4000원 할인
 const SR_DINETTE_LABEL = {'4p':'박대 4P','3p':'박대 3P','2p+':'박대 2P+'};
 const LS_DINETTE_EVENT = 'yb_dinette_event_mode';
+// 사용자가 단가 수정한 값 (정책 변경 시) — localStorage 저장
+const LS_DINETTE_PRICES = 'yb_dinette_prices';
+function srLoadDinettePricesOverride(){
+  try { return JSON.parse(localStorage.getItem(LS_DINETTE_PRICES)||'{}'); } catch { return {}; }
+}
+function srSaveDinettePricesOverride(o){
+  try { localStorage.setItem(LS_DINETTE_PRICES, JSON.stringify(o||{})); } catch(e){}
+}
+// 실제 사용 단가 (기본값 + 사용자 수정값 머지)
+function srGetDinettePrices(){
+  const ov = srLoadDinettePricesOverride();
+  const isEvent = srIsDinetteEvent();
+  const base = isEvent ? SR_DINETTE_SPEC_EVENT : SR_DINETTE_SPEC;
+  const mode = isEvent ? 'event' : 'regular';
+  const priceMap = {};
+  for (const k of Object.keys(base)) {
+    const p = (ov[mode]||{})[k];
+    priceMap[k] = (p != null && !isNaN(p)) ? Number(p) : base[k].price;
+  }
+  const disc = (ov.disc != null && !isNaN(ov.disc)) ? Number(ov.disc) : SR_DINETTE_DISC;
+  const shipKey = isEvent ? 'ship_event' : 'ship_regular';
+  const defaultShip = isEvent ? 4500 : 5000;
+  const ship = (ov[shipKey] != null && !isNaN(ov[shipKey])) ? Number(ov[shipKey]) : defaultShip;
+  return { mode, priceMap, disc, ship, isEvent };
+}
+function srUpdateDinettePriceField(field, value){
+  const ov = srLoadDinettePricesOverride();
+  const v = value === '' ? null : Math.max(0, parseFloat(value)||0);
+  if (field.startsWith('regular.')) {
+    const k = field.slice(8);
+    ov.regular = ov.regular || {};
+    if (v == null) delete ov.regular[k]; else ov.regular[k] = v;
+  } else if (field.startsWith('event.')) {
+    const k = field.slice(6);
+    ov.event = ov.event || {};
+    if (v == null) delete ov.event[k]; else ov.event[k] = v;
+  } else if (field === 'disc' || field === 'ship_regular' || field === 'ship_event') {
+    if (v == null) delete ov[field]; else ov[field] = v;
+  }
+  srSaveDinettePricesOverride(ov);
+  // 보고서 떠 있으면 다시 그려서 금액 반영
+  if (typeof srRender === 'function' && document.getElementById('srReport') && document.getElementById('srReport').innerHTML.trim()) {
+    srRender();
+  }
+}
 function srIsDinetteEvent(){ return localStorage.getItem(LS_DINETTE_EVENT) === '1'; }
 function srToggleDinetteEvent(checked){
   if (checked) localStorage.setItem(LS_DINETTE_EVENT, '1');
@@ -9423,41 +9470,62 @@ function srToggleDinetteEvent(checked){
   // 단가 정보 안내 갱신
   srRenderDinettePricingInfo();
 }
-// 디네트 판매단가 계산법 표시 (사용자가 검토용)
+// 디네트 판매단가 계산법 표시 (사용자가 검토 + 수정용)
 function srRenderDinettePricingInfo(){
   const el = document.getElementById('srDinettePricingInfo');
   if (!el) return;
+  const ov = srLoadDinettePricesOverride();
   const isEvent = srIsDinetteEvent();
-  const SHIP_FEE = isEvent ? 4500 : 5000;
-  const specTable = isEvent ? SR_DINETTE_SPEC_EVENT : SR_DINETTE_SPEC;
+  const eff = srGetDinettePrices();
   const modeStr = isEvent ? '<span style="color:#c2410c;font-weight:700">🎉 행사기간</span>' : '<span style="color:#374151;font-weight:700">평시</span>';
-  const priceRows = ['4p','3p','2p+'].map(s => {
+  // 입력 셀 생성 헬퍼
+  const priceInput = (spec, mode) => {
+    const baseTable = mode === 'event' ? SR_DINETTE_SPEC_EVENT : SR_DINETTE_SPEC;
+    const def = baseTable[spec].price;
+    const saved = (ov[mode]||{})[spec];
+    const val = saved != null ? saved : '';
+    return `<input type="number" min="0" step="1" value="${val}" placeholder="${def.toLocaleString()}"
+      data-d-field="${mode}.${spec}" oninput="srUpdateDinettePriceField(this.getAttribute('data-d-field'), this.value)"
+      style="width:80px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums" title="기본값: ${def.toLocaleString()}원 (비우면 기본값 사용)">`;
+  };
+  const numInput = (field, def) => {
+    const saved = ov[field];
+    const val = saved != null ? saved : '';
+    return `<input type="number" min="0" step="1" value="${val}" placeholder="${def.toLocaleString()}"
+      data-d-field="${field}" oninput="srUpdateDinettePriceField(this.getAttribute('data-d-field'), this.value)"
+      style="width:80px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums" title="기본값: ${def.toLocaleString()}원 (비우면 기본값 사용)">`;
+  };
+  const tableRows = ['4p','3p','2p+'].map(s => {
     const label = SR_DINETTE_LABEL[s];
-    const p = specTable[s].price;
     const unit = SR_DINETTE_UNIT[s];
     return `<tr>
-      <td style="padding:3px 8px">${escHtml(label)}</td>
-      <td style="padding:3px 8px;text-align:right;font-variant-numeric:tabular-nums">${p.toLocaleString()}원/묶음</td>
-      <td style="padding:3px 8px;text-align:right;color:#6B7280">1묶음=${unit}건</td>
+      <td style="padding:4px 8px;font-weight:600">${escHtml(label)}</td>
+      <td style="padding:4px 8px;text-align:right">${priceInput(s, 'regular')} <span style="font-size:10px;color:var(--text3)">평시</span></td>
+      <td style="padding:4px 8px;text-align:right">${priceInput(s, 'event')} <span style="font-size:10px;color:#c2410c">행사</span></td>
+      <td style="padding:4px 8px;text-align:right;color:#6B7280;font-size:11px">1묶음=${unit}건</td>
     </tr>`;
   }).join('');
   el.innerHTML = `
-    <div style="margin-bottom:6px">현재 모드: ${modeStr}</div>
-    <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;margin-bottom:8px">
+    <div style="margin-bottom:8px;font-size:11px;color:var(--text2)">현재 모드: ${modeStr} · 빈칸 입력 = 기본값 사용 · 숫자 입력 = 그 값으로 덮어쓰기 (자동 저장)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;margin-bottom:10px">
       <thead><tr style="background:#F3F4F6;color:#374151">
         <th style="padding:4px 8px;text-align:left">규격</th>
-        <th style="padding:4px 8px;text-align:right">묶음 단가</th>
+        <th style="padding:4px 8px;text-align:right">평시 묶음 단가</th>
+        <th style="padding:4px 8px;text-align:right">행사 묶음 단가</th>
         <th style="padding:4px 8px;text-align:right">묶음 기준</th>
       </tr></thead>
-      <tbody>${priceRows}</tbody>
+      <tbody>${tableRows}</tbody>
     </table>
-    <div style="color:#374151">
-      <b>판매가 계산식:</b> <code style="background:#F1F5F9;padding:1px 5px;border-radius:3px">묶음수 = floor(수량 ÷ 묶음기준)</code> ·
-      <code style="background:#F1F5F9;padding:1px 5px;border-radius:3px">판매가 = 묶음단가 × 묶음수 − ${SR_DINETTE_DISC.toLocaleString()}원 × (묶음수−1)</code>
-      <br>
-      <b>합배송 차감:</b> 같은 사람+주소가 N건이면 매출에서 (N−1) × ${SHIP_FEE.toLocaleString()}원 차감 (배송비 절약분)
+    <div style="display:flex;gap:16px;flex-wrap:wrap;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:10px;font-size:11px;align-items:center">
+      <span><b>묶음 추가 할인</b> ${numInput('disc', SR_DINETTE_DISC)}원/묶음</span>
+      <span><b>합배송 배송비 (평시)</b> ${numInput('ship_regular', 5000)}원</span>
+      <span><b>합배송 배송비 (행사)</b> ${numInput('ship_event', 4500)}원</span>
     </div>
-    <div style="margin-top:6px;font-size:10px;color:var(--text3)">※ 단가/할인 정책이 바뀌면 알려주세요 — 코드 상수(SR_DINETTE_SPEC, SR_DINETTE_DISC, SHIP_FEE) 수정 필요</div>`;
+    <div style="font-size:11px;color:#374151;line-height:1.6">
+      <b>판매가 계산식:</b> <code style="background:#F1F5F9;padding:1px 5px;border-radius:3px">묶음수 = floor(수량 ÷ 묶음기준)</code> ·
+      <code style="background:#F1F5F9;padding:1px 5px;border-radius:3px">판매가 = 묶음단가 × 묶음수 − 추가할인 × (묶음수−1)</code><br>
+      <b>합배송 차감:</b> 같은 사람+주소가 N건이면 매출에서 (N−1) × 배송비 차감 (배송비 절약분)
+    </div>`;
 }
 let srDinetteRows = null;
 let srDinetteFileName = '';
@@ -9586,12 +9654,13 @@ function srClearReview(){
 }
 function srDinettePrice(spec, qty){
   const unit = SR_DINETTE_UNIT[spec] || 2;
-  const specTable = srIsDinetteEvent() ? SR_DINETTE_SPEC_EVENT : SR_DINETTE_SPEC;
-  const price = (specTable[spec]||{}).price || 0;
+  // 사용자 수정 단가가 있으면 그걸 우선 (정책 변경 대응)
+  const eff = srGetDinettePrices();
+  const price = eff.priceMap[spec] || 0;
   if (!price) return 0;
   const bundles = Math.floor(qty / unit);
   if (bundles === 0) return price;
-  return price * bundles - SR_DINETTE_DISC * (bundles - 1);
+  return price * bundles - eff.disc * (bundles - 1);
 }
 function srAggregateDinette(rows){
   if (!rows || !rows.length) return {count:0, sales:0, byCfg:{}, mergeDisc:0, mergeGroups:0};
@@ -9611,7 +9680,7 @@ function srAggregateDinette(rows){
   }
   // 2) 합배송 할인: (이름+주소) 같은 행이 N건이면 (N-1) × 배송비 차감
   //    평시 5000원, 행사기간 4500원
-  const SHIP_FEE = srIsDinetteEvent() ? 4500 : 5000;
+  const SHIP_FEE = srGetDinettePrices().ship;
   const grpCount = {};
   for (const r of rows) {
     const spec = String(r[3]||'').trim();
@@ -9830,7 +9899,7 @@ function srSetB2BVendor(b2bName, vendor){
 function _srBuildDinetteProfitRows(db){
   if (!Array.isArray(srDinetteRows) || srDinetteRows.length === 0) return [];
   const supplier = srGetB2BVendor('디네트') || '일비';
-  const vendorDisplay = `디네트 ${supplier}`.trim();
+  const b2bName = '디네트';
   const bySpec = {};
   for (let i = 0; i < srDinetteRows.length; i++) {
     const r = srDinetteRows[i];
@@ -9851,16 +9920,18 @@ function _srBuildDinetteProfitRows(db){
   const out = [];
   for (const [spec, info] of Object.entries(bySpec)) {
     const optionDisplay = spec.toUpperCase();
-    const key = ['그로븐', vendorDisplay, '박대', optionDisplay].join('|');
+    // 키에 b2bName 포함 — 같은 일비 박대라도 디네트 매출은 별도 행으로 저장 (단가/배송비 따로)
+    const key = ['그로븐', supplier, '박대', optionDisplay, 'b2b:'+b2bName].join('|');
     const saved = (db || {})[key] || {};
     out.push({
       key,
       brand: '그로븐',
-      vendor: vendorDisplay,
+      vendor: supplier,                // 보고용 요약에는 '일비' 표시
+      detailVendor: `${b2bName} ${supplier}`,  // 상세표에는 '디네트 일비' 표시
       item: '박대',
       option: optionDisplay,
       isB2B: true,
-      b2bName: '디네트',
+      b2bName,
       count: info.orders.length,
       qtySum: info.orders.reduce((s,o)=>s+o.qty, 0),
       sales: info.totalSales,
@@ -10243,7 +10314,7 @@ function _srBuildDetailRowHtml(r, i){
     <td style="padding:4px 4px;border-bottom:1px solid #eee;text-align:center">
       <button type="button" data-toggle-key="${_srEsc(r.key)}" onclick="srToggleProfitDetail(this)" style="border:1px solid #D1D5DB;background:#fff;cursor:pointer;font-size:11px;padding:1px 6px;border-radius:3px" title="사람별 검산">▶</button>
     </td>
-    <td style="padding:6px 8px;border-bottom:1px solid #eee;font-weight:600">${escHtml(r.vendor)}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;font-weight:600">${escHtml(r.detailVendor||r.vendor)}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee">${escHtml(r.item||'-')}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#6B7280">${escHtml(r.option||'-')}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${r.count}</td>
