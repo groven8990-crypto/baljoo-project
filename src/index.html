@@ -9823,13 +9823,14 @@ function srSetB2BVendor(b2bName, vendor){
   srSaveB2BVendorMap(m);
 }
 // 디네트(B2B) 발주서를 매입/순이익 행으로 변환
-//  - 사업자: 옐로우브릿지 (디네트는 옐로우브릿지가 디네트한테 판매)
-//  - 발주처: B2B 매핑에서 가져옴 (기본 일비, 사용자 수정 가능)
+//  - 사업자: 그로븐 (디네트 B2B 매출은 그로븐 사업자에 포함)
+//  - 발주처: "디네트 일비" 형식 (B2B업체명 + 공급처) — 일반 매출과 구분
 //  - 품목: 박대 / 옵션: 규격(4P/3P/2P+)
 //  - 수수료: 0 (B2B - 플랫폼 수수료 없음)
 function _srBuildDinetteProfitRows(db){
   if (!Array.isArray(srDinetteRows) || srDinetteRows.length === 0) return [];
-  const vendor = srGetB2BVendor('디네트') || '일비';
+  const supplier = srGetB2BVendor('디네트') || '일비';
+  const vendorDisplay = `디네트 ${supplier}`.trim();
   const bySpec = {};
   for (let i = 0; i < srDinetteRows.length; i++) {
     const r = srDinetteRows[i];
@@ -9849,22 +9850,21 @@ function _srBuildDinetteProfitRows(db){
   }
   const out = [];
   for (const [spec, info] of Object.entries(bySpec)) {
-    // 옵션은 대문자 표기로 통일 (4p → 4P) — 기존 일비 박대 4P 행과 자동 병합
     const optionDisplay = spec.toUpperCase();
-    const key = ['옐로우브릿지', vendor, '박대', optionDisplay].join('|');
+    const key = ['그로븐', vendorDisplay, '박대', optionDisplay].join('|');
     const saved = (db || {})[key] || {};
     out.push({
       key,
-      brand: '옐로우브릿지',
-      vendor,
+      brand: '그로븐',
+      vendor: vendorDisplay,
       item: '박대',
       option: optionDisplay,
-      isB2B: true,        // UI에서 B2B 표시용
+      isB2B: true,
       b2bName: '디네트',
       count: info.orders.length,
       qtySum: info.orders.reduce((s,o)=>s+o.qty, 0),
       sales: info.totalSales,
-      fee: 0,             // B2B 수수료 없음
+      fee: 0,
       orderDetail: info.orders,
       unit:    Number(saved.unit)||0,
       shipFee: Number(saved.shipFee != null ? saved.shipFee : saved.ship)||0,
