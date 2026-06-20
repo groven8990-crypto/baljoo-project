@@ -10334,8 +10334,8 @@ function _srRenderVendorPurchaseChart(rows){
   const total = entries.reduce((s,[,v])=>s+v, 0);
   const labels = entries.map(([k])=>k);
   const data = entries.map(([,v])=>v);
-  // Warm Sand 팔레트 — 카멜/올리브/와인/세이지 등 따뜻한 톤
-  const palette = ['#B45309','#0F766E','#9A3412','#3F6212','#5B21B6','#9F1239','#A16207','#7C2D12','#365314','#831843','#374151','#1F2937','#581C87','#8B4513'];
+  // Warm Sand 팔레트 — 부드러운 더스티 톤 (베이지 배경과 자연스럽게 블렌딩)
+  const palette = ['#C9A66B','#7AA8A2','#B8857A','#93A87C','#A89DB8','#C9A088','#B8B084','#9FAE94','#C19899','#A89F88','#B59976','#8FA597','#BFA5B5','#A88E7A'];
   const bg = labels.map((_,i)=>palette[i%palette.length]);
   _srProfitVendorChartInst = new Chart(c.getContext('2d'), {
     type: 'doughnut',
