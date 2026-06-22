@@ -10576,26 +10576,46 @@ function _srBuildBizSectionHtml(biz, bizRows){
     <div class="sr-biz-detail-section">
     <div style="margin-top:8px;font-size:11px;color:var(--text3)">📋 ${escHtml(biz)} 상세 — 매입단가/배송비/합배송한도 입력. ▶ 누르면 사람별 검산.</div>
     <div style="overflow-x:auto;margin-top:4px">
-      <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #e2e8f0">
+      <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #e2e8f0;word-break:keep-all">
         <thead><tr style="background:${HBG};color:${HFG}">
-          <th style="padding:6px 4px;text-align:center;border-bottom:1px solid #D1D5DB">📋</th>
-          <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #D1D5DB">발주처</th>
-          <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #D1D5DB">품목</th>
-          <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #D1D5DB">옵션</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">건수</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB" title="실제 매입수량">매입<br>수량</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">매출</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB" title="옵션 1개당 매입단가">매입단가<br>(1개당)</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">매입가</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB" title="박스 1개당 배송비">배송비<br>(1박스)</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB" title="박스 1개당 최대 단위수량 (비우면 주문 1건당 1박스)">합배송<br>한도</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">총배송비</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">총매입</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB">판매수수료</th>
-          ${biz === '그로븐' ? '' : '<th style="padding:6px 8px;text-align:center;border-bottom:1px solid #D1D5DB" title="체크 시 부가세 차감 (매출/11 − 매입/11)">과세</th><th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB" title="매출부가세 − 매입부가세">납부<br>부가세</th>'}
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;color:#16A34A">순이익</th>
+          <th style="padding:6px 4px;text-align:center;border-bottom:1px solid #D1D5DB;white-space:nowrap">📋</th>
+          <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #D1D5DB;white-space:nowrap">발주처</th>
+          <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #D1D5DB;white-space:nowrap">품목</th>
+          <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #D1D5DB;white-space:nowrap">옵션</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap">건수</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap" title="실제 매입수량">매입<br>수량</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap">매출</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap" title="옵션 1개당 매입단가">매입단가<br>(1개당)</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap">매입가</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap" title="박스 1개당 배송비">배송비<br>(1박스)</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap" title="박스 1개당 최대 단위수량 (비우면 주문 1건당 1박스)">합배송<br>한도</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap">총배송비</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap">총매입</th>
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap">판매수수료</th>
+          ${biz === '그로븐' ? '' : '<th style="padding:6px 8px;text-align:center;border-bottom:1px solid #D1D5DB;white-space:nowrap" title="체크 시 부가세 차감 (매출/11 − 매입/11)">과세</th><th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap" title="매출부가세 − 매입부가세">납부<br>부가세</th>'}
+          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;color:#16A34A;white-space:nowrap">순이익</th>
         </tr></thead>
         <tbody>${detailTrs}</tbody>
+        ${(()=>{ const F=bizRows.reduce((s,r)=>{s.qtySum+=r.qtySum;s.itemCost+=r.itemCost;s.shipTotal+=r.shipTotal;return s;},{qtySum:0,itemCost:0,shipTotal:0});
+          const num = v => v.toLocaleString();
+          const cellR = v => `<td style="padding:8px 8px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap;border-top:2px solid #94A3B8;color:#191F28">${v}</td>`;
+          const cellEmpty = `<td style="border-top:2px solid #94A3B8"></td>`;
+          return `<tfoot><tr style="background:#F1F5F9">
+            <td colspan="4" style="padding:8px 8px;text-align:right;font-weight:700;white-space:nowrap;border-top:2px solid #94A3B8;color:#191F28">전체 합계</td>
+            ${cellR(num(T.count))}
+            ${cellR(num(F.qtySum))}
+            ${cellR(num(T.sales))}
+            ${cellEmpty}
+            ${cellR(num(F.itemCost))}
+            ${cellEmpty}
+            ${cellEmpty}
+            ${cellR(num(F.shipTotal))}
+            ${cellR(num(T.purchase))}
+            ${cellR(num(T.fee))}
+            ${biz==='그로븐'?'':cellEmpty+`<td style="padding:8px 8px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap;border-top:2px solid #94A3B8;color:#6B21A8">${num(T.vat)}</td>`}
+            <td style="padding:8px 8px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap;border-top:2px solid #94A3B8;color:${T.profit>=0?'#16A34A':'#DC2626'}">${num(T.profit)}</td>
+          </tr></tfoot>`;
+        })()}
       </table>
     </div>
     </div><!-- /sr-biz-detail-section -->
