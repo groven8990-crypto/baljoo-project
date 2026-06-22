@@ -10542,8 +10542,28 @@ function _srBuildBizSectionHtml(biz, bizRows){
   const color = _srBizColor(biz);
   const T = bizRows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=r.fee;s.vat+=r.vat;s.profit+=r.profit;s.count+=r.count;return s;}, {sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
   const HBG='#F1F5F9', HFG='#334155';
-  const detailRows = bizRows.slice().sort((a,b)=>b.profit-a.profit);
-  const detailTrs = detailRows.map((r,i)=>_srBuildDetailRowHtml(r,i)).join('');
+  // 발주처 단위로 묶어서 정렬: 같은 발주처 끼리 인접하도록 → 발주처 내에서는 순이익 내림차순
+  //   그룹 키는 detailVendor||vendor (디네트 일비 등 상세 표기 포함)
+  //   그룹 순서는 그룹 내 매출 합계가 큰 순으로 → 주요 발주처가 위로
+  const _groupKeyOf = r => String(r.detailVendor||r.vendor||'');
+  const _groupSales = {};
+  bizRows.forEach(r => { const k=_groupKeyOf(r); _groupSales[k]=(_groupSales[k]||0)+r.sales; });
+  const detailRows = bizRows.slice().sort((a,b)=>{
+    const ka=_groupKeyOf(a), kb=_groupKeyOf(b);
+    if (ka !== kb) {
+      const sa=_groupSales[ka]||0, sb=_groupSales[kb]||0;
+      if (sa !== sb) return sb - sa;        // 매출 큰 그룹 먼저
+      return ka.localeCompare(kb, 'ko');    // 동률이면 가나다순
+    }
+    return b.profit - a.profit;             // 같은 발주처 내에서는 순이익 내림차순
+  });
+  let _prevGroup = null;
+  const detailTrs = detailRows.map((r,i)=>{
+    const gk = _groupKeyOf(r);
+    const firstOfGroup = (gk !== _prevGroup);
+    _prevGroup = gk;
+    return _srBuildDetailRowHtml(r, i, firstOfGroup);
+  }).join('');
   return `<div style="margin-top:22px" data-biz="${escHtml(biz)}">
     <div class="sr-biz-header" data-biz="${escHtml(biz)}" style="background:${color};color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">${_srBuildBizHeaderInner(biz, T)}</div>
     <div class="sr-biz-vendor-table" data-biz="${escHtml(biz)}">${_srBuildBizVendorTableInner(biz, bizRows)}</div>
@@ -10576,9 +10596,10 @@ function _srBuildBizSectionHtml(biz, bizRows){
     </div><!-- /sr-biz-detail-section -->
   </div>`;
 }
-function _srBuildDetailRowHtml(r, i){
+function _srBuildDetailRowHtml(r, i, firstOfGroup){
   const cls = !r.unit ? 'background:#FEF9C3' : (i%2===0?'background:#fff':'background:#FAFAFA');
-  return `<tr data-rowkey="${_srEsc(r.key)}" style="${cls}">
+  const sep = firstOfGroup ? 'border-top:2px solid #94A3B8;' : '';
+  return `<tr data-rowkey="${_srEsc(r.key)}" style="${cls};${sep}">
     <td style="padding:4px 4px;border-bottom:1px solid #eee;text-align:center">
       <button type="button" data-toggle-key="${_srEsc(r.key)}" onclick="srToggleProfitDetail(this)" style="border:1px solid #D1D5DB;background:#fff;cursor:pointer;font-size:11px;padding:1px 6px;border-radius:3px" title="사람별 검산">▶</button>
     </td>
