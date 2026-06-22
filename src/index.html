@@ -2955,7 +2955,7 @@ function addCode(){
     saveCodes(codes);
     cancelEditCode();
     renderCodeList();renderCodeMappingList();
-    if(allOrders.length>0){rematchAllOrders();renderStep2();renderUnmatchedHints();}
+    if(allOrders.length>0){rematchAllOrders();renderStep2();renderUnmatchedHints();if(typeof renderVerifyArea==='function')renderVerifyArea();}
     return;
   }
   // ── 추가 모드 ── (중복 허용 — 같은 코드도 여러 번 등록 가능)
@@ -2977,6 +2977,7 @@ function addCode(){
   if(allOrders.length>0){
     const beforeUnmatchedTotal = unmatchedList.length;
     rematchAllOrders();renderStep2();renderUnmatchedHints();
+    if(typeof renderVerifyArea==='function')renderVerifyArea();
     const afterUnmatchedTotal = unmatchedList.length;
     const newlyMatched = beforeUnmatchedTotal - afterUnmatchedTotal;
     let msg, color;
@@ -3296,6 +3297,7 @@ function saveNonstdEdit(i){
   renderUnmatchedHints();
   renderOmPreview();
   if (typeof renderDirectEditList === 'function') renderDirectEditList();
+  if (typeof renderVerifyArea === 'function') renderVerifyArea();
 }
 function confirmNonstdAt(i){
   const o = (window._nonstdItems||[])[i]; if (!o) return;
@@ -3417,6 +3419,7 @@ function saveDirectEdit(){
   rematchAllOrders();
   renderStep2(); renderUnmatchedHints(); renderOmPreview();
   renderDirectEditList();  // 저장 후 패널 즉시 갱신 (● 표시 반영)
+  if (typeof renderVerifyArea === 'function') renderVerifyArea();
 }
 function clearDirectEdit(i){
   const c = _directCombos[i]; if(!c) return;
@@ -3425,6 +3428,7 @@ function clearDirectEdit(i){
   rematchAllOrders();
   renderStep2(); renderUnmatchedHints(); renderOmPreview();
   renderDirectEditList();
+  if (typeof renderVerifyArea === 'function') renderVerifyArea();
 }
 // ══════════════════════════════════════════════════════════
 // 발주서 재생성 — 코드 등록 후 재매칭
