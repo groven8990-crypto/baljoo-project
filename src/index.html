@@ -1768,7 +1768,7 @@ function _isDanggnRows(rows){
   for (let i = 0; i < Math.min(3, rows.length); i++) {
     const h = rows[i] || [];
     const has = (name) => h.some(c => String(c||'').trim() === name);
-    if (has('주문자명') && has('배송주소') && (has('당근 닉네임') || has('주문번호'))) return i;
+    if (has('주문자명') && has('배송주소') && has('주문번호') && has('가격')) return i;
   }
   return false;
 }
@@ -1789,7 +1789,6 @@ function _addDanggnOrdersFromRows(rows, hr){
     rcv: findCol('수령방식'),
     pn:  findCol('상품명'),
     pr:  findCol('가격'),
-    nk:  findCol('당근 닉네임'),
     rn:  findCol('주문자명'),
     rp:  findCol('연락처'),
     zp:  findCol('우편번호'),
@@ -1840,7 +1839,7 @@ function _addDanggnOrdersFromRows(rows, hr){
       qty: 1,
       code_qty: parsed.codeQty || 1,
       order_no: onVal,
-      buyer: String(r[C.nk]||'').trim(),  // 당근 닉네임이 구매자명 역할
+      buyer: '',  // 당근 닉네임은 사용 안 함
       buyer_phone: '',
       carrier: '',
       order_amt,
@@ -9254,7 +9253,7 @@ const SR_PRODUCT_KEYWORDS = {
   // 잡화꿀 (국내산 사양천연 등)
   '잡화꿀':'잡화꿀','사양꿀':'잡화꿀','국내산 사양 천':'잡화꿀'
 };
-const SR_FEE_MAP = {'쿠팡':0.11,'지마켓':0.12,'옥션':0.12,'11번가':0.12,'네이버':0.0363,'당근':0};
+const SR_FEE_MAP = {'쿠팡':0.11,'지마켓':0.12,'옥션':0.12,'11번가':0.12,'네이버':0.0363,'당근':0.033};
 function srPlatform(o){
   // 1순위: 별도 쇼핑몰/마켓/판매처 컬럼
   if (o && typeof o === 'object' && o.shop_mall) {
