@@ -10658,7 +10658,7 @@ function srToggleShipTiers(btn){
   tierRow.classList.add('sr-ship-tiers-row');
   tierRow.classList.add('sr-profit-helper');  // PNG에서 숨김
   tierRow.setAttribute('data-rowkey', key);
-  tierRow.innerHTML = `<td colspan="${colspan}" style="padding:12px 16px;background:#F8F9FA;border-bottom:1px solid #ECEEF1">${_srBuildShipTiersHtml(key)}</td>`;
+  tierRow.innerHTML = `<td colspan="${colspan}" style="padding:0;background:#F8F9FA;border-bottom:1px solid #ECEEF1"><div style="width:0;min-width:100%;box-sizing:border-box;padding:12px 16px;overflow-x:auto">${_srBuildShipTiersHtml(key)}</div></td>`;
   insertAfter.parentNode.insertBefore(tierRow, insertAfter.nextSibling);
 }
 function _srBuildShipTiersHtml(key){
@@ -10709,9 +10709,9 @@ function srAddShipTier(key){
   tiers.push({ qty: 0, fee: 0 });
   db[key] = { ...saved, shipTiers: tiers };
   srSavePurchaseDB(db);
-  // 단계 패널만 다시 그림
+  // 단계 패널만 다시 그림 (래퍼 div 안쪽만 교체)
   const sel = CSS && CSS.escape ? CSS.escape(key) : key;
-  const panel = document.querySelector(`tr.sr-ship-tiers-row[data-rowkey="${sel}"] > td`);
+  const panel = document.querySelector(`tr.sr-ship-tiers-row[data-rowkey="${sel}"] > td > div`);
   if (panel) panel.innerHTML = _srBuildShipTiersHtml(key);
   srUpdateProfitIncremental(key);
 }
@@ -10723,7 +10723,7 @@ function srRemoveShipTier(key, idx){
   db[key] = { ...saved, shipTiers: tiers };
   srSavePurchaseDB(db);
   const sel = CSS && CSS.escape ? CSS.escape(key) : key;
-  const panel = document.querySelector(`tr.sr-ship-tiers-row[data-rowkey="${sel}"] > td`);
+  const panel = document.querySelector(`tr.sr-ship-tiers-row[data-rowkey="${sel}"] > td > div`);
   if (panel) panel.innerHTML = _srBuildShipTiersHtml(key);
   srUpdateProfitIncremental(key);
 }
@@ -10753,7 +10753,7 @@ function srOpenProfitDetail(tr, btn, r){
   const detailRow = document.createElement('tr');
   detailRow.classList.add('sr-profit-detail');
   detailRow.setAttribute('data-rowkey', key);
-  detailRow.innerHTML = `<td colspan="${colspan}" style="padding:10px 14px;background:#F9FAFB;border-bottom:1px solid #ddd"><div class="sr-detail-wrap" data-rowkey="${_srEsc(key)}">${srBuildDetailInnerHtml(r)}</div></td>`;
+  detailRow.innerHTML = `<td colspan="${colspan}" style="padding:0;background:#F9FAFB;border-bottom:1px solid #ddd"><div style="width:0;min-width:100%;box-sizing:border-box;padding:10px 14px;overflow-x:auto"><div class="sr-detail-wrap" data-rowkey="${_srEsc(key)}">${srBuildDetailInnerHtml(r)}</div></div></td>`;
   tr.parentNode.insertBefore(detailRow, tr.nextSibling);
   btn.textContent = '▼';
 }
