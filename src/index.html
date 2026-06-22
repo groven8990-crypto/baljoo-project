@@ -2217,7 +2217,22 @@ function toggleMergeDecision(key, checked){
   if (checked) _mergeDecisions.add(key); else _mergeDecisions.delete(key);
   renderMergeCandidates();
 }
-function applyMergeForVendor(orders){
+// 주문 1건의 실제 매입/발주 수량 환산 — 동일(깐마늘)은 kg 인식 (1kg봉 환산)
+function _effOrderUnits(o, vendor){
+  const baseQty = Number(o.qty)||1;
+  if (vendor === '동일') {
+    let kg = 0;
+    const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kg = parseInt(m1[1]);
+    if (!kg) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kg = parseInt(m[1]); }
+    if (!kg) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kg = parseInt(m[1]); }
+    if (!kg && o.code_qty && o.code_qty > 1) kg = o.code_qty;
+    if (!kg) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kg = parseInt(m[1]); }
+    if (!kg) kg = 1;
+    return baseQty * kg;
+  }
+  return baseQty * (Number(o.code_qty)||1);
+}
+function applyMergeForVendor(orders, vendor){
   // 같은 (이름+주소) 키가 _mergeDecisions에 있고 같은 발주처 안에서 2건 이상이면 한 줄로 합침
   const cntByKey = new Map();
   orders.forEach(o => {
@@ -2237,14 +2252,15 @@ function applyMergeForVendor(orders){
   groupArr.forEach((arr, k) => {
     const m = {...arr[0]};
     const lines = arr.map(it => {
-      const eff = (it.qty||1) * (it.code_qty||1);
+      const eff = _effOrderUnits(it, vendor);
       const part = `${it.item_name||''}${it.option_name?' '+it.option_name:''}${eff>1?' × '+eff:''}`;
       return part.trim();
     });
     m.item_name = lines.join(' + ');
     m.option_name = '';
     m.qty = 1;
-    m.code_qty = arr.reduce((s,x)=>s+(x.qty||1)*(x.code_qty||1), 0);
+    // 발주 수량 = 합배송된 주문들의 kg-aware 실제 단위 수량 합
+    m.code_qty = arr.reduce((s,x)=>s + _effOrderUnits(x, vendor), 0);
     m.memo = (m.memo ? m.memo + ' / ' : '') + `합배송 ${arr.length}건`;
     m._merged = true;
     result.push(m);
@@ -2253,7 +2269,7 @@ function applyMergeForVendor(orders){
 }
 
 function buildRows(vk,orders,alias){
-  orders = applyMergeForVendor(orders);
+  orders = applyMergeForVendor(orders, vk);
   // 택배사 정규화: 발주처 기본 택배사가 있을 때, 파일 값이 비표준('기타택배'·빈칸 등)이면 기본값으로 자동 보정
   const defCarrier = VENDOR_COURIER_DEFAULT && VENDOR_COURIER_DEFAULT[vk];
   if (defCarrier) {
@@ -2349,16 +2365,22 @@ function buildRows(vk,orders,alias){
       // 농업법인회사 동일(깐마늘) — 안전망: 모든 행을 "깐마늘 1kg" + 수량(kg수 × code_qty)로 통일
       return [['받는사람','전화번호1','전화번호2','우편번호','주소','수량(A타입)','상품명1','보내는사람(지정)','전화번호1(지정)','주소(지정)','배송메시지','주문번호','내품수량1','운임'],
         ...orders.map(o => {
-          // kg 추출 우선순위: select_opt → 노출옵션명(쿠팡) → vendor_code → option_name
-          let kgN = 0;
-          const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kgN = parseInt(m1[1]);
-          if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kgN = parseInt(m[1]); }
-          if (!kgN) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
-          if (!kgN) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
-          if (!kgN) kgN = 1;
-          const baseQty = Number(o.qty)||1;
-          // kg 수가 1보다 크면 코드 내장수량 무시하고 kg수×주문수량으로 (예: 2kg 주문 1건 → 1×2=2개)
-          const finalQty = kgN > 1 ? baseQty * kgN : (o.code_qty||1) * baseQty;
+          let finalQty;
+          if (o._merged) {
+            // 합배송된 행 — code_qty 는 이미 _effOrderUnits 합산(kg-aware)이라 그대로 사용
+            finalQty = Number(o.code_qty) || 1;
+          } else {
+            // kg 추출 우선순위: select_opt → 노출옵션명(쿠팡) → vendor_code → option_name
+            let kgN = 0;
+            const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kgN = parseInt(m1[1]);
+            if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kgN = parseInt(m[1]); }
+            if (!kgN) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+            if (!kgN) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+            if (!kgN) kgN = 1;
+            const baseQty = Number(o.qty)||1;
+            // kg 수가 1보다 크면 코드 내장수량 무시하고 kg수×주문수량으로 (예: 2kg 주문 1건 → 1×2=2개)
+            finalQty = kgN > 1 ? baseQty * kgN : (o.code_qty||1) * baseQty;
+          }
           // 상품명은 무조건 "깐마늘 1kg"
           return [o.recv_name, o.recv_phone, '', o.zip, o.addr, finalQty, '깐마늘 1kg', s.name, s.phone, s.addr, o.memo, o.order_no, '', ''];
         })];
