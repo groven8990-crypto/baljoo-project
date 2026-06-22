@@ -2583,19 +2583,25 @@ function _srStripInputsForExport(clone){
   // ▶ 상세 토글 버튼 제거 (PNG에선 의미 없음)
   clone.querySelectorAll('button[data-toggle-key]').forEach(btn => btn.remove());
 }
-// 원본의 canvas 비트맵을 clone 쪽 canvas에 그대로 복사 (cloneNode는 빈 캔버스)
+// 원본의 canvas를 clone 쪽에서는 <img data:url>로 치환 (cloneNode는 빈 캔버스가 되므로)
+//   bitmap 카피보다 안정적 — html2canvas가 canvas를 못 그릴 때도 img는 무조건 잡음
 function _srCopyCanvasContents(original, clone){
   if (!original || !clone) return;
   const origCanvases = original.querySelectorAll('canvas');
   const cloneCanvases = clone.querySelectorAll('canvas');
   origCanvases.forEach((oc, i) => {
     const cc = cloneCanvases[i];
-    if (!cc) return;
-    cc.width = oc.width;
-    cc.height = oc.height;
+    if (!cc || !cc.parentNode) return;
     try {
-      cc.getContext('2d').drawImage(oc, 0, 0);
-    } catch(e) { console.warn('canvas 복사 실패:', e); }
+      const dataUrl = oc.toDataURL('image/png');
+      const cs = window.getComputedStyle(oc);
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.style.width  = cs.width || (oc.clientWidth + 'px');
+      img.style.height = cs.height || (oc.clientHeight + 'px');
+      img.style.display = 'block';
+      cc.parentNode.replaceChild(img, cc);
+    } catch(e) { console.warn('canvas → img 변환 실패:', e); }
   });
 }
 
@@ -10380,12 +10386,12 @@ function _srBuildBizVendorTableInner(biz, bizRows){
   const HBG='#F8F9FA', HFG='#6B7684';
   const vendorTrs = vendorList.map((m,i)=>`<tr style="background:${i%2===0?'#fff':'#FBFCFD'}">
     <td style="padding:9px 14px;font-size:12px;font-weight:600;border-bottom:1px solid #F2F4F6;color:#191F28">${escHtml(m.vendor)}</td>
-    <td style="padding:9px 14px;text-align:right;font-size:12px;border-bottom:1px solid #F2F4F6;color:#191F28">${m.count}건</td>
-    <td style="padding:9px 14px;text-align:right;font-size:12px;color:#3182F6;font-weight:600;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6">${m.sales.toLocaleString()}원</td>
-    <td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6">${m.purchase.toLocaleString()}원</td>
-    <td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6">${m.fee.toLocaleString()}원</td>
-    ${showVat?`<td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6">${m.vat.toLocaleString()}원</td>`:''}
-    <td style="padding:9px 14px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#06B981':'#F04452'};border-bottom:1px solid #F2F4F6">${m.profit.toLocaleString()}원</td>
+    <td style="padding:9px 14px;text-align:right;font-size:12px;border-bottom:1px solid #F2F4F6;color:#191F28;white-space:nowrap">${m.count}건</td>
+    <td style="padding:9px 14px;text-align:right;font-size:12px;color:#3182F6;font-weight:600;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.sales.toLocaleString()}원</td>
+    <td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.purchase.toLocaleString()}원</td>
+    <td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.fee.toLocaleString()}원</td>
+    ${showVat?`<td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.vat.toLocaleString()}원</td>`:''}
+    <td style="padding:9px 14px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#06B981':'#F04452'};border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.profit.toLocaleString()}원</td>
   </tr>`).join('');
   return `<table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #ECEEF1;border-radius:8px;overflow:hidden">
     <thead><tr style="background:${HBG}">
@@ -10399,13 +10405,13 @@ function _srBuildBizVendorTableInner(biz, bizRows){
     </tr></thead>
     <tbody>${vendorTrs}</tbody>
     <tfoot><tr style="background:#F8F9FA;font-weight:700">
-      <td style="padding:10px 14px;font-size:12px;color:#191F28">${escHtml(biz)} 합계</td>
-      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28">${T.count}건</td>
-      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#3182F6;font-variant-numeric:tabular-nums">${T.sales.toLocaleString()}원</td>
-      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums">${T.purchase.toLocaleString()}원</td>
-      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums">${T.fee.toLocaleString()}원</td>
-      ${showVat?`<td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums">${T.vat.toLocaleString()}원</td>`:''}
-      <td style="padding:10px 14px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:${T.profit>=0?'#06B981':'#F04452'}">${T.profit.toLocaleString()}원</td>
+      <td style="padding:10px 14px;font-size:12px;color:#191F28;white-space:nowrap">${escHtml(biz)} 합계</td>
+      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28;white-space:nowrap">${T.count}건</td>
+      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#3182F6;font-variant-numeric:tabular-nums;white-space:nowrap">${T.sales.toLocaleString()}원</td>
+      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;white-space:nowrap">${T.purchase.toLocaleString()}원</td>
+      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;white-space:nowrap">${T.fee.toLocaleString()}원</td>
+      ${showVat?`<td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;white-space:nowrap">${T.vat.toLocaleString()}원</td>`:''}
+      <td style="padding:10px 14px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:${T.profit>=0?'#06B981':'#F04452'};white-space:nowrap">${T.profit.toLocaleString()}원</td>
     </tr></tfoot>
   </table>`;
 }
@@ -11015,7 +11021,7 @@ function srExportImage(){
     const profitEl = document.getElementById('srProfitPanel');
     if (profitEl && profitEl.innerHTML.trim()) {
       const tmp = document.createElement('div');
-      tmp.style.cssText='background:#fff;padding:22px;width:720px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
+      tmp.style.cssText='background:#fff;padding:22px;width:880px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
       const cloned = profitEl.cloneNode(true);
       tmp.appendChild(cloned);
       // 상세 입력표는 PNG에서 제거 (요약만 보임)
