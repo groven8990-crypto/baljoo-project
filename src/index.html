@@ -10047,6 +10047,7 @@ function _srBuildDinetteProfitRows(db){
       orderDetail: info.orders,
       unit:    Number(saved.unit)||0,
       shipFee: Number(saved.shipFee != null ? saved.shipFee : saved.ship)||0,
+      shipTiers: Array.isArray(saved.shipTiers) ? saved.shipTiers.slice() : [],
       consol:  Number(saved.consol)||0,
       taxable: !!saved.taxable
     });
@@ -10076,6 +10077,7 @@ function srBuildProfitRows(orders){
         unit:       Number(saved.unit)||0,
         // 구버전 호환: 예전엔 ship 한 컬럼만 있었어 → shipFee로 이전
         shipFee:    Number(saved.shipFee != null ? saved.shipFee : saved.ship)||0,
+        shipTiers:  Array.isArray(saved.shipTiers) ? saved.shipTiers.slice() : [],
         consol:     Number(saved.consol)||0,        // 합배송 한도 (단위 수량), 0이면 한도 없음 = 주문 1건당 1박스
         taxable:    !!saved.taxable
       };
@@ -10124,7 +10126,18 @@ function srBuildProfitRows(orders){
       d.boxesOverridden = (ov.boxes != null && !isNaN(ov.boxes));
       d.boxes = d.boxesOverridden ? Number(ov.boxes) : computed;
       d.itemCost = d.units * r.unit;
-      d.shipCost = d.boxes * r.shipFee;
+      // 배송비: shipTiers 가 있으면 박스별 수량에 따라 단계 적용, 없으면 박스수 × shipFee
+      if (Array.isArray(r.shipTiers) && r.shipTiers.length) {
+        const tiers = r.shipTiers.slice().sort((a,b)=>(a.qty||0)-(b.qty||0));
+        const perBoxUnits = d.boxes > 0 ? Math.ceil(d.units / d.boxes) : d.units;
+        const findFee = (u) => {
+          for (const t of tiers) { if (u <= (Number(t.qty)||0)) return Number(t.fee)||0; }
+          return Number(tiers[tiers.length-1].fee)||0;
+        };
+        d.shipCost = d.boxes * findFee(perBoxUnits);
+      } else {
+        d.shipCost = d.boxes * r.shipFee;
+      }
       d.totalCost = d.itemCost + d.shipCost;
       shipTotal += d.shipCost;
     }
@@ -10444,11 +10457,14 @@ function _srBuildDetailRowHtml(r, i){
         oninput="srOnPurchaseInputChange(this)">
     </td>
     <td data-cell="itemCost" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00">${r.itemCost.toLocaleString()}</td>
-    <td style="padding:3px 3px;border-bottom:1px solid #eee">
-      <input type="number" min="0" step="1" value="${r.shipFee||''}" placeholder="0" title="박스 1개당 배송비"
+    <td style="padding:3px 3px;border-bottom:1px solid #eee;white-space:nowrap">
+      <input type="number" min="0" step="1" value="${r.shipFee||''}" placeholder="0" title="박스 1개당 배송비 (단계 미설정 시)"
         data-key="${_srEsc(r.key)}" data-role="shipFee"
-        style="width:55px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
+        ${(Array.isArray(r.shipTiers)&&r.shipTiers.length)?'disabled style="background:#F3F4F6;color:#9CA3AF;':'style="'}width:55px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
         oninput="srOnPurchaseInputChange(this)">
+      <button type="button" onclick="srToggleShipTiers(this)" data-tiers-key="${_srEsc(r.key)}"
+        title="수량별 배송비 단계 설정"
+        style="border:1px solid ${(Array.isArray(r.shipTiers)&&r.shipTiers.length)?'#3182F6':'#D1D5DB'};background:${(Array.isArray(r.shipTiers)&&r.shipTiers.length)?'#EBF5FF':'#fff'};color:${(Array.isArray(r.shipTiers)&&r.shipTiers.length)?'#3182F6':'#6B7684'};cursor:pointer;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:2px">⚙${(Array.isArray(r.shipTiers)&&r.shipTiers.length)?' '+r.shipTiers.length:''}</button>
     </td>
     <td style="padding:3px 3px;border-bottom:1px solid #eee">
       <input type="number" min="0" step="1" value="${r.consol||''}" placeholder="없음" title="박스 1개에 들어가는 최대 단위수량 (비우면 주문 1건당 1박스)"
@@ -10462,6 +10478,96 @@ function _srBuildDetailRowHtml(r, i){
     ${r.brand === '그로븐' ? '' : `<td style="padding:3px 4px;border-bottom:1px solid #eee;text-align:center"><input type="checkbox" ${r.taxable?'checked':''} data-key="${_srEsc(r.key)}" data-role="taxable" onchange="srOnPurchaseInputChange(this)" style="cursor:pointer"></td><td data-cell="vat" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#6B21A8">${r.vat.toLocaleString()}</td>`}
     <td data-cell="profit" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${r.profit>=0?'#16A34A':'#DC2626'}">${r.profit.toLocaleString()}</td>
   </tr>`;
+}
+// ⚙ 배송비 단계 — 그 행 아래에 편집 패널 펼침/접힘
+function srToggleShipTiers(btn){
+  const key = btn.getAttribute('data-tiers-key');
+  if (!key) return;
+  const sel = CSS && CSS.escape ? CSS.escape(key) : key;
+  const tr = document.querySelector(`tr[data-rowkey="${sel}"]`);
+  if (!tr) return;
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains('sr-ship-tiers-row') && next.getAttribute('data-rowkey') === key) {
+    next.remove(); return;
+  }
+  // 기존 사람별 상세 펼침이 있으면 그 다음에 삽입
+  let insertAfter = tr;
+  while (insertAfter.nextElementSibling && (insertAfter.nextElementSibling.classList.contains('sr-profit-detail') || insertAfter.nextElementSibling.classList.contains('sr-ship-tiers-row'))) {
+    insertAfter = insertAfter.nextElementSibling;
+  }
+  const colspan = tr.children.length;
+  const tierRow = document.createElement('tr');
+  tierRow.classList.add('sr-ship-tiers-row');
+  tierRow.classList.add('sr-profit-helper');  // PNG에서 숨김
+  tierRow.setAttribute('data-rowkey', key);
+  tierRow.innerHTML = `<td colspan="${colspan}" style="padding:12px 16px;background:#F8F9FA;border-bottom:1px solid #ECEEF1">${_srBuildShipTiersHtml(key)}</td>`;
+  insertAfter.parentNode.insertBefore(tierRow, insertAfter.nextSibling);
+}
+function _srBuildShipTiersHtml(key){
+  const db = srLoadPurchaseDB();
+  const saved = db[key] || {};
+  const tiers = Array.isArray(saved.shipTiers) ? saved.shipTiers : [];
+  const rowsHtml = tiers.map((t, i) => `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+    <span style="font-size:11px;color:#6B7684">박스 수량 ≤</span>
+    <input type="number" min="0" step="1" value="${t.qty||''}" placeholder="수량"
+      data-tiers-key="${_srEsc(key)}" data-tier-idx="${i}" data-tier-field="qty"
+      oninput="srUpdateShipTier(this)"
+      style="width:60px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px">
+    <span style="font-size:11px;color:#6B7684">개일 때 배송비</span>
+    <input type="number" min="0" step="1" value="${t.fee||''}" placeholder="배송비"
+      data-tiers-key="${_srEsc(key)}" data-tier-idx="${i}" data-tier-field="fee"
+      oninput="srUpdateShipTier(this)"
+      style="width:80px;padding:3px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px">
+    <span style="font-size:11px;color:#6B7684">원</span>
+    <button type="button" onclick="srRemoveShipTier('${_srEsc(key)}', ${i})"
+      style="border:none;background:none;cursor:pointer;color:#F04452;font-size:14px;padding:2px 6px" title="삭제">×</button>
+  </div>`).join('');
+  return `<div style="font-size:12px;font-weight:600;color:#191F28;margin-bottom:8px">📦 수량별 배송비 단계 — 박스에 들어가는 수량에 따라 배송비 자동 적용</div>
+    <div style="font-size:11px;color:#6B7684;margin-bottom:10px">예: 박스 1개 수량 ≤ 5 = 2,500원 / ≤ 10 = 3,500원 / 그 이상 = 5,000원 (단계가 비어있으면 위의 단일 배송비 사용)</div>
+    ${rowsHtml || '<div style="font-size:11px;color:#9CA3AF;margin-bottom:8px">단계가 없어요. + 단계 추가를 눌러 입력하세요.</div>'}
+    <button type="button" onclick="srAddShipTier('${_srEsc(key)}')"
+      style="border:1px solid #3182F6;background:#fff;color:#3182F6;cursor:pointer;font-size:11px;padding:5px 12px;border-radius:4px;margin-top:4px">+ 단계 추가</button>`;
+}
+function srUpdateShipTier(input){
+  const key = input.getAttribute('data-tiers-key');
+  const idx = parseInt(input.getAttribute('data-tier-idx'));
+  const field = input.getAttribute('data-tier-field');
+  if (!key || isNaN(idx) || !field) return;
+  const db = srLoadPurchaseDB();
+  const saved = db[key] || {};
+  const tiers = Array.isArray(saved.shipTiers) ? saved.shipTiers.slice() : [];
+  if (!tiers[idx]) return;
+  const v = Math.max(0, parseFloat(input.value)||0);
+  tiers[idx] = { ...tiers[idx], [field]: v };
+  db[key] = { ...saved, shipTiers: tiers };
+  srSavePurchaseDB(db);
+  // 행/합계 갱신 (input은 그대로 둠 — 포커스 유지)
+  srUpdateProfitIncremental(key);
+}
+function srAddShipTier(key){
+  const db = srLoadPurchaseDB();
+  const saved = db[key] || {};
+  const tiers = Array.isArray(saved.shipTiers) ? saved.shipTiers.slice() : [];
+  tiers.push({ qty: 0, fee: 0 });
+  db[key] = { ...saved, shipTiers: tiers };
+  srSavePurchaseDB(db);
+  // 단계 패널만 다시 그림
+  const sel = CSS && CSS.escape ? CSS.escape(key) : key;
+  const panel = document.querySelector(`tr.sr-ship-tiers-row[data-rowkey="${sel}"] > td`);
+  if (panel) panel.innerHTML = _srBuildShipTiersHtml(key);
+  srUpdateProfitIncremental(key);
+}
+function srRemoveShipTier(key, idx){
+  const db = srLoadPurchaseDB();
+  const saved = db[key] || {};
+  const tiers = Array.isArray(saved.shipTiers) ? saved.shipTiers.slice() : [];
+  tiers.splice(idx, 1);
+  db[key] = { ...saved, shipTiers: tiers };
+  srSavePurchaseDB(db);
+  const sel = CSS && CSS.escape ? CSS.escape(key) : key;
+  const panel = document.querySelector(`tr.sr-ship-tiers-row[data-rowkey="${sel}"] > td`);
+  if (panel) panel.innerHTML = _srBuildShipTiersHtml(key);
+  srUpdateProfitIncremental(key);
 }
 function srToggleProfitDetail(btn){
   const key = btn.getAttribute('data-toggle-key');
