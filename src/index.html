@@ -10458,6 +10458,50 @@ function srUpdateProfitIncremental(changedKey){
   clearTimeout(_srChartDebounce);
   _srChartDebounce = setTimeout(() => _srRenderVendorPurchaseChart(rows), 500);
 }
+// 상세 입력표만 (사업자별) PNG로 저장 — 사용자가 버튼 누를 때만 실행
+async function srExportDetailOnlyPng(){
+  if (typeof html2canvas !== 'function'){ alert('html2canvas 없음'); return; }
+  const sections = document.querySelectorAll('.sr-biz-detail-section');
+  if (!sections.length){ alert('상세내역이 없어요.'); return; }
+  const dateStr = (document.getElementById('srReportDate')?.value || _localISO()).replace(/-/g,'').slice(2);
+  for (const sec of sections){
+    // 사업자명 찾기 (상위 [data-biz] 컨테이너)
+    const parent = sec.closest('[data-biz]');
+    const biz = parent?.getAttribute('data-biz') || '상세';
+    const tmp = document.createElement('div');
+    tmp.style.cssText = 'background:#fff;padding:22px;width:1200px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
+    // 제목
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:18px;font-weight:700;color:#191F28;margin-bottom:12px';
+    title.textContent = `${biz} — 매입 상세내역`;
+    tmp.appendChild(title);
+    // 상세 섹션 클론 (입력 그대로 → 텍스트로 변환)
+    const cloned = sec.cloneNode(true);
+    cloned.querySelectorAll('.sr-profit-helper').forEach(el => el.remove());
+    cloned.querySelectorAll('.sr-profit-detail').forEach(el => el.remove());
+    cloned.querySelectorAll('.sr-ship-tiers-row').forEach(el => el.remove());
+    _srStripInputsForExport(cloned);
+    tmp.appendChild(cloned);
+    const foot = document.createElement('div');
+    foot.style.cssText = 'margin-top:14px;font-size:10px;color:#888;text-align:right';
+    foot.textContent = `발주일자 ${document.getElementById('srReportDate')?.value || _localISO()} 기준 · 발주 자동화 시스템`;
+    tmp.appendChild(foot);
+    document.body.appendChild(tmp);
+    try{
+      const canvas = await html2canvas(tmp, { backgroundColor:'#ffffff', scale:2, useCORS:true });
+      const link = document.createElement('a');
+      link.download = `${dateStr}-매입상세_${biz}.png`;
+      link.href = canvas.toDataURL('image/png');
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    } catch(e){
+      alert(`${biz} 상세 저장 실패: ${e.message}`);
+    } finally {
+      document.body.removeChild(tmp);
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  if (typeof _poShowToast === 'function') _poShowToast('✅ 매입 상세내역 PNG 저장 완료');
+}
 function srRenderProfitPanel(orders){
   const el = document.getElementById('srProfitPanel');
   if (!el) return;
@@ -10472,7 +10516,11 @@ function srRenderProfitPanel(orders){
   const T = rows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=r.fee;s.vat+=r.vat;s.profit+=r.profit;s.count+=r.count;return s;}, {sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
   const noPriceCnt = rows.filter(r=>!r.unit).length;
   el.innerHTML = `<div class="card" style="background:#fff;padding:22px;max-width:1200px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
-    <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 매입 + 순이익</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 매입 + 순이익</div>
+      <button class="sr-profit-helper" type="button" onclick="srExportDetailOnlyPng()" title="발주처 상세내역만 PNG로 저장"
+        style="border:1px solid #3182F6;background:#fff;color:#3182F6;cursor:pointer;font-size:12px;padding:6px 12px;border-radius:5px;font-weight:600">📋 상세내역만 PNG 저장</button>
+    </div>
     <div class="sr-profit-helper" style="font-size:11px;color:#888;margin-top:2px">발주서 기준 자동 집계 · 매입단가/배송비/한도는 한 번 입력하면 자동 저장</div>
     <div id="srProfitTopCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;background:#F8F9FA;padding:18px;margin-top:14px;border-radius:10px;border:1px solid #ECEEF1">${_srBuildTopCardsHtml(T)}</div>
     <div class="sr-profit-helper" style="font-size:11px;color:var(--text3);margin-top:10px">매입단가는 <b>옵션 1개당 가격</b>만 넣으면 됩니다. 배송비/합배송 한도까지 같이 입력 → 박스수 자동 계산. ▶ 누르면 사람별로 확인·수정 가능.${noPriceCnt>0?` <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b>`:''}</div>
