@@ -6831,20 +6831,28 @@ function saveExpImg() {
     const amtStr  = (Number(d.total)||0).toLocaleString() + '원';
     const fname2  = `${dateStr}-지출결의서-${d.vendor||'미지정'}_${d.co||''}_${amtStr}.png`;
     const subDir2 = await _getSubDirHandle(d.co);
+    let savedTo = '';
     if (subDir2) {
       try {
         const fh2 = await subDir2.getFileHandle(fname2, { create: true });
         const wr2 = await fh2.createWritable();
         const blob2 = await new Promise(res => canvas.toBlob(res, 'image/png'));
         await wr2.write(blob2); await wr2.close();
+        savedTo = (_expSaveDirHandle?.name||'폴더')+'/'+(subDir2.name||'')+'/'+fname2;
       } catch(fe) {
         const a = document.createElement('a');
         a.download = fname2; a.href = canvas.toDataURL('image/png'); a.click();
+        savedTo = 'Downloads/'+fname2;
       }
     } else {
       const a = document.createElement('a');
       a.download = fname2; a.href = canvas.toDataURL('image/png'); a.click();
+      savedTo = 'Downloads/'+fname2;
     }
+    if (typeof _poShowToast === 'function') _poShowToast('✅ 지출결의서 저장 완료\n'+savedTo);
+  }).catch(e => {
+    if (typeof _poShowToast === 'function') _poShowToast('❌ 지출결의서 저장 실패: '+e.message);
+    else alert('지출결의서 저장 실패: '+e.message);
   });
 }
 
@@ -7308,20 +7316,28 @@ function saveIncImg() {
     const amtStr  = (Number(d.total)||0).toLocaleString() + '원';
     const fname2  = `${dateStr}-입금결의서-${d.vendor||'미지정'}_${d.co||''}_${amtStr}.png`;
     const subDir2 = await _getIncSubDirHandle(d.co);
+    let savedTo = '';
     if (subDir2) {
       try {
         const fh2 = await subDir2.getFileHandle(fname2, { create: true });
         const wr2 = await fh2.createWritable();
         const blob2 = await new Promise(res => canvas.toBlob(res, 'image/png'));
         await wr2.write(blob2); await wr2.close();
+        savedTo = (_incSaveDirHandle?.name||'폴더')+'/'+fname2;
       } catch(fe) {
         const a = document.createElement('a');
         a.download = fname2; a.href = canvas.toDataURL('image/png'); a.click();
+        savedTo = 'Downloads/'+fname2;
       }
     } else {
       const a = document.createElement('a');
       a.download = fname2; a.href = canvas.toDataURL('image/png'); a.click();
+      savedTo = 'Downloads/'+fname2;
     }
+    if (typeof _poShowToast === 'function') _poShowToast('✅ 입금결의서 저장 완료\n'+savedTo);
+  }).catch(e => {
+    if (typeof _poShowToast === 'function') _poShowToast('❌ 입금결의서 저장 실패: '+e.message);
+    else alert('입금결의서 저장 실패: '+e.message);
   });
 }
 
