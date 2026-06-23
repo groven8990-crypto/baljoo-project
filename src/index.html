@@ -118,7 +118,7 @@
   <button class="tab-btn" id="tabBtn-invoice" onclick="switchTab('invoice')">🚚 송장입력</button>
   <button class="tab-btn" id="tabBtn-price" onclick="switchTab('price')">📊 매입단가표</button>
   <button class="tab-btn" id="tabBtn-salesreport" onclick="switchTab('salesreport')">📈 매출 보고용</button>
-  <button class="tab-btn" id="tabBtn-weeklyreport" onclick="switchTab('weeklyreport')">📆 주간 매출</button>
+  <button class="tab-btn" id="tabBtn-weeklyreport" onclick="switchTab('weeklyreport')">📆 주간 매출·매입</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -11206,6 +11206,44 @@ function wrMergeDinette(snaps){
   }
   return {count, sales, byCfg};
 }
+// 주간 매입/순이익 누적 — profitRows + profitSummary 기반
+function wrMergePurchase(snaps){
+  const total = {sales:0, purchase:0, fee:0, vat:0, profit:0, count:0};
+  const byVendor = {};   // vendor -> {sales, purchase, count}
+  const byBrand  = {};   // brand  -> {sales, purchase, count, fee, vat, profit}
+  const byDateBrand = {}; // date -> {brand: {purchase, count}}
+  for (const s of snaps) {
+    const ps = s.profitSummary;
+    if (ps) {
+      total.sales    += ps.sales    ||0;
+      total.purchase += ps.purchase ||0;
+      total.fee      += ps.fee      ||0;
+      total.vat      += ps.vat      ||0;
+      total.profit   += ps.profit   ||0;
+      total.count    += ps.count    ||0;
+    }
+    if (!byDateBrand[s.date]) byDateBrand[s.date] = {};
+    for (const r of (s.profitRows||[])) {
+      const v = r.vendor || '-';
+      if (!byVendor[v]) byVendor[v] = {sales:0, purchase:0, count:0};
+      byVendor[v].sales    += r.sales    ||0;
+      byVendor[v].purchase += r.purchase ||0;
+      byVendor[v].count    += r.count    ||0;
+      const b = r.brand || '-';
+      if (!byBrand[b]) byBrand[b] = {sales:0, purchase:0, count:0, fee:0, vat:0, profit:0};
+      byBrand[b].sales    += r.sales    ||0;
+      byBrand[b].purchase += r.purchase ||0;
+      byBrand[b].count    += r.count    ||0;
+      byBrand[b].fee      += r.fee      ||0;
+      byBrand[b].vat      += r.vat      ||0;
+      byBrand[b].profit   += r.profit   ||0;
+      if (!byDateBrand[s.date][b]) byDateBrand[s.date][b] = {purchase:0, count:0};
+      byDateBrand[s.date][b].purchase += r.purchase||0;
+      byDateBrand[s.date][b].count    += r.count   ||0;
+    }
+  }
+  return { total, byVendor, byBrand, byDateBrand };
+}
 function wrRender(){
   const status = document.getElementById('wrStatus');
   let any = document.getElementById('wrAnyDate').value;
@@ -11223,6 +11261,7 @@ function wrRender(){
   const grAgg = wrMergeAggs(inWeek, 'grAgg');
   const ybAgg = wrMergeAggs(inWeek, 'ybAgg');
   const dnAgg = wrMergeDinette(inWeek);
+  const pur   = wrMergePurchase(inWeek);  // 매입 누적
   const selfSales = grAgg.totalSales + ybAgg.totalSales;
   const selfCnt   = grAgg.count + ybAgg.count;
   const totalSales = selfSales + dnAgg.sales;
@@ -11319,7 +11358,7 @@ function wrRender(){
   const html = `
     <div id="wrReportContent" style="background:transparent;max-width:680px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
       <div class="wr-page" data-page="1" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06)">
-        <div style="font-size:20px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 주간 매출 현황 <span style="font-size:11px;color:#888;font-weight:400">[1/3]</span></div>
+        <div style="font-size:20px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 주간 매출·매입 현황 <span style="font-size:11px;color:#888;font-weight:400">[1/3]</span></div>
         <div style="font-size:11px;color:#888;margin-top:2px">월~일 누적 · 누적된 일일 ${inWeek.length}건</div>
         <div style="background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
           <div>
@@ -11378,6 +11417,89 @@ function wrRender(){
             </tr></tfoot>
           </table>
         </div>
+        ${(()=>{
+          // ──── 매입 현황 (Sales 미러) ────
+          const purT = pur.total;
+          const grPur = (pur.byBrand['그로븐']||{purchase:0,count:0});
+          const ybPur = (pur.byBrand['옐로우브릿지']||{purchase:0,count:0});
+          // 발주처별 (비중 정렬)
+          const vendorSorted = Object.entries(pur.byVendor).filter(([,v])=>v.purchase>0).sort((a,b)=>b[1].purchase-a[1].purchase);
+          const vendorTotal = vendorSorted.reduce((s,[,v])=>s+v.purchase, 0);
+          const VPAL = ['#A5C8F0','#A5E5C2','#FFC4A3','#D4B5EC','#F5DC8C','#9CD8D3','#F5B5C4','#C8E5A0','#B8B5E5','#F5C0A8','#A8C8E0','#C5E5BE'];
+          const vendorRows = vendorSorted.map(([n,v],i)=>{
+            const pct = vendorTotal>0 ? (v.purchase/vendorTotal*100).toFixed(1) : '0.0';
+            return `<tr style="background:${i%2===0?'#fff':'#FAFBFC'}">
+              <td style="padding:6px 10px;border-bottom:1px solid #eee"><span style="display:inline-block;width:10px;height:10px;background:${VPAL[i%VPAL.length]};border-radius:2px;margin-right:6px;vertical-align:middle"></span>${escHtml(n)}</td>
+              <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #eee;font-variant-numeric:tabular-nums;white-space:nowrap">${v.purchase.toLocaleString()}원</td>
+              <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #eee;color:#64748B;font-variant-numeric:tabular-nums;white-space:nowrap">${pct}%</td>
+            </tr>`;
+          }).join('') || `<tr><td colspan="3" style="padding:20px;text-align:center;color:#888;font-size:12px">매입 데이터 없음 (📦 매입/순이익 탭에서 매입단가 입력 후 이력 저장 필요)</td></tr>`;
+          // 일자별 매입 표
+          const dailyPurRows = byDate.map((s,i)=>{
+            const db = pur.byDateBrand[s.date] || {};
+            const gp = db['그로븐']?.purchase || 0;
+            const yp = db['옐로우브릿지']?.purchase || 0;
+            const dayTot = gp + yp;
+            return `<tr style="background:${i%2===0?'#fff':'#F8FAFC'}">
+              <td style="padding:7px 12px;border-bottom:1px solid #eee">${escHtml(s.date)}</td>
+              <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee;font-variant-numeric:tabular-nums">${gp.toLocaleString()}원</td>
+              <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee;font-variant-numeric:tabular-nums">${yp.toLocaleString()}원</td>
+              <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee;font-variant-numeric:tabular-nums;font-weight:600">${dayTot.toLocaleString()}원</td>
+            </tr>`;
+          }).join('');
+          return `
+        <div style="background:#7B4B00;color:#fff;padding:8px 14px;margin-top:22px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0">💰 매입 현황</div>
+        <div style="background:#FAF6EE;padding:18px;border-radius:0 0 6px 6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
+          <div>
+            <div style="font-size:11px;color:#888">총 매입액</div>
+            <div style="font-size:22px;font-weight:700;color:#7B4B00;margin-top:2px;white-space:nowrap">${purT.purchase.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">순이익 <b style="color:${purT.profit>=0?'#16A34A':'#DC2626'}">${purT.profit.toLocaleString()}원</b></div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#888">그로븐 매입</div>
+            <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px;white-space:nowrap">${grPur.purchase.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">${grPur.count.toLocaleString()}건</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#888">옐로우브릿지 매입</div>
+            <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px;white-space:nowrap">${ybPur.purchase.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">${ybPur.count.toLocaleString()}건</div>
+          </div>
+        </div>
+        <div style="background:#94A3B8;color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">일자별 매입</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:${HEAD_BG}">
+            <th style="padding:7px 12px;text-align:left;color:${HEAD_FG};font-weight:700">일자</th>
+            <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">그로븐 매입</th>
+            <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">옐로우브릿지 매입</th>
+            <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">매입 합계</th>
+          </tr></thead>
+          <tbody>${dailyPurRows}</tbody>
+          <tfoot><tr style="background:${FOOT_BG};font-weight:700">
+            <td style="padding:7px 12px;color:${HEAD_FG}">합계</td>
+            <td style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-variant-numeric:tabular-nums">${grPur.purchase.toLocaleString()}원</td>
+            <td style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-variant-numeric:tabular-nums">${ybPur.purchase.toLocaleString()}원</td>
+            <td style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-variant-numeric:tabular-nums">${purT.purchase.toLocaleString()}원</td>
+          </tr></tfoot>
+        </table>
+        <div style="background:#94A3B8;color:#fff;padding:8px 14px;margin-top:14px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">🥯 발주처별 매입 비중</div>
+        <div style="background:#fff;border:1px solid #eee;border-radius:0 0 6px 6px;padding:14px;display:grid;grid-template-columns:1fr 1.1fr;gap:14px;align-items:center">
+          <div style="position:relative;height:220px"><canvas id="wrChartVendorPurchase"></canvas></div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:${HEAD_BG}">
+              <th style="padding:6px 10px;text-align:left;color:${HEAD_FG};font-weight:700">발주처</th>
+              <th style="padding:6px 10px;text-align:right;color:${HEAD_FG};font-weight:700">매입액</th>
+              <th style="padding:6px 10px;text-align:right;color:${HEAD_FG};font-weight:700">비중</th>
+            </tr></thead>
+            <tbody>${vendorRows}</tbody>
+            <tfoot><tr style="background:${FOOT_BG};font-weight:700">
+              <td style="padding:6px 10px;color:${HEAD_FG}">합계</td>
+              <td style="padding:6px 10px;text-align:right;color:${HEAD_FG};font-variant-numeric:tabular-nums;white-space:nowrap">${vendorTotal.toLocaleString()}원</td>
+              <td style="padding:6px 10px;text-align:right;color:${HEAD_FG}">100%</td>
+            </tr></tfoot>
+          </table>
+        </div>`;
+        })()}
         <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 1/3</div>
       </div>
       <div class="wr-page" data-page="2" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06);margin-top:14px">
@@ -11396,13 +11518,14 @@ function wrRender(){
   document.getElementById('wrImageBtn').disabled = false;
   status.innerHTML = `<span style="color:var(--success)">✅ 주간 보고서: ${range.start} ~ ${range.end} · ${inWeek.length}일 합산 · 총 ${totalSales.toLocaleString()}원</span>`;
   // 차트 렌더링
-  wrRenderCharts(byDate, grAgg, ybAgg, dnAgg);
+  wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, pur);
 }
-let _wrChartDaily=null, _wrChartPlatform=null;
-function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg){
+let _wrChartDaily=null, _wrChartPlatform=null, _wrChartVendorPur=null;
+function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, pur){
   if (typeof Chart === 'undefined') return;
   if (_wrChartDaily) { _wrChartDaily.destroy(); _wrChartDaily=null; }
   if (_wrChartPlatform) { _wrChartPlatform.destroy(); _wrChartPlatform=null; }
+  if (_wrChartVendorPur) { _wrChartVendorPur.destroy(); _wrChartVendorPur=null; }
   // 일자별 추이: 막대(자사 매출) + 선(총 매출)
   const c1 = document.getElementById('wrChartDaily');
   if (c1) {
@@ -11466,6 +11589,32 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg){
         }
       }
     });
+  }
+  // 발주처별 매입 도넛
+  const c3 = document.getElementById('wrChartVendorPurchase');
+  if (c3 && pur) {
+    const vendorSorted = Object.entries(pur.byVendor||{}).filter(([,v])=>v.purchase>0).sort((a,b)=>b[1].purchase-a[1].purchase);
+    if (vendorSorted.length > 0) {
+      const labels = vendorSorted.map(([n])=>n);
+      const data   = vendorSorted.map(([,v])=>v.purchase);
+      const palette = ['#A5C8F0','#A5E5C2','#FFC4A3','#D4B5EC','#F5DC8C','#9CD8D3','#F5B5C4','#C8E5A0','#B8B5E5','#F5C0A8','#A8C8E0','#C5E5BE'];
+      const bg = labels.map((_,i)=>palette[i%palette.length]);
+      _wrChartVendorPur = new Chart(c3.getContext('2d'), {
+        type:'doughnut',
+        data:{labels, datasets:[{data, backgroundColor:bg, borderColor:'#fff', borderWidth:2}]},
+        options:{
+          responsive:true, maintainAspectRatio:false, cutout:'55%',
+          plugins:{
+            legend:{display:false},
+            tooltip:{callbacks:{label:(ctx)=>{
+              const tot = data.reduce((s,v)=>s+v,0);
+              const pct = tot>0 ? ((ctx.raw/tot)*100).toFixed(1) : 0;
+              return `${ctx.label}: ${Number(ctx.raw||0).toLocaleString()}원 (${pct}%)`;
+            }}}
+          }
+        }
+      });
+    }
   }
 }
 // ── 주간 매출 보고 PNG 저장 폴더 (선택 폴더에 바로 저장) ──
