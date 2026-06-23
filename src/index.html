@@ -2180,6 +2180,7 @@ function verifyVendorBuild(vendor, alias, orders){
       src_product: o.product||'',
       src_select: o.select_opt||'',
       src_disp: o.disp_opt||'',
+      src_qty:  Number(o.qty)||1,
       dst_item: dstItem,
       dst_opt:  dstOpt,
       dst_qty:  dstQty,
@@ -2224,8 +2225,9 @@ function renderVerifyArea(){
           <th style="padding:6px 8px;text-align:left;font-weight:600">상품명</th>
           <th style="padding:6px 8px;text-align:left;font-weight:600">선택사항(Q)</th>
           <th style="padding:6px 8px;text-align:left;font-weight:600">노출상품명(쿠팡)</th>
+          <th style="padding:6px 8px;text-align:right;font-weight:600;white-space:nowrap" title="샵마인 원본 주문수량">주문<br>수량</th>
           <th style="padding:6px 8px;text-align:left;font-weight:600">발주서 품목/옵션</th>
-          <th style="padding:6px 8px;text-align:right;font-weight:600">수량</th>
+          <th style="padding:6px 8px;text-align:right;font-weight:600;white-space:nowrap" title="발주서에 들어간 수량">발주<br>수량</th>
           <th style="padding:6px 8px;text-align:left;font-weight:600">이상</th>
         </tr></thead>
         <tbody>${list.map(rd => `
@@ -2234,8 +2236,9 @@ function renderVerifyArea(){
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#374151;max-width:180px;word-break:break-word">${escHtml(rd.src_product||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#6B7280;max-width:180px;word-break:break-word">${escHtml(rd.src_select||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#0E7490;max-width:160px;word-break:break-word">${escHtml(rd.src_disp||'-')}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#0E7490;white-space:nowrap">${rd.src_qty}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;max-width:180px;word-break:break-word">${escHtml((rd.dst_item+' '+rd.dst_opt).trim()||'-')}</td>
-            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right">${rd.dst_qty!==null?rd.dst_qty:'-'}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">${rd.dst_qty!==null?rd.dst_qty:'-'}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:var(--danger);font-size:10px">${rd.issues.map(i=>'• '+escHtml(i)).join('<br>')||''}</td>
           </tr>`).join('')}</tbody></table>`;
     };
