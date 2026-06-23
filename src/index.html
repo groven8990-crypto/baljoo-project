@@ -4581,7 +4581,7 @@ function exportExpHistJson() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = '지출결의서_백업_' + _localISO().replace(/-/g,'') + '.json';
+  a.download = _localISO().replace(/-/g,'').slice(2) + '-지출결의서_백업.json';  // YYMMDD-
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -4944,7 +4944,7 @@ async function _updateIncFolderLabel() {
   const nameEl = document.getElementById('incSaveFolderName');
   if (!nameEl) return;
   if (_incSaveDirHandle) {
-    nameEl.textContent = '📂 ' + _incSaveDirHandle.name + ' (옐로우브릿지·그로븐 서브폴더 자동 생성)';
+    nameEl.textContent = '📂 ' + _incSaveDirHandle.name;
     nameEl.style.color = 'var(--primary)';
   } else {
     nameEl.textContent = '저장 폴더 미설정';
@@ -4960,7 +4960,7 @@ async function _restoreIncSaveFolder() {
     const nameEl = document.getElementById('incSaveFolderName');
     if (nameEl) {
       if (perm === 'granted') {
-        nameEl.textContent = '📂 ' + handle.name + ' (옐로우브릿지·그로븐 서브폴더 자동 생성)';
+        nameEl.textContent = '📂 ' + handle.name;
         nameEl.style.color = 'var(--success)';
       } else {
         nameEl.textContent = '📂 ' + handle.name + ' (재실행 시 승인 필요 — 저장 버튼 클릭 시 자동 요청)';
@@ -4991,10 +4991,10 @@ async function _getIncSubDirHandle(co) {
       const granted = await _incSaveDirHandle.requestPermission({ mode: 'readwrite' });
       if (granted !== 'granted') return null;
     } else if (perm !== 'granted') return null;
-    const subName = co === '그로븐' ? '그로븐' : '옐로우브릿지';
-    return await _incSaveDirHandle.getDirectoryHandle(subName, { create: true });
+    // 서브폴더 안 만들고 선택한 폴더에 바로 저장
+    return _incSaveDirHandle;
   } catch(e) {
-    console.warn('입금 서브폴더 접근 실패:', e);
+    console.warn('입금 폴더 접근 실패:', e);
     return null;
   }
 }
@@ -5168,9 +5168,9 @@ function showStatementModal({byVendor, vendors, issuer, period, selected}){
 }
 
 function _stmtFileBase(){
-  if (!_stmtData) return '거래내역서_' + _localISO().replace(/-/g,'');
+  if (!_stmtData) return _localISO().replace(/-/g,'').slice(2) + '-거래내역서';  // YYMMDD-
   const {groups} = _stmtData;
-  const tag = _localISO().replace(/-/g,'');
+  const tag = _localISO().replace(/-/g,'').slice(2);  // YYMMDD
   const vendors = [...new Set(groups.map(g=>g.vendor))];
   const cos = [...new Set(groups.map(g=>g.co))];
   const safe = s => String(s||'').replace(/[\\/?*\[\]:]/g,'_').trim();
@@ -5653,7 +5653,7 @@ function poStmtExportImage(){
   if (typeof html2canvas !== 'function') { alert('html2canvas 없음'); return; }
   html2canvas(el,{backgroundColor:'#ffffff',scale:2,useCORS:true}).then(canvas=>{
     const link = document.createElement('a');
-    link.download = '거래내역서_' + _localISO().replace(/-/g,'') + '.png';
+    link.download = _localISO().replace(/-/g,'').slice(2) + '-거래내역서.png';  // YYMMDD-
     link.href = canvas.toDataURL('image/png');
     document.body.appendChild(link);link.click();document.body.removeChild(link);
   }).catch(e=>alert('이미지 저장 실패: '+e.message));
@@ -5698,7 +5698,7 @@ async function downloadSelectedExpImg() {
       const el = document.getElementById('expPrintArea');
       if (!el) { fail++; continue; }
       const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#fff', useCORS: true });
-      const dateStr = (d.date||'').replace(/-/g,'');
+      const dateStr = (d.date||'').replace(/-/g,'').slice(2);  // YYMMDD
       const amtStr  = (Number(d.total)||0).toLocaleString() + '원';
       const fname   = dateStr + '-지출결의서-' + (d.vendor||'거래처') + '_' + (d.co||'') + '_' + amtStr + '.png';
 
@@ -5772,7 +5772,7 @@ async function saveExpImgFromHist(i) {
     const el = document.getElementById('expPrintArea');
     if (!el) return;
     html2canvas(el, { scale: 2, backgroundColor: '#fff', useCORS: true }).then(async canvas => {
-      const dateStr = (d.date||'').replace(/-/g,'');
+      const dateStr = (d.date||'').replace(/-/g,'').slice(2);  // YYMMDD
       const amtStr  = (Number(d.total)||0).toLocaleString() + '원';
       const fname   = dateStr + '-지출결의서-' + (d.vendor||'') + '_' + (d.co||'') + '_' + amtStr + '.png';
       const subDir  = await _getSubDirHandle(d.co);
@@ -6827,7 +6827,7 @@ function saveExpImg() {
   const el = document.getElementById('expPrintArea');
   const d = _expModalData || getExpFormData();
   html2canvas(el, { scale: 2, backgroundColor: '#fff', useCORS: true }).then(async canvas => {
-    const dateStr = (d.date||'').replace(/-/g,'');
+    const dateStr = (d.date||'').replace(/-/g,'').slice(2);  // YYMMDD
     const amtStr  = (Number(d.total)||0).toLocaleString() + '원';
     const fname2  = `${dateStr}-지출결의서-${d.vendor||'미지정'}_${d.co||''}_${amtStr}.png`;
     const subDir2 = await _getSubDirHandle(d.co);
@@ -7304,7 +7304,7 @@ function saveIncImg() {
   const el = document.getElementById('incPrintArea');
   const d  = _incModalData || getIncFormData();
   html2canvas(el, { scale:2, backgroundColor:'#fff', useCORS:true }).then(async canvas => {
-    const dateStr = (d.date||'').replace(/-/g,'');
+    const dateStr = (d.date||'').replace(/-/g,'').slice(2);  // YYMMDD
     const amtStr  = (Number(d.total)||0).toLocaleString() + '원';
     const fname2  = `${dateStr}-입금결의서-${d.vendor||'미지정'}_${d.co||''}_${amtStr}.png`;
     const subDir2 = await _getIncSubDirHandle(d.co);
