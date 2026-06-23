@@ -4539,6 +4539,11 @@ function renderExpHistList() {
       const attachBtn = d.hasAttach
         ? '<button class="btn btn-sm" style="padding:2px 8px;color:var(--primary);border-color:var(--primary)" title="거래내역서 보기" onclick="viewExpAttach(' + (d.id||0) + ')">📎</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3)" title="거래내역서 첨부" onclick="attachToExpHist(' + realIdx + ')">📎+</button>';
+      const imgSaved = !!d.imgSavedAt;
+      const imgTitle = imgSaved ? ('이미지 저장됨 ' + d.imgSavedAt + ' · 다시 저장하기') : '이미지 저장';
+      const imgBtn = imgSaved
+        ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" title="' + imgTitle + '" onclick="saveExpImgFromHist(' + realIdx + ')">📷 ' + (d.imgSavedAt.slice(5)||'') + '</button>'
+        : '<button class="btn btn-sm" style="padding:2px 8px" title="' + imgTitle + '" onclick="saveExpImgFromHist(' + realIdx + ')">📷</button>';
       const descStyle = 'font-size:13px;cursor:pointer';
       html += '<div id="exphi_' + realIdx + '" style="display:grid;grid-template-columns:24px 90px 1fr auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;' + rowBg + '">' +
         '<input type="checkbox" class="exp-hist-chk" data-idx="' + realIdx + '" style="width:15px;height:15px;cursor:pointer" onchange="updateExpHistSelCount()">' +
@@ -4547,7 +4552,7 @@ function renderExpHistList() {
         '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer" onclick="previewHistItem(' + realIdx + ')">' + fmtNum(d.total) + '원</span>' +
         paidBtn +
         attachBtn +
-        '<button class="btn btn-sm" style="padding:2px 8px" onclick="saveExpImgFromHist(' + realIdx + ')">📷</button>' +
+        imgBtn +
         '<button class="btn btn-sm" style="padding:2px 8px;color:var(--accent);border-color:var(--accent)" onclick="editExpHist(' + realIdx + ')">✏️</button>' +
         '<button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger);padding:2px 8px" onclick="deleteExpHist(' + realIdx + ')">삭제</button>' +
       '</div>';
@@ -6835,6 +6840,7 @@ function saveExpImg() {
     const fname2  = `${dateStr}-지출결의서-${d.vendor||'미지정'}_${d.co||''}_${amtStr}.png`;
     const subDir2 = await _getSubDirHandle(d.co);
     let savedTo = '';
+    let saveOk = false;
     if (subDir2) {
       try {
         const fh2 = await subDir2.getFileHandle(fname2, { create: true });
@@ -6842,15 +6848,28 @@ function saveExpImg() {
         const blob2 = await new Promise(res => canvas.toBlob(res, 'image/png'));
         await wr2.write(blob2); await wr2.close();
         savedTo = (_expSaveDirHandle?.name||'폴더')+'/'+(subDir2.name||'')+'/'+fname2;
+        saveOk = true;
       } catch(fe) {
         const a = document.createElement('a');
         a.download = fname2; a.href = canvas.toDataURL('image/png'); a.click();
         savedTo = 'Downloads/'+fname2;
+        saveOk = true;
       }
     } else {
       const a = document.createElement('a');
       a.download = fname2; a.href = canvas.toDataURL('image/png'); a.click();
       savedTo = 'Downloads/'+fname2;
+      saveOk = true;
+    }
+    // 이력에 imgSavedAt 표시 (id 기반 매칭)
+    if (saveOk && d && d.id) {
+      const hist = loadExpHist();
+      const idx = hist.findIndex(x => x.id === d.id);
+      if (idx >= 0) {
+        hist[idx].imgSavedAt = _localISO();
+        saveExpHist(hist);
+        if (typeof renderExpHistList === 'function') renderExpHistList();
+      }
     }
     if (typeof _poShowToast === 'function') _poShowToast('✅ 지출결의서 저장 완료\n'+savedTo);
   }).catch(e => {
@@ -7320,6 +7339,7 @@ function saveIncImg() {
     const fname2  = `${dateStr}-입금결의서-${d.vendor||'미지정'}_${d.co||''}_${amtStr}.png`;
     const subDir2 = await _getIncSubDirHandle(d.co);
     let savedTo = '';
+    let saveOk = false;
     if (subDir2) {
       try {
         const fh2 = await subDir2.getFileHandle(fname2, { create: true });
@@ -7327,15 +7347,28 @@ function saveIncImg() {
         const blob2 = await new Promise(res => canvas.toBlob(res, 'image/png'));
         await wr2.write(blob2); await wr2.close();
         savedTo = (_incSaveDirHandle?.name||'폴더')+'/'+fname2;
+        saveOk = true;
       } catch(fe) {
         const a = document.createElement('a');
         a.download = fname2; a.href = canvas.toDataURL('image/png'); a.click();
         savedTo = 'Downloads/'+fname2;
+        saveOk = true;
       }
     } else {
       const a = document.createElement('a');
       a.download = fname2; a.href = canvas.toDataURL('image/png'); a.click();
       savedTo = 'Downloads/'+fname2;
+      saveOk = true;
+    }
+    // 이력에 imgSavedAt 표시 (id 기반 매칭)
+    if (saveOk && d && d.id) {
+      const hist = loadIncHist();
+      const idx = hist.findIndex(x => x.id === d.id);
+      if (idx >= 0) {
+        hist[idx].imgSavedAt = _localISO();
+        saveIncHist(hist);
+        if (typeof renderIncHistList === 'function') renderIncHistList();
+      }
     }
     if (typeof _poShowToast === 'function') _poShowToast('✅ 입금결의서 저장 완료\n'+savedTo);
   }).catch(e => {
@@ -7580,12 +7613,17 @@ function renderIncHistList() {
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap;font-variant-numeric:tabular-nums" title="'+paidTitleI+'" onclick="toggleIncPaid('+realIdx+')">'+paidLabel+'</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="'+paidTitleI+'" onclick="toggleIncPaid('+realIdx+')">'+paidLabel+'</button>';
       const descStyle = 'font-size:13px';
+      const imgSavedI = !!d.imgSavedAt;
+      const imgTitleI = imgSavedI ? ('이미지 저장됨 '+d.imgSavedAt+' · 다시 저장하기') : '이미지 저장';
+      const imgBtnI = imgSavedI
+        ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" title="'+imgTitleI+'" onclick="saveIncImgFromHist('+realIdx+')">📷 '+(d.imgSavedAt.slice(5)||'')+'</button>'
+        : '<button class="btn btn-sm" style="padding:2px 8px" title="'+imgTitleI+'" onclick="saveIncImgFromHist('+realIdx+')">📷</button>';
       html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
         '<span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.date||'')+'</span>'+
         '<span style="'+descStyle+';cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.desc||'')+'</span>'+
         '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+fmtNum(d.total)+'원</span>'+
         paidBtn+
-        '<button class="btn btn-sm" style="padding:2px 8px" onclick="saveIncImgFromHist('+realIdx+')">📷</button>'+
+        imgBtnI+
         '<button class="btn btn-sm" style="padding:2px 8px;color:var(--accent);border-color:var(--accent)" onclick="editIncHist('+realIdx+')">✏️</button>'+
         '<button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger);padding:2px 8px" onclick="deleteIncHist('+realIdx+')">삭제</button>'+
       '</div>';
