@@ -1859,6 +1859,111 @@ function _addDanggnOrdersFromRows(rows, hr){
   }
   return { added, dupSkipped };
 }
+// 11번가 주문 파일 감지 — 헤더에 '주문번호'+'판매자 상품코드'+'수취인'+'판매자/공급업체' 있으면 11번가
+function _is11stRows(rows){
+  if (!Array.isArray(rows) || !rows.length) return false;
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    const h = rows[i] || [];
+    const has = (name) => h.some(c => String(c||'').trim() === name);
+    if (has('주문번호') && has('판매자 상품코드') && has('수취인') && has('판매자/공급업체')) return i;
+  }
+  return false;
+}
+// 11번가 셀러ID → 별칭 매핑 (yellowbridge33 → 옐로우브릿지, groven89 → 그로븐)
+function _11stAliasFromSeller(seller){
+  const s = String(seller||'').trim().toLowerCase();
+  if (s === 'yellowbridge33') return '11번가-자꾸가게';
+  if (s === 'groven89')       return '11번가-로또상회';
+  return '11번가-' + (seller||'기타');  // 미지정은 셀러ID 그대로
+}
+function _add11stOrdersFromRows(rows, hr){
+  const H = rows[hr];
+  const findCol = (...names) => {
+    for (const n of names) {
+      const i = H.findIndex(c=>String(c||'').trim()===n);
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const C = {
+    on:  findCol('주문번호'),
+    st:  findCol('주문상태'),
+    od:  findCol('주문일시','결제일시'),
+    pn:  findCol('상품명'),
+    so:  findCol('옵션'),
+    sl:  findCol('판매자/공급업체'),
+    vc:  findCol('판매자 상품코드'),
+    qt:  findCol('수량'),
+    am:  findCol('주문금액'),
+    rn:  findCol('수취인'),
+    rp:  findCol('휴대폰번호'),
+    rp2: findCol('전화번호'),
+    zp:  findCol('우편번호'),
+    ad:  findCol('주소'),
+    mm:  findCol('배송메시지'),
+    by:  findCol('구매자'),
+    cn:  findCol('송장번호'),
+    ca:  findCol('택배사코드'),
+  };
+  const existingOrderNos = new Set(allOrders.map(o => String(o.order_no||'').trim()).filter(Boolean));
+  let added = 0, dupSkipped = 0;
+  for (let i = hr + 1; i < rows.length; i++) {
+    const r = rows[i]; if (!r || r.every(c => c === '')) continue;
+    const onVal = String(r[C.on]||'').trim();
+    if (!onVal) continue;  // 빈 주문번호 행 스킵
+    if (existingOrderNos.has(onVal)) { dupSkipped++; continue; }
+    existingOrderNos.add(onVal);
+    const pn = String(r[C.pn]||'');
+    const so = String(r[C.so]||'');
+    const vc = String(r[C.vc]||'').trim();
+    const alias = _11stAliasFromSeller(r[C.sl]);
+    const vk = (typeof detectVendor === 'function') ? detectVendor(vc, pn) : '';
+    const parsed = (typeof parseParts === 'function') ? parseParts(vc, '', pn, so, '') : {itemName: pn.slice(0,20), optionName: so, codeQty: 1};
+    // 주문금액 = 고객 결제액 (콤마 제거)
+    const amtStr = String(r[C.am]||'').replace(/[,\s원]/g, '').trim();
+    const order_amt = parseInt(amtStr) || 0;
+    const phone = String(r[C.rp]||r[C.rp2]||'').trim();
+    const order = {
+      vendor_code: vc, vendor_opt: '', vendor_key: vk,
+      alias,
+      alias_raw: alias,
+      shop_mall: '11번가',
+      item_name: parsed.itemName || pn.slice(0,20),
+      option_name: parsed.optionName || '',
+      opt_mapped: parsed.optMapped || false,
+      opt_needs_check: parsed.optNeedsCheck || false,
+      mapped_code: parsed.mappedCode || '',
+      unmatched: parsed.unmatched || !vk,
+      recv_name: String(r[C.rn]||'').trim(),
+      recv_phone: phone,
+      zip: String(r[C.zp]||'').trim(),
+      addr: String(r[C.ad]||'').trim(),
+      memo: String(r[C.mm]||'').trim(),
+      product: pn,
+      select_opt: so,
+      disp_opt: '',
+      qty: parseInt(r[C.qt]) || 1,
+      code_qty: parsed.codeQty || 1,
+      order_no: onVal,
+      buyer: String(r[C.by]||'').trim(),
+      buyer_phone: '',
+      carrier: String(r[C.ca]||'').trim(),
+      order_amt,
+      order_date: String(r[C.od]||'').trim(),
+    };
+    allOrders.push(order);
+    if (vk) {
+      const gk = vk + '|' + order.alias;
+      if (!groupedOrders[gk]) groupedOrders[gk] = [];
+      groupedOrders[gk].push(order);
+    } else {
+      unmatchedList.push(order);
+    }
+    added++;
+    totalCount++;
+  }
+  return { added, dupSkipped };
+}
 function handleFile(file) {
   if (!file) return;
   setSt('파일 읽는 중...');
@@ -1876,6 +1981,23 @@ function handleFile(file) {
         const autoAdded2=autoRegisterBracketCodes(allOrders);
         if(autoAdded2>0) rematchAllOrders();
         setSt('당근 주문 ' + res.added + '건 로드됨');
+        renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+        loadedFileNames.push(file.name);
+        renderLoadedFiles();
+        saveToHistory(file.name, allOrders);
+        saveLastFile(file.name);
+        showLastFileCard();
+        try { logUpload(file, e.target.result, allOrders); } catch(_){}
+        return;
+      }
+      // 11번가 주문 파일 자동 감지 → 별도 파서로 라우팅
+      const eleHr = _is11stRows(rows);
+      if (eleHr !== false) {
+        groupedOrders={};unmatchedList=[];allOrders=[];totalCount=0;loadedFileNames=[];_mergeDecisions=new Set();
+        const res = _add11stOrdersFromRows(rows, eleHr);
+        const autoAdded3=autoRegisterBracketCodes(allOrders);
+        if(autoAdded3>0) rematchAllOrders();
+        setSt('11번가 주문 ' + res.added + '건 로드됨' + (res.dupSkipped?` (중복 ${res.dupSkipped} 제외)`:''));
         renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
         loadedFileNames.push(file.name);
         renderLoadedFiles();
@@ -6006,6 +6128,19 @@ function handleFileAdd(file){
         if(autoAdded2>0) rematchAllOrders();
         const dupNote = res.dupSkipped>0 ? ` (중복 ${res.dupSkipped}건 제외)` : '';
         setSt(res.added>0 ? `✅ ${file.name}: 당근 ${res.added}건 추가${dupNote}` : `⚠ ${file.name}: 추가할 새 주문이 없음 (중복 ${res.dupSkipped}건 모두 제외)`);
+        loadedFileNames.push(file.name+'(+'+res.added+'건'+(res.dupSkipped>0?',중복'+res.dupSkipped+'제외':'')+')');
+        renderLoadedFiles();
+        renderStep2();renderStep3();renderUnmatchedHints();renderOmPreview();
+        return;
+      }
+      // 11번가 주문 파일 자동 감지 → 별도 파서로 라우팅 (추가 모드)
+      const eleHr = _is11stRows(rows);
+      if (eleHr !== false) {
+        const res = _add11stOrdersFromRows(rows, eleHr);
+        const autoAdded3=autoRegisterBracketCodes(allOrders);
+        if(autoAdded3>0) rematchAllOrders();
+        const dupNote = res.dupSkipped>0 ? ` (중복 ${res.dupSkipped}건 제외)` : '';
+        setSt(res.added>0 ? `✅ ${file.name}: 11번가 ${res.added}건 추가${dupNote}` : `⚠ ${file.name}: 추가할 새 주문이 없음 (중복 ${res.dupSkipped}건 모두 제외)`);
         loadedFileNames.push(file.name+'(+'+res.added+'건'+(res.dupSkipped>0?',중복'+res.dupSkipped+'제외':'')+')');
         renderLoadedFiles();
         renderStep2();renderStep3();renderUnmatchedHints();renderOmPreview();
