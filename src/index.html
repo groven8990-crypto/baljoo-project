@@ -272,6 +272,7 @@
           <button class="btn btn-sm" onclick="pickPoSaveFolder()" title="발주서 저장할 폴더 선택 (선택한 폴더에 바로 저장)">📁 폴더 설정</button>
         </div>
       </div>
+      <div id="vendorRegistryArea"></div>
       <div id="genListArea"></div>
     </div>
     <div class="card">
@@ -2059,6 +2060,7 @@ function renderMergeCandidates(){
 function renderStep3(){
   const today=todayStr();let html='';
   const emails=loadVendorEmails();
+  const delivery=loadVendorDelivery();
   // 오늘 다운로드 받은 발주서 매핑 (vendor|alias → 가장 최근 시각)
   const todayDate = _localISO();
   const dlMap = {};
@@ -2072,6 +2074,7 @@ function renderStep3(){
     const [v,a]=gk.split('|'),cnt=groupedOrders[gk].length;
     const savedEmail=emails[v]||'';
     const emailTag=savedEmail?`<span style="font-size:11px;color:var(--text3);margin-left:6px" title="저장된 메일">✉ ${escHtml(savedEmail)}</span>`:'';
+    const dvChip = _deliveryChip(delivery[v]||'');
     const dlTs = dlMap[gk];
     const dlTime = dlTs ? new Date(dlTs).toTimeString().slice(0,5) : '';
     const dlMarkStyle = dlTs ? '' : 'display:none';
@@ -2081,17 +2084,21 @@ function renderStep3(){
       <div style="min-width:0;flex:1">
         <span style="font-size:14px;font-weight:700">${v}</span>
         <span class="badge badge-purple" style="margin-left:6px;vertical-align:middle">${a}</span>
+        <span style="margin-left:6px;vertical-align:middle">${dvChip}</span>
         ${emailTag}
         <div style="font-size:12px;color:var(--text2);margin-top:3px">${makeFileName(v,a)} · ${cnt}건</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
         <button class="btn btn-sm" onclick="dlOne('${esc(gk)}')">⬇ 다운로드</button>
         ${dlMark}
+        ${dvChip}
         <button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="엑셀 다운로드 + Gmail 작성창 열기">📧 메일</button>
       </div>
     </div>`;
   }
   document.getElementById('genListArea').innerHTML=html;
+  // 발주처 전달방식 등록 패널도 같이 갱신
+  if (typeof renderVendorRegistry === 'function') renderVendorRegistry();
   // 자동 검토도 같이 갱신
   renderVerifyArea();
 }
@@ -2270,6 +2277,87 @@ function renderVerifyArea(){
 const LS_VENDOR_EMAILS = 'yb_vendor_emails';
 function loadVendorEmails(){ try{ return JSON.parse(localStorage.getItem(LS_VENDOR_EMAILS)||'{}'); }catch{ return {}; } }
 function saveVendorEmails(map){ try{ localStorage.setItem(LS_VENDOR_EMAILS, JSON.stringify(map)); }catch(e){} }
+// ── 발주처별 전달방식 (이메일 / 카톡 / 둘다) ──
+const LS_VENDOR_DELIVERY = 'yb_vendor_delivery';
+function loadVendorDelivery(){ try{ return JSON.parse(localStorage.getItem(LS_VENDOR_DELIVERY)||'{}'); }catch{ return {}; } }
+function saveVendorDelivery(map){ try{ localStorage.setItem(LS_VENDOR_DELIVERY, JSON.stringify(map)); }catch(e){} }
+function setVendorDelivery(vendor, mode){
+  const m = loadVendorDelivery();
+  if (mode) m[vendor] = mode; else delete m[vendor];
+  saveVendorDelivery(m);
+  if (typeof renderStep3 === 'function') renderStep3();
+  if (typeof renderVendorRegistry === 'function') renderVendorRegistry();
+}
+function _deliveryChip(mode){
+  if (mode === 'kakao') return '<span style="display:inline-flex;align-items:center;gap:3px;background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600">💬 카톡</span>';
+  if (mode === 'both')  return '<span style="display:inline-flex;align-items:center;gap:3px;background:#EDE9FE;color:#5B21B6;border:1px solid #C4B5FD;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600">📧+💬 둘다</span>';
+  if (mode === 'email') return '<span style="display:inline-flex;align-items:center;gap:3px;background:#DBEAFE;color:#1E40AF;border:1px solid #93C5FD;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600">📧 이메일</span>';
+  return '<span style="display:inline-flex;align-items:center;gap:3px;background:#F3F4F6;color:#6B7280;border:1px solid #D1D5DB;padding:2px 7px;border-radius:10px;font-size:11px">❓ 미지정</span>';
+}
+// 한 번이라도 사용한 발주처 목록 (현재 그룹 + 이메일 저장 + 다운로드 이력)
+function _collectKnownVendors(){
+  const set = new Set();
+  Object.keys(groupedOrders||{}).forEach(gk => { const v = gk.split('|')[0]; if (v) set.add(v); });
+  Object.keys(loadVendorEmails()||{}).forEach(v => v && set.add(v));
+  Object.keys(loadVendorDelivery()||{}).forEach(v => v && set.add(v));
+  (loadDlHistory()||[]).forEach(h => { if (h.vendor) set.add(h.vendor); });
+  return [...set].sort((a,b)=>a.localeCompare(b,'ko'));
+}
+function onVendorEmailInput(input){
+  const vendor = input.getAttribute('data-vendor');
+  if (!vendor) return;
+  const emails = loadVendorEmails();
+  const v = input.value.trim();
+  if (v) emails[vendor] = v; else delete emails[vendor];
+  saveVendorEmails(emails);
+  if (typeof renderStep3 === 'function') renderStep3();
+}
+function renderVendorRegistry(){
+  const el = document.getElementById('vendorRegistryArea');
+  if (!el) return;
+  const vendors = _collectKnownVendors();
+  if (!vendors.length) { el.innerHTML = ''; return; }
+  const emails = loadVendorEmails();
+  const dmap = loadVendorDelivery();
+  const unsetCnt = vendors.filter(v => !dmap[v]).length;
+  const rows = vendors.map(v => {
+    const em = emails[v]||'';
+    const mode = dmap[v]||'';
+    const opt = (val,lbl) => `<option value="${val}" ${mode===val?'selected':''}>${lbl}</option>`;
+    return `<tr>
+      <td style="padding:5px 8px;font-size:12px;font-weight:600;white-space:nowrap">${escHtml(v)}</td>
+      <td style="padding:5px 8px"><input type="text" data-vendor="${escHtml(v)}" value="${escHtml(em)}" placeholder="email@example.com" oninput="onVendorEmailInput(this)" style="width:100%;font-size:12px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:4px"></td>
+      <td style="padding:5px 8px;white-space:nowrap">
+        <select onchange="setVendorDelivery('${esc(v)}', this.value)" style="font-size:12px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:4px;background:#fff">
+          <option value="" ${!mode?'selected':''}>선택…</option>
+          ${opt('email','📧 이메일')}
+          ${opt('kakao','💬 카톡')}
+          ${opt('both','📧+💬 둘다')}
+        </select>
+      </td>
+      <td style="padding:5px 8px;white-space:nowrap">${_deliveryChip(mode)}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<div class="card" style="margin-bottom:12px">
+    <div class="card-title" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px"
+         onclick="var b=document.getElementById('vendorRegistryBody');var t=document.getElementById('vendorRegistryToggle');var open=b.style.display!=='none';b.style.display=open?'none':'';t.textContent=open?'▼ 펼치기':'▲ 접기';">
+      📇 발주처 전달방식 등록 <span style="font-size:11px;color:var(--text3);font-weight:400">— 한 번이라도 만들어본 ${vendors.length}곳${unsetCnt?` · 미지정 ${unsetCnt}곳`:''}</span>
+      <span id="vendorRegistryToggle" style="margin-left:auto;font-size:12px;color:var(--text3)">${unsetCnt?'▲ 접기':'▼ 펼치기'}</span>
+    </div>
+    <div id="vendorRegistryBody" style="${unsetCnt?'':'display:none'}">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">이메일 주소와 전달 방식(이메일/카톡/둘다)을 등록해두면 발주서 카드와 다운로드 시 칩으로 표시돼요.</div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff">
+        <thead><tr style="background:#F3F4F6;color:#374151">
+          <th style="padding:6px 8px;text-align:left;font-weight:600;white-space:nowrap">발주처</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:600">이메일</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:600;white-space:nowrap">전달 방식</th>
+          <th style="padding:6px 8px;text-align:left;font-weight:600;white-space:nowrap">현재</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>
+  </div>`;
+}
 
 function emailOne(gk){
   const [v,a]=gk.split('|');
