@@ -6,6 +6,7 @@
 <title>발주 자동화 v2.2</title>
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="vendor/chart.umd.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   /* Noto Sans KR: 인터넷 연결 시에만 적용, 오프라인에서는 시스템 sans-serif 사용 */
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
@@ -292,6 +293,7 @@
       <button class="btn" onclick="goStep(1)">🏠 처음으로</button>
       <button class="btn" onclick="goStep(2)">← 이전</button>
       <button class="btn btn-green" id="genAllBtn" onclick="generateAll()">⬇ 전체 발주서 다운로드</button>
+      <button class="btn btn-primary" id="autoSendAllBtn" onclick="autoSendAll()" title="이메일은 자동 발송 + 카톡/사이트는 사본 저장 후 알림">🚀 전체 자동 발송</button>
     </div>
   </div>
 
@@ -330,6 +332,7 @@
     <button class="sub-tab-btn" id="stab-codemap" onclick="switchSubTab('codemap')">📋 변환 코드 목록</button>
     <button class="sub-tab-btn" id="stab-optmap" onclick="switchSubTab('optmap')">🔀 옵션 변환 규칙</button>
     <button class="sub-tab-btn" id="stab-vendortpl" onclick="switchSubTab('vendortpl');renderCustomVendorList()">📇 발주처 양식</button>
+    <button class="sub-tab-btn" id="stab-gmail" onclick="switchSubTab('gmail');renderGmailSettingsArea()">📧 Gmail 자동발송</button>
   </div>
 
   <!-- 서브탭: 코드 등록 ─────────────────────────────── -->
@@ -538,6 +541,11 @@
     <div class="alert alert-info" style="font-size:12px">
       ℹ <b>베이스 양식</b>이란 발주서 컬럼 구조예요. 같은 베이스를 쓰는 발주처들은 똑같은 컬럼/순서로 엑셀이 만들어져요. 새 양식이 필요하면 코드 추가가 필요하니 알려주세요.
     </div>
+  </div>
+
+  <!-- 서브탭: Gmail 자동발송 ─────────────────────────────── -->
+  <div class="sub-content" id="subtab-gmail">
+    <div id="gmailSettingsArea"></div>
   </div>
 
 </div>
@@ -2640,6 +2648,280 @@ function renderVendorRegistry(){
   </div>`;
 }
 
+// ══════════════════════════════════════════════════════════
+// Gmail API 자동 발송 (OAuth + 첨부 발송)
+// ══════════════════════════════════════════════════════════
+const LS_GMAIL_CLIENT_ID = 'yb_gmail_client_id';
+const LS_GMAIL_TOKEN     = 'yb_gmail_token';
+const LS_GMAIL_TPL       = 'yb_gmail_tpl';
+const LS_SEND_HISTORY    = 'yb_send_history';
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/contacts.readonly';
+let _gmailTokenClient = null;
+function gmailGetClientId(){ return (localStorage.getItem(LS_GMAIL_CLIENT_ID)||'').trim(); }
+function gmailSetClientId(id){ localStorage.setItem(LS_GMAIL_CLIENT_ID, String(id||'').trim()); }
+function gmailGetToken(){ try{ return JSON.parse(localStorage.getItem(LS_GMAIL_TOKEN)||'null'); }catch{ return null; } }
+function gmailSetToken(t){ if(t) localStorage.setItem(LS_GMAIL_TOKEN, JSON.stringify(t)); else localStorage.removeItem(LS_GMAIL_TOKEN); }
+function gmailTokenValid(){
+  const t = gmailGetToken();
+  return t && t.access_token && t.expires_at && Date.now() < t.expires_at - 30000;
+}
+function gmailGetTemplate(){
+  const def = {
+    subject: '[발주서] {DATE} {VENDOR}',
+    body: '안녕하세요. {VENDOR} 담당자님,\n\n{DATE} 발주 건 송부드립니다.\n첨부된 엑셀 확인 부탁드립니다.\n\n감사합니다.\n발주 자동화 시스템'
+  };
+  try { return {...def, ...JSON.parse(localStorage.getItem(LS_GMAIL_TPL)||'{}')}; } catch { return def; }
+}
+function gmailSaveTemplate(subject, body){ localStorage.setItem(LS_GMAIL_TPL, JSON.stringify({subject,body})); }
+function loadSendHistory(){ try{ return JSON.parse(localStorage.getItem(LS_SEND_HISTORY)||'[]'); }catch{ return []; } }
+function saveSendHistory(arr){ try{ localStorage.setItem(LS_SEND_HISTORY, JSON.stringify(arr.slice(-500))); }catch{} }
+function logSent(entry){
+  const hist = loadSendHistory();
+  hist.push({ ...entry, ts: Date.now() });
+  saveSendHistory(hist);
+}
+// GIS 초기화 (토큰 클라이언트 생성)
+function gmailEnsureTokenClient(){
+  if (_gmailTokenClient) return true;
+  if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+    alert('Google Identity 스크립트가 아직 로딩 중이에요. 잠시 후 다시 시도해주세요.');
+    return false;
+  }
+  const cid = gmailGetClientId();
+  if (!cid) {
+    alert('먼저 Gmail OAuth Client ID 를 등록해 주세요. (설정 패널)');
+    return false;
+  }
+  _gmailTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: cid,
+    scope: GMAIL_SCOPES,
+    callback: () => {},  // 매 호출마다 동적으로 교체
+  });
+  return true;
+}
+// 토큰 받기 (캐시된 게 유효하면 그대로, 아니면 prompt)
+function gmailRequestToken(){
+  return new Promise((resolve, reject) => {
+    if (gmailTokenValid()) { resolve(gmailGetToken().access_token); return; }
+    if (!gmailEnsureTokenClient()) { reject(new Error('Token client init 실패')); return; }
+    _gmailTokenClient.callback = (resp) => {
+      if (resp.error) { reject(new Error('OAuth 오류: '+resp.error)); return; }
+      const tok = {
+        access_token: resp.access_token,
+        expires_at: Date.now() + (Number(resp.expires_in)||3600) * 1000
+      };
+      gmailSetToken(tok);
+      resolve(tok.access_token);
+    };
+    _gmailTokenClient.requestAccessToken({ prompt: gmailGetToken() ? '' : 'consent' });
+  });
+}
+async function gmailConnect(){
+  try {
+    await gmailRequestToken();
+    _poShowToast('✅ Gmail 연결됨');
+    renderGmailSettingsArea();
+  } catch(e) {
+    alert('Gmail 연결 실패: '+e.message);
+  }
+}
+function gmailDisconnect(){
+  gmailSetToken(null);
+  _gmailTokenClient = null;
+  _poShowToast('Gmail 연결 해제됨');
+  renderGmailSettingsArea();
+}
+// Workbook → Base64 (Gmail attachment용)
+function _wbToBase64(wb){
+  const u8 = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  let bin = '';
+  for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+  return btoa(bin);
+}
+// 발주처별 워크북 생성 (저장 없이)
+function buildVendorWorkbook(gk){
+  const [v,a] = gk.split('|');
+  const orders = groupedOrders[gk] || [];
+  const rows = buildRows(v, orders, a);
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  if (typeof autoColWidth === 'function') autoColWidth(ws, rows);
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  return { wb, vendor: v, alias: a, fname: makeFileName(v, a), orders };
+}
+// MIME multipart (with attachment) → Base64 URL-safe
+function _buildMimeMail({to, from, subject, body, attachName, attachB64}){
+  const boundary = '_b_' + Math.random().toString(36).slice(2);
+  const subjectEnc = '=?UTF-8?B?' + btoa(unescape(encodeURIComponent(subject))) + '?=';
+  const lines = [
+    `To: ${to}`,
+    from ? `From: ${from}` : null,
+    `Subject: ${subjectEnc}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    btoa(unescape(encodeURIComponent(body))),
+    `--${boundary}`,
+    `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; name="${attachName}"`,
+    'Content-Transfer-Encoding: base64',
+    `Content-Disposition: attachment; filename="${attachName}"`,
+    '',
+    attachB64,
+    `--${boundary}--`,
+    ''
+  ].filter(x => x !== null).join('\r\n');
+  // URL-safe base64
+  return btoa(unescape(encodeURIComponent(lines))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+// Gmail API send
+async function gmailSendOne({to, subject, body, attachName, attachB64}){
+  const token = await gmailRequestToken();
+  const raw = _buildMimeMail({to, subject, body, attachName, attachB64});
+  const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer '+token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw })
+  });
+  if (!resp.ok) {
+    const errTxt = await resp.text();
+    throw new Error(`Gmail API ${resp.status}: ${errTxt.slice(0,200)}`);
+  }
+  return await resp.json();
+}
+function _applyTpl(tpl, vendor, date){
+  return tpl.replace(/\{VENDOR\}/g, vendor).replace(/\{DATE\}/g, date);
+}
+// 메인: 전체 자동 발송
+async function autoSendAll(){
+  const keys = Object.keys(groupedOrders||{});
+  if (!keys.length) { alert('발주서가 없어요.'); return; }
+  if (!gmailGetClientId()) {
+    alert('먼저 Gmail OAuth Client ID 를 등록해 주세요.\n(설정 패널 → Gmail 연결)');
+    return;
+  }
+  const emails = loadVendorEmails();
+  const delivery = loadVendorDelivery();
+  const tpl = gmailGetTemplate();
+  const today = _localISO();
+  // 분류
+  const sendList = [];   // 이메일 발송 대상
+  const manualList = []; // 카톡/사이트 수동 처리 대상
+  const skipList = [];   // 이메일 등록 안 된 곳
+  for (const gk of sortVendorKeys(keys)) {
+    const [v,a] = gk.split('|');
+    const methods = Array.isArray(delivery[v]) ? delivery[v] : [];
+    const hasEmail = methods.includes('email') && emails[v];
+    const hasManual = methods.includes('kakao') || methods.includes('site');
+    if (hasEmail) sendList.push(gk);
+    if (hasManual) manualList.push(gk);
+    if (!hasEmail && !hasManual) skipList.push(gk);
+  }
+  if (!sendList.length && !manualList.length) {
+    alert('발송할 발주처가 없어요.\n📇 발주처 전달방식 등록 패널에서 이메일/카톡/사이트 중 하나를 지정해 주세요.');
+    return;
+  }
+  if (!confirm(`전체 자동 발송 시작할까요?\n\n📧 이메일 자동 발송: ${sendList.length}곳\n💬🌐 수동 처리 알림 (사본 저장): ${manualList.length}곳\n❓ 전달방식 미지정 (건너뜀): ${skipList.length}곳\n\n· 모든 발주처는 동시에 PC 발주서 폴더에도 사본 저장됨\n· 카톡/발주사이트 거래처는 발송 후 알림 표시`)) return;
+  // 사전 토큰 확보 (실패하면 중단)
+  if (sendList.length) {
+    try { await gmailRequestToken(); } catch(e) { alert('Gmail 인증 실패: '+e.message); return; }
+  }
+  const sent = [], failed = [];
+  // 1) 모든 발주처 워크북 메모리 생성 + 폴더에 백업 저장
+  const builtMap = {};
+  for (const gk of [...new Set([...sendList, ...manualList])]) {
+    try {
+      const built = buildVendorWorkbook(gk);
+      builtMap[gk] = built;
+      try { await _poWriteWorkbook(built.wb, built.fname, built.alias); } catch(_){}
+      // 다운로드 이력 기록
+      try { logDownload(built.vendor, built.alias, built.orders, built.fname); } catch(_){}
+    } catch(e) {
+      console.warn('발주서 생성 실패:', gk, e);
+    }
+  }
+  // 2) 이메일 발송
+  for (const gk of sendList) {
+    const built = builtMap[gk]; if (!built) continue;
+    const v = built.vendor, a = built.alias;
+    const to = emails[v];
+    const subject = _applyTpl(tpl.subject, v, today);
+    const body    = _applyTpl(tpl.body,    v, today);
+    try {
+      const b64 = _wbToBase64(built.wb);
+      await gmailSendOne({to, subject, body, attachName: built.fname, attachB64: b64});
+      sent.push({gk, vendor:v, alias:a, to, fname:built.fname});
+      logSent({vendor:v, alias:a, to, fname:built.fname, status:'sent'});
+    } catch(e) {
+      failed.push({gk, vendor:v, alias:a, to, error:e.message});
+      logSent({vendor:v, alias:a, to, fname:built.fname, status:'failed', error:e.message});
+      console.error('발송 실패:', v, e);
+    }
+  }
+  // 3) UI 갱신
+  if (typeof renderStep3 === 'function') renderStep3();
+  // 4) 결과 모달
+  const manualMsg = manualList.length ? manualList.map(gk => {
+    const v = gk.split('|')[0];
+    const methods = (delivery[v]||[]).filter(m => m === 'kakao' || m === 'site');
+    const labels = methods.map(m => m==='kakao'?'💬 카톡':'🌐 발주사이트').join(' + ');
+    return `  ${labels} — ${v} → 사본 폴더에 저장됨, 직접 전달 필요`;
+  }).join('\n') : '';
+  const failedMsg = failed.length ? '\n\n❌ 실패:\n' + failed.map(f => `  ${f.vendor} (${f.to}): ${f.error}`).join('\n') : '';
+  const msg = `📧 이메일 자동 발송: ${sent.length}건 성공${failed.length?` / ${failed.length}건 실패`:''}` +
+              (manualList.length ? `\n\n📋 수동 처리 필요 (${manualList.length}곳):\n${manualMsg}` : '') +
+              failedMsg;
+  alert(msg);
+  _poShowToast(`✅ 발송 완료: 이메일 ${sent.length}건 · 수동 ${manualList.length}건`);
+}
+// ── Gmail 설정 패널 (코드 관리 탭에 들어감) ──
+function renderGmailSettingsArea(){
+  const el = document.getElementById('gmailSettingsArea');
+  if (!el) return;
+  const cid = gmailGetClientId();
+  const connected = gmailTokenValid();
+  const tpl = gmailGetTemplate();
+  const hist = loadSendHistory();
+  const recent = hist.slice(-5).reverse();
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">📧 Gmail 자동 발송 설정</div>
+      <div class="alert alert-info" style="font-size:12px">
+        💡 <b>최초 1회 설정</b>: Google Cloud Console 에서 OAuth 2.0 Client ID 를 만들어 아래에 붙여넣으세요.<br>
+        1) <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:#1A56DB;text-decoration:underline">Google Cloud Console</a> 접속 → 프로젝트 생성<br>
+        2) <b>API 및 서비스 → 라이브러리</b> 에서 <code>Gmail API</code> 와 <code>People API</code> 사용 설정<br>
+        3) <b>사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID</b> (웹 애플리케이션)<br>
+        4) <b>승인된 자바스크립트 원본</b>에 <code>${escHtml(location.origin)}</code> 추가<br>
+        5) 생성된 클라이언트 ID 복사 → 아래 입력
+      </div>
+      <div style="display:flex;gap:8px;align-items:end;margin-bottom:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:280px">
+          <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">OAuth Client ID</label>
+          <input class="inp" id="gmailClientIdInput" value="${escHtml(cid)}" placeholder="xxxxx.apps.googleusercontent.com" oninput="gmailSetClientId(this.value);renderGmailSettingsArea()">
+        </div>
+        <button class="btn ${connected?'':'btn-primary'}" onclick="gmailConnect()" ${!cid?'disabled':''} style="height:36px">${connected?'✅ Gmail 연결됨':'🔗 Gmail 연결'}</button>
+        ${connected?`<button class="btn" onclick="gmailDisconnect()" style="height:36px">연결 해제</button>`:''}
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">📝 메일 템플릿 <span style="font-size:11px;color:var(--text3);font-weight:400">— {VENDOR} = 발주처명, {DATE} = 오늘 날짜</span></div>
+        <input class="inp" id="gmailTplSubject" value="${escHtml(tpl.subject)}" placeholder="제목" style="margin-bottom:6px">
+        <textarea class="inp" id="gmailTplBody" rows="6" placeholder="본문">${escHtml(tpl.body)}</textarea>
+        <button class="btn btn-sm" onclick="gmailSaveTemplate(document.getElementById('gmailTplSubject').value, document.getElementById('gmailTplBody').value);_poShowToast('템플릿 저장됨')" style="margin-top:6px">💾 템플릿 저장</button>
+      </div>
+      ${recent.length?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">📋 최근 발송 이력 (${hist.length}건 중 최근 5건)</div>
+        <div style="font-size:11px">${recent.map(h => {
+          const dt = new Date(h.ts);
+          const tstr = dt.toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+          const icon = h.status==='sent'?'✅':'❌';
+          return `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${icon} ${escHtml(tstr)} · ${escHtml(h.vendor)} → ${escHtml(h.to||'-')}${h.error?` <span style="color:var(--danger)">(${escHtml(h.error.slice(0,60))})</span>`:''}</div>`;
+        }).join('')}</div>
+      </div>`:''}
+    </div>`;
+}
 function emailOne(gk){
   const [v,a]=gk.split('|');
   const emails=loadVendorEmails();
