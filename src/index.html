@@ -2739,12 +2739,21 @@ function gmailDisconnect(){
 }
 // Workbook → Base64 (Gmail attachment용)
 function _wbToBase64(wb){
-  const u8 = XLSX.write(wb, {type:'array', bookType:'xlsx'});
-  let bin = '';
-  for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
-  return btoa(bin);
+  try {
+    const u8 = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+    if (!u8 || !u8.length) { console.warn('[_wbToBase64] XLSX.write 결과가 비어있음'); return ''; }
+    let bin = '';
+    for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+    const b64 = btoa(bin);
+    console.log('[_wbToBase64] bytes:', u8.length, 'base64Len:', b64.length);
+    return b64;
+  } catch(e) {
+    console.error('[_wbToBase64] 에러:', e);
+    return '';
+  }
 }
-// 발주처별 워크북 생성 (저장 없이)
+// 발주처별 워크북 생성 (저장 없이) — 생성 시점에 base64 도 미리 계산해서 캐싱
+//   (XLSX.write 를 두 번 호출하면 두번째 결과가 빈 경우 발생 → 캐싱으로 회피)
 function buildVendorWorkbook(gk){
   const [v,a] = gk.split('|');
   const orders = groupedOrders[gk] || [];
@@ -2753,7 +2762,10 @@ function buildVendorWorkbook(gk){
   const ws = XLSX.utils.aoa_to_sheet(rows);
   if (typeof autoColWidth === 'function') autoColWidth(ws, rows);
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-  return { wb, vendor: v, alias: a, fname: makeFileName(v, a), orders };
+  const u8cached = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  let bin = ''; for (let i = 0; i < u8cached.length; i++) bin += String.fromCharCode(u8cached[i]);
+  const b64cached = btoa(bin);
+  return { wb, u8: u8cached, b64: b64cached, vendor: v, alias: a, fname: makeFileName(v, a), orders };
 }
 // base64 76자 단위 청크 (RFC 2045)
 function _b64chunk(s){ return String(s||'').replace(/(.{76})/g, '$1\r\n'); }
@@ -2986,7 +2998,7 @@ async function autoSendAll(){
     const fnames = [];
     for (const gk of gks) {
       const built = builtMap[gk]; if (!built) continue;
-      const b64 = _wbToBase64(built.wb);
+      const b64 = built.b64 || _wbToBase64(built.wb);
       attachments.push({ name: built.fname, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', b64 });
       fnames.push(built.fname);
     }
@@ -3134,7 +3146,7 @@ async function autoSendVendor(vendorName){
   const attachments = built.map(b => ({
     name: b.fname,
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    b64: _wbToBase64(b.wb)
+    b64: b.b64 || _wbToBase64(b.wb)
   }));
   // 명함은 본문 끝 인라인 이미지(서명)로 — 첨부 아님
   const card = gmailGetCard();
