@@ -2668,7 +2668,7 @@ function gmailTokenValid(){
 function gmailGetTemplate(){
   const def = {
     subject: '[{BRAND}]({YYMMDD}) 발주서',
-    body: '안녕하세요, {VENDOR} 담당자님\n\n금일 발주서 보내드립니다.\n감사합니다.'
+    body: '안녕하세요, {VENDOR} 담당자님\n\n금일 {BRANDS} 발주서 전달드립니다.\n감사합니다.'
   };
   try { return {...def, ...JSON.parse(localStorage.getItem(LS_GMAIL_TPL)||'{}')}; } catch { return def; }
 }
@@ -2803,12 +2803,16 @@ async function gmailSendOne({to, subject, body, attachments}){
   }
   return await resp.json();
 }
-function _applyTpl(tpl, vendor, date, brand){
+function _applyTpl(tpl, vendor, date, brand, brands){
   const yymmdd = String(date||'').replace(/-/g,'').slice(2);
+  // brand = 대표 사업자 (제목용), brands = 등장한 모든 사업자 (본문용)
+  const brandList = Array.isArray(brands) ? brands.filter(Boolean) : (brand ? [brand] : []);
+  const brandsStr = brandList.join(', ');
   return String(tpl||'')
     .replace(/\{VENDOR\}/g, vendor||'')
     .replace(/\{DATE\}/g, date||'')
     .replace(/\{YYMMDD\}/g, yymmdd)
+    .replace(/\{BRANDS\}/g, brandsStr)
     .replace(/\{BRAND\}/g, brand||'');
 }
 // alias → 사업자명 (그로븐 / 옐로우브릿지)
@@ -2913,9 +2917,10 @@ async function autoSendAll(){
     const to = emails[v];
     const aliases = gks.map(gk => gk.split('|')[1]);
     const brands = [...new Set(aliases.map(a => _brandLabel(a)).filter(Boolean))];
-    const brandStr = brands.length ? brands.join('+') : '';
-    const subject = _applyTpl(tpl.subject, v, today, brandStr);
-    const body    = _applyTpl(tpl.body,    v, today, brandStr);
+    // 대표 사업자: 그로븐 우선, 없으면 첫 번째
+    const primaryBrand = brands.includes('그로븐') ? '그로븐' : (brands[0] || '');
+    const subject = _applyTpl(tpl.subject, v, today, primaryBrand, brands);
+    const body    = _applyTpl(tpl.body,    v, today, primaryBrand, brands);
     const attachments = [];
     const fnames = [];
     for (const gk of gks) {
@@ -2998,7 +3003,7 @@ function renderGmailSettingsArea(){
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">📝 메일 템플릿</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">치환 변수: <code>{VENDOR}</code> 발주처명 · <code>{BRAND}</code> 그로븐/옐로우브릿지 · <code>{DATE}</code> 2026-06-25 · <code>{YYMMDD}</code> 260625</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">치환 변수: <code>{VENDOR}</code> 발주처명 · <code>{BRAND}</code> 대표 사업자(그로븐 우선) · <code>{BRANDS}</code> 모든 사업자(콤마구분, 예: 그로븐, 옐로우브릿지) · <code>{DATE}</code> 2026-06-25 · <code>{YYMMDD}</code> 260625</div>
         <input class="inp" id="gmailTplSubject" value="${escHtml(tpl.subject)}" placeholder="제목" style="margin-bottom:6px">
         <textarea class="inp" id="gmailTplBody" rows="6" placeholder="본문">${escHtml(tpl.body)}</textarea>
         <button class="btn btn-sm" onclick="gmailSaveTemplate(document.getElementById('gmailTplSubject').value, document.getElementById('gmailTplBody').value);_poShowToast('템플릿 저장됨')" style="margin-top:6px">💾 템플릿 저장</button>
