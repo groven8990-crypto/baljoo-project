@@ -6887,10 +6887,12 @@ function loadLastFile() {
 function showLastFileCard() {
   const info = JSON.parse(localStorage.getItem(LS_LASTFILE) || 'null');
   const card = document.getElementById('lastFileCard');
+  if (!card) return;  // 카드 요소 자체가 DOM 에 없으면 무시 (안전)
   if (!info) { card.style.display='none'; return; }
   card.style.display='block';
   const d = new Date(info.date);
-  document.getElementById('lastFileName').textContent =
+  const nameEl = document.getElementById('lastFileName');
+  if (nameEl) nameEl.textContent =
     `${info.fileName}  ·  ${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
