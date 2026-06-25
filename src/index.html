@@ -11538,11 +11538,59 @@ function srRenderProfitPanel(orders){
   _srRestoreFocus(focusMeta);
 }
 let _srProfitVendorChartInst = null;
+// 임의 canvas 요소에 도넛 그리기 (export용에서 cloned canvas 에 직접 그리기 위해 분리)
+function _srRenderVendorPurchaseChartTo(c, lg, rows, opts){
+  if (typeof Chart === 'undefined' || !c) return null;
+  // 발주처별 매입 합계 (전체)
+  const byV = {};
+  for (const r of (rows||[])) {
+    byV[r.vendor] = (byV[r.vendor]||0) + r.purchase;
+  }
+  const entries = Object.entries(byV).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  if (entries.length === 0) {
+    if (lg) lg.innerHTML = '<div style="color:var(--text3);font-size:12px">매입가가 입력된 행이 없어 차트를 표시할 수 없어요. 매입단가를 입력해주세요.</div>';
+    return null;
+  }
+  const total = entries.reduce((s,[,v])=>s+v, 0);
+  const labels = entries.map(([k])=>k);
+  const data = entries.map(([,v])=>v);
+  const palette = ['#A5C8F0','#A5E5C2','#FFC4A3','#D4B5EC','#F5DC8C','#9CD8D3','#F5B5C4','#C8E5A0','#B8B5E5','#F5C0A8','#A8C8E0','#C5E5BE','#E5B5D4','#E0D0A8'];
+  const bg = labels.map((_,i)=>palette[i%palette.length]);
+  const inst = new Chart(c.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: bg, borderColor: '#fff', borderWidth: 2 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '55%',
+      animation: (opts && opts.noAnim) ? false : undefined,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${Number(ctx.raw||0).toLocaleString()}원 (${((ctx.raw/total)*100).toFixed(1)}%)` } }
+      }
+    }
+  });
+  if (lg) {
+    lg.innerHTML = `<div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:8px">🥧 전체 거래처 매입 비중</div>` +
+      entries.map(([k,v],i) => {
+        const pct = (v/total*100).toFixed(1);
+        return `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px">
+          <span style="width:12px;height:12px;background:${bg[i]};border-radius:2px;flex-shrink:0"></span>
+          <span style="flex:1;color:#374151">${escHtml(k)}</span>
+          <span style="font-variant-numeric:tabular-nums;color:#7B4B00">${v.toLocaleString()}원</span>
+          <span style="font-variant-numeric:tabular-nums;color:#6B7280;width:48px;text-align:right">${pct}%</span>
+        </div>`;
+      }).join('');
+  }
+  return inst;
+}
 function _srRenderVendorPurchaseChart(rows){
   if (typeof Chart === 'undefined') return;
   const c = document.getElementById('srProfitVendorChart');
   const lg = document.getElementById('srProfitVendorChartLegend');
   if (!c) return;
+  if (_srProfitVendorChartInst) { _srProfitVendorChartInst.destroy(); _srProfitVendorChartInst = null; }
+  _srProfitVendorChartInst = _srRenderVendorPurchaseChartTo(c, lg, rows);
+  return;
+  // ↓ (이하 구버전 코드 — _srRenderVendorPurchaseChartTo 로 위임됨)
   if (_srProfitVendorChartInst) { _srProfitVendorChartInst.destroy(); _srProfitVendorChartInst = null; }
   // 발주처별 매입 합계 (전체)
   const byV = {};
@@ -12081,13 +12129,6 @@ function srExportImage(){
     // 📦 매입/순이익 페이지도 같이 저장 (별도 페이지) — 요약만, 폭 좁게
     const profitEl = document.getElementById('srProfitPanel');
     if (profitEl && profitEl.innerHTML.trim()) {
-      // 도넛 차트가 비어있으면(다른 탭에 있던 케이스) 강제로 다시 그리기
-      try {
-        const rows = srBuildProfitRows(Array.isArray(allOrders) ? allOrders : []);
-        if (typeof _srRenderVendorPurchaseChart === 'function') _srRenderVendorPurchaseChart(rows);
-        // Chart.js 가 canvas 에 동기 렌더 → 다음 프레임 대기로 안전하게 비트맵 보장
-        await new Promise(r => requestAnimationFrame(()=>requestAnimationFrame(r)));
-      } catch(_){}
       const tmp = document.createElement('div');
       tmp.style.cssText='background:#fff;padding:22px;width:1040px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
       const cloned = profitEl.cloneNode(true);
@@ -12100,8 +12141,6 @@ function srExportImage(){
       cloned.querySelectorAll('.sr-biz-ad-section').forEach(el => el.remove());
       // 실무자용 도움말 텍스트 제거 (보고받는 사람한텐 노이즈)
       cloned.querySelectorAll('.sr-profit-helper').forEach(el => el.remove());
-      // 차트 캔버스는 cloneNode가 비트맵을 못 복사하니 원본에서 그대로 그려와야 함
-      _srCopyCanvasContents(profitEl, cloned);
       // 상세 제거 후 남은 잔여 input/checkbox 정리
       _srStripInputsForExport(cloned);
       const foot=document.createElement('div');
@@ -12109,6 +12148,35 @@ function srExportImage(){
       foot.textContent=`발주일자 ${document.getElementById('srReportDate').value||_localISO()} 기준 · 발주 자동화 시스템`;
       tmp.appendChild(foot);
       document.body.appendChild(tmp);
+      // ─── 도넛 차트를 cloned canvas 에 직접 렌더 (다른 탭에 있어도 정상 렌더됨) ───
+      try {
+        const clonedCanvas = cloned.querySelector('#srProfitVendorChart');
+        const clonedLegend = cloned.querySelector('#srProfitVendorChartLegend');
+        if (clonedCanvas) {
+          // 동일 id 충돌 방지로 id 제거
+          clonedCanvas.removeAttribute('id');
+          if (clonedLegend) clonedLegend.removeAttribute('id');
+          const profitRows = srBuildProfitRows(Array.isArray(allOrders) ? allOrders : []);
+          const inst = _srRenderVendorPurchaseChartTo(clonedCanvas, clonedLegend, profitRows, {noAnim: true});
+          await new Promise(r => requestAnimationFrame(()=>requestAnimationFrame(r)));
+          // 렌더된 canvas → data URL → <img> 로 치환 (html2canvas 가 안정적으로 잡도록)
+          if (inst) {
+            try {
+              const dataUrl = clonedCanvas.toDataURL('image/png');
+              if (dataUrl && dataUrl.length > 200) {
+                const cs = window.getComputedStyle(clonedCanvas);
+                const img = document.createElement('img');
+                img.src = dataUrl;
+                img.style.width  = cs.width || (clonedCanvas.clientWidth + 'px');
+                img.style.height = cs.height || (clonedCanvas.clientHeight + 'px');
+                img.style.display = 'block';
+                clonedCanvas.parentNode.replaceChild(img, clonedCanvas);
+              }
+              inst.destroy();
+            } catch(_){}
+          }
+        }
+      } catch(e) { console.warn('도넛 차트 렌더 실패:', e); }
       try{
         const canvas=await html2canvas(tmp,{backgroundColor:'#ffffff',scale:2,useCORS:true});
         const fileName=`${dateStr}-매입순이익.png`;
