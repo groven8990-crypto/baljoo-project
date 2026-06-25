@@ -2738,22 +2738,38 @@ function gmailDisconnect(){
   renderGmailSettingsArea();
 }
 // Workbook → Base64 (Gmail attachment용)
+//   SheetJS XLSX.write({type:'array'}) 가 일부 환경에서 빈 결과를 반환하는 케이스가 있어서
+//   더 안정적인 type:'base64' 직접 출력 → 실패 시 type:'binary' → 마지막으로 'array' 폴백
 function _wbToBase64(wb){
+  // 1순위: type:'base64' 직접 (SheetJS 권장)
+  try {
+    const b64 = XLSX.write(wb, {type:'base64', bookType:'xlsx'});
+    if (b64 && b64.length > 100) { console.log('[_wbToBase64] base64 직접 출력 OK, len:', b64.length); return b64; }
+  } catch(e) { console.warn('[_wbToBase64] base64 출력 실패:', e); }
+  // 2순위: type:'binary' (string) → btoa
+  try {
+    const bin = XLSX.write(wb, {type:'binary', bookType:'xlsx'});
+    if (bin && bin.length > 100) {
+      const b64 = btoa(bin);
+      console.log('[_wbToBase64] binary→btoa OK, len:', b64.length);
+      return b64;
+    }
+  } catch(e) { console.warn('[_wbToBase64] binary 출력 실패:', e); }
+  // 3순위: type:'array' (Uint8Array) → btoa
   try {
     const u8 = XLSX.write(wb, {type:'array', bookType:'xlsx'});
-    if (!u8 || !u8.length) { console.warn('[_wbToBase64] XLSX.write 결과가 비어있음'); return ''; }
-    let bin = '';
-    for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
-    const b64 = btoa(bin);
-    console.log('[_wbToBase64] bytes:', u8.length, 'base64Len:', b64.length);
-    return b64;
-  } catch(e) {
-    console.error('[_wbToBase64] 에러:', e);
-    return '';
-  }
+    if (u8 && u8.length) {
+      let bin2 = '';
+      for (let i = 0; i < u8.length; i++) bin2 += String.fromCharCode(u8[i]);
+      const b64 = btoa(bin2);
+      console.log('[_wbToBase64] array→btoa OK, len:', b64.length);
+      return b64;
+    }
+  } catch(e) { console.error('[_wbToBase64] array 출력도 실패:', e); }
+  console.warn('[_wbToBase64] 모든 방법 실패 → 빈 문자열 반환');
+  return '';
 }
-// 발주처별 워크북 생성 (저장 없이) — 생성 시점에 base64 도 미리 계산해서 캐싱
-//   (XLSX.write 를 두 번 호출하면 두번째 결과가 빈 경우 발생 → 캐싱으로 회피)
+// 발주처별 워크북 생성 (저장 없이) — 생성 시점에 base64 도 같이 캐싱
 function buildVendorWorkbook(gk){
   const [v,a] = gk.split('|');
   const orders = groupedOrders[gk] || [];
@@ -2762,10 +2778,8 @@ function buildVendorWorkbook(gk){
   const ws = XLSX.utils.aoa_to_sheet(rows);
   if (typeof autoColWidth === 'function') autoColWidth(ws, rows);
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-  const u8cached = XLSX.write(wb, {type:'array', bookType:'xlsx'});
-  let bin = ''; for (let i = 0; i < u8cached.length; i++) bin += String.fromCharCode(u8cached[i]);
-  const b64cached = btoa(bin);
-  return { wb, u8: u8cached, b64: b64cached, vendor: v, alias: a, fname: makeFileName(v, a), orders };
+  const b64cached = _wbToBase64(wb);
+  return { wb, b64: b64cached, vendor: v, alias: a, fname: makeFileName(v, a), orders };
 }
 // base64 76자 단위 청크 (RFC 2045)
 function _b64chunk(s){ return String(s||'').replace(/(.{76})/g, '$1\r\n'); }
