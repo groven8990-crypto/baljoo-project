@@ -2357,7 +2357,7 @@ function renderStep3(){
         <button class="btn btn-sm" onclick="dlOne('${esc(gk)}')">⬇ 다운로드</button>
         ${dlMark}
         ${dvChip}
-        <button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="엑셀 다운로드 + Gmail 작성창 열기">📧 메일</button>
+        <button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>
       </div>
     </div>`;
   }
@@ -2667,10 +2667,16 @@ function gmailTokenValid(){
 }
 function gmailGetTemplate(){
   const def = {
-    subject: '[{BRAND}]({YYMMDD}) 발주서',
+    subject: '[{BRAND}]({YYMMDD})-발주서',
     body: '안녕하세요, {VENDOR} 담당자님\n\n금일 {BRANDS} 발주서 전달드립니다.\n감사합니다.'
   };
   try { return {...def, ...JSON.parse(localStorage.getItem(LS_GMAIL_TPL)||'{}')}; } catch { return def; }
+}
+function gmailResetTemplate(){
+  if (!confirm('메일 템플릿을 기본값으로 되돌릴까요?')) return;
+  localStorage.removeItem(LS_GMAIL_TPL);
+  _poShowToast('템플릿 기본값 복원됨');
+  renderGmailSettingsArea();
 }
 function gmailSaveTemplate(subject, body){ localStorage.setItem(LS_GMAIL_TPL, JSON.stringify({subject,body})); }
 function loadSendHistory(){ try{ return JSON.parse(localStorage.getItem(LS_SEND_HISTORY)||'[]'); }catch{ return []; } }
@@ -3009,7 +3015,10 @@ function renderGmailSettingsArea(){
         <div style="font-size:11px;color:var(--text3);margin-bottom:6px">치환 변수: <code>{VENDOR}</code> 발주처명 · <code>{BRAND}</code> 대표 사업자(그로븐 우선) · <code>{BRANDS}</code> 모든 사업자(콤마구분, 예: 그로븐, 옐로우브릿지) · <code>{DATE}</code> 2026-06-25 · <code>{YYMMDD}</code> 260625</div>
         <input class="inp" id="gmailTplSubject" value="${escHtml(tpl.subject)}" placeholder="제목" style="margin-bottom:6px">
         <textarea class="inp" id="gmailTplBody" rows="6" placeholder="본문">${escHtml(tpl.body)}</textarea>
-        <button class="btn btn-sm" onclick="gmailSaveTemplate(document.getElementById('gmailTplSubject').value, document.getElementById('gmailTplBody').value);_poShowToast('템플릿 저장됨')" style="margin-top:6px">💾 템플릿 저장</button>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn btn-sm" onclick="gmailSaveTemplate(document.getElementById('gmailTplSubject').value, document.getElementById('gmailTplBody').value);_poShowToast('템플릿 저장됨')">💾 템플릿 저장</button>
+          <button class="btn btn-sm" onclick="gmailResetTemplate()" style="color:var(--text3)">↺ 기본값 복원</button>
+        </div>
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">🪪 명함 (이메일 자동 첨부)</div>
@@ -3037,7 +3046,63 @@ function renderGmailSettingsArea(){
       </div>`:''}
     </div>`;
 }
+// 발주처 단일/그룹 자동 발송 — autoSendAll 의 단일 발주처 버전
+async function autoSendVendor(vendorName){
+  if (!gmailGetClientId()) {
+    alert('먼저 Gmail OAuth Client ID 를 등록해 주세요.\n(⚙️ 코드 관리 → 📧 Gmail 자동발송)');
+    return;
+  }
+  // 같은 발주처의 모든 alias gk 모음
+  const gks = Object.keys(groupedOrders||{}).filter(gk => gk.split('|')[0] === vendorName);
+  if (!gks.length) { alert('해당 발주처 주문이 없어요.'); return; }
+  const emails = loadVendorEmails();
+  const to = emails[vendorName];
+  if (!to) {
+    const newEmail = prompt(`${vendorName} 의 이메일 주소를 입력해주세요.\n(자동 저장됨)`, '');
+    if (!newEmail || !/.+@.+\..+/.test(newEmail.trim())) return;
+    emails[vendorName] = newEmail.trim();
+    saveVendorEmails(emails);
+  }
+  const tpl = gmailGetTemplate();
+  const today = _localISO();
+  try { await gmailRequestToken(); } catch(e) { alert('Gmail 인증 실패: '+e.message); return; }
+  // 워크북 모두 생성 + 폴더 백업
+  const built = [];
+  for (const gk of gks) {
+    try {
+      const b = buildVendorWorkbook(gk);
+      built.push({gk, ...b});
+      try { await _poWriteWorkbook(b.wb, b.fname, b.alias); } catch(_){}
+      try { logDownload(b.vendor, b.alias, b.orders, b.fname); } catch(_){}
+    } catch(e) { console.warn('워크북 실패', gk, e); }
+  }
+  if (!built.length) { alert('발주서 생성에 실패했어요.'); return; }
+  const brands = [...new Set(built.map(b => _brandLabel(b.alias)).filter(Boolean))];
+  const primaryBrand = brands.includes('그로븐') ? '그로븐' : (brands[0] || '');
+  const subject = _applyTpl(tpl.subject, vendorName, today, primaryBrand, brands);
+  const body    = _applyTpl(tpl.body,    vendorName, today, primaryBrand, brands);
+  const attachments = built.map(b => ({
+    name: b.fname,
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    b64: _wbToBase64(b.wb)
+  }));
+  const card = gmailGetCard();
+  if (card && card.b64) attachments.push({ name: card.name||'명함.png', type: card.type||'image/png', b64: card.b64 });
+  try {
+    await gmailSendOne({to: emails[vendorName], subject, body, attachments});
+    for (const b of built) logSent({vendor:b.vendor, alias:b.alias, to: emails[vendorName], fname:b.fname, status:'sent', merged: built.length>1});
+    _poShowToast(`✅ ${vendorName} 발송 완료 (첨부 ${attachments.length}개)`);
+    if (typeof renderStep3 === 'function') renderStep3();
+  } catch(e) {
+    for (const b of built) logSent({vendor:b.vendor, alias:b.alias, to: emails[vendorName], fname:b.fname, status:'failed', error:e.message});
+    alert('발송 실패: '+e.message);
+  }
+}
 function emailOne(gk){
+  const [v] = gk.split('|');
+  autoSendVendor(v);
+}
+function _legacyEmailOne_unused(gk){
   const [v,a]=gk.split('|');
   const emails=loadVendorEmails();
   const cur=emails[v]||'';
