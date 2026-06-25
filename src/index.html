@@ -3513,6 +3513,11 @@ function _srCopyCanvasContents(original, clone){
     if (!cc || !cc.parentNode) return;
     try {
       const dataUrl = oc.toDataURL('image/png');
+      // 빈 캔버스(투명 PNG) 감지 — 매우 짧은 dataUrl 은 보통 1x1 픽셀이거나 비어있음
+      if (!dataUrl || dataUrl.length < 200) {
+        console.warn('[_srCopyCanvasContents] canvas#'+i+' 비어있음 (dataUrl len:', (dataUrl||'').length, ') — 원본 캔버스가 아직 안 그려진 듯');
+        return;  // 빈 이미지로 교체하지 않고 원본 canvas 그대로 두기 (cloneNode 의 빈 캔버스)
+      }
       const cs = window.getComputedStyle(oc);
       const img = document.createElement('img');
       img.src = dataUrl;
@@ -12076,6 +12081,13 @@ function srExportImage(){
     // 📦 매입/순이익 페이지도 같이 저장 (별도 페이지) — 요약만, 폭 좁게
     const profitEl = document.getElementById('srProfitPanel');
     if (profitEl && profitEl.innerHTML.trim()) {
+      // 도넛 차트가 비어있으면(다른 탭에 있던 케이스) 강제로 다시 그리기
+      try {
+        const rows = srBuildProfitRows(Array.isArray(allOrders) ? allOrders : []);
+        if (typeof _srRenderVendorPurchaseChart === 'function') _srRenderVendorPurchaseChart(rows);
+        // Chart.js 가 canvas 에 동기 렌더 → 다음 프레임 대기로 안전하게 비트맵 보장
+        await new Promise(r => requestAnimationFrame(()=>requestAnimationFrame(r)));
+      } catch(_){}
       const tmp = document.createElement('div');
       tmp.style.cssText='background:#fff;padding:22px;width:1040px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
       const cloned = profitEl.cloneNode(true);
