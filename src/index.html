@@ -10786,6 +10786,11 @@ function srLoadReview(files){
           if (document.getElementById('srReport') && document.getElementById('srReport').innerHTML.trim()) {
             srRender();
           }
+          // 매입/순이익 패널이 떠있으면 같이 갱신 (리뷰 단가 입력칸 노출)
+          const _pp = document.getElementById('srProfitPanel');
+          if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
+            srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+          }
         }
       }
     };
@@ -10812,6 +10817,10 @@ function srClearReview(){
   if (info) info.innerHTML = '';
   if (document.getElementById('srReport') && document.getElementById('srReport').innerHTML.trim()) {
     srRender();
+  }
+  const _pp = document.getElementById('srProfitPanel');
+  if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
+    srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
   }
 }
 function srDinettePrice(spec, qty){
@@ -11207,10 +11216,13 @@ function srBuildProfitRows(orders){
         option:   norm.option,
         count:      0,                              // 주문건수 (행 수)
         qtySum:     0,                              // 매입 수량 = Σ (o.qty × kg or code_qty)
+        reviewCount:0,                              // 리뷰 주문 건수
+        reviewQty:  0,                              // 리뷰 매입 수량
         sales:      0,                              // 매출액 합계
         fee:        0,                              // 플랫폼 수수료 합계
-        orderDetail: [],                            // [{recv_name, qty, units, salesAmt}] — 상세 보기용
+        orderDetail: [],                            // [{recv_name, qty, units, salesAmt, isReview}] — 상세 보기용
         unit:       Number(saved.unit)||0,
+        reviewUnit: Number(saved.reviewUnit)||0,    // 리뷰 단가 (0이면 unit 과 동일하게 적용)
         // 구버전 호환: 예전엔 ship 한 컬럼만 있었어 → shipFee로 이전
         shipFee:    Number(saved.shipFee != null ? saved.shipFee : saved.ship)||0,
         shipTiers:  Array.isArray(saved.shipTiers) ? saved.shipTiers.slice() : [],
@@ -11221,14 +11233,23 @@ function srBuildProfitRows(orders){
     const r = map[key];
     const amt = Number(o.order_amt)||0;
     const units = srPurchaseUnits(o);
+    // 리뷰 주문 여부 — 매출보고 탭에서 업로드한 노란색 셀 발주서 기반 srReviewSet 활용
+    const _brand = srBrand(o.alias);
+    const _rname = String(o.recv_name||'').trim();
+    const isReview = (typeof srReviewSet !== 'undefined' && srReviewSet && srReviewSet.size > 0 && _rname && srReviewSet.has(_brand + '||' + _rname));
     r.count  += 1;
     r.qtySum += units;
+    if (isReview) {
+      r.reviewCount += 1;
+      r.reviewQty   += units;
+    }
     r.orderDetail.push({
       recv_name: o.recv_name||'(이름없음)',
       order_no: String(o.order_no||''),
       qty: Number(o.qty)||1,
       units,
-      salesAmt: amt
+      salesAmt: amt,
+      isReview
     });
     r.sales  += amt;
     const plat = (typeof srPlatform==='function') ? srPlatform(o) : '';
@@ -11252,7 +11273,10 @@ function srBuildProfitRows(orders){
   // 파생 계산
   const ovDB = srLoadOverridesDB();
   for (const r of Object.values(map)) {
-    r.itemCost = r.qtySum * r.unit;             // 매입가 (배송비 제외)
+    // 매입가 = 일반 수량 × 매입단가 + 리뷰 수량 × 리뷰단가 (리뷰단가 미입력시 매입단가로 폴백)
+    const _effReviewUnit = (Number(r.reviewUnit) > 0) ? Number(r.reviewUnit) : r.unit;
+    const _realQty = Math.max(0, r.qtySum - r.reviewQty);
+    r.itemCost = _realQty * r.unit + r.reviewQty * _effReviewUnit;
     let shipTotal = 0;
     for (const d of r.orderDetail) {
       const computed = r.consol > 0 ? Math.max(1, Math.ceil(d.units / r.consol)) : 1;
@@ -11261,7 +11285,7 @@ function srBuildProfitRows(orders){
       d.boxesComputed = computed;
       d.boxesOverridden = (ov.boxes != null && !isNaN(ov.boxes));
       d.boxes = d.boxesOverridden ? Number(ov.boxes) : computed;
-      d.itemCost = d.units * r.unit;
+      d.itemCost = d.units * (d.isReview ? _effReviewUnit : r.unit);
       // 배송비: shipTiers 가 있으면 박스별 수량에 따라 단계 적용, 없으면 박스수 × shipFee
       if (Array.isArray(r.shipTiers) && r.shipTiers.length) {
         const tiers = r.shipTiers.slice().sort((a,b)=>(a.qty||0)-(b.qty||0));
@@ -11724,12 +11748,25 @@ function _srBuildDetailRowHtml(r, i, firstOfGroup){
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${r.qtySum}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums">${r.sales.toLocaleString()}</td>
     <td style="padding:3px 3px;border-bottom:1px solid #eee">
-      <input type="number" min="0" step="1" value="${r.unit||''}" placeholder="1개 가격" title="옵션 1개당 매입단가"
-        data-key="${_srEsc(r.key)}" data-role="unit"
-        style="width:70px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
-        oninput="srOnPurchaseInputChange(this)">
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;align-items:center;gap:3px">
+          ${r.reviewQty>0 ? `<span style="font-size:9px;color:#6B7280;width:24px">일반</span>` : ''}
+          <input type="number" min="0" step="1" value="${r.unit||''}" placeholder="1개 가격" title="옵션 1개당 매입단가${r.reviewQty>0?' (일반 주문용)':''}"
+            data-key="${_srEsc(r.key)}" data-role="unit"
+            style="width:70px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
+            oninput="srOnPurchaseInputChange(this)">
+        </div>
+        ${r.reviewQty>0 ? `<div style="display:flex;align-items:center;gap:3px" title="리뷰 주문 ${r.reviewQty}개의 매입단가 — 미입력 시 일반 단가 사용">
+          <span style="font-size:9px;color:#92400E;width:24px;font-weight:600">리뷰</span>
+          <input type="number" min="0" step="1" value="${r.reviewUnit||''}" placeholder="${r.unit||'리뷰가'}"
+            data-key="${_srEsc(r.key)}" data-role="reviewUnit"
+            style="width:70px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #FCD34D;background:#FFFBEB;border-radius:3px;font-variant-numeric:tabular-nums"
+            oninput="srOnPurchaseInputChange(this)">
+          <span style="font-size:9px;color:#92400E;white-space:nowrap">×${r.reviewQty}</span>
+        </div>` : ''}
+      </div>
     </td>
-    <td data-cell="itemCost" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00">${r.itemCost.toLocaleString()}</td>
+    <td data-cell="itemCost" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00">${r.itemCost.toLocaleString()}${r.reviewQty>0?`<div style="font-size:9px;color:#92400E;font-weight:400">리뷰 ${r.reviewCount}건 포함</div>`:''}</td>
     <td style="padding:3px 3px;border-bottom:1px solid #eee;white-space:nowrap">
       <input type="number" min="0" step="1" value="${r.shipFee||''}" placeholder="0" title="박스 1개당 배송비 (단계 미설정 시)"
         data-key="${_srEsc(r.key)}" data-role="shipFee"
@@ -11946,7 +11983,7 @@ function srOnPurchaseInputChange(elInput){
   const key  = elInput.getAttribute('data-key');
   const role = elInput.getAttribute('data-role');
   if (!key || !role) return;
-  if (role === 'unit' || role === 'shipFee' || role === 'consol') {
+  if (role === 'unit' || role === 'shipFee' || role === 'consol' || role === 'reviewUnit') {
     const v = Math.max(0, parseFloat(elInput.value)||0);
     srUpdatePurchaseEntry(key, { [role]: v });
   } else if (role === 'taxable') {
