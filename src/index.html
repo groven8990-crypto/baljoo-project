@@ -2789,7 +2789,8 @@ function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}
   lines.push(`--${outerB}`);
   const useRelated = (inlineImages||[]).some(i => i && i.b64);
   if (useRelated) {
-    lines.push(`Content-Type: multipart/related; boundary="${relatedB}"`);
+    // RFC 2387: multipart/related 는 type= 파라미터 필수 (루트 part 의 MIME type)
+    lines.push(`Content-Type: multipart/related; type="text/html"; boundary="${relatedB}"`);
     lines.push('');
     lines.push(`--${relatedB}`);
     lines.push('Content-Type: text/html; charset=UTF-8');
@@ -2807,6 +2808,7 @@ function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}
       lines.push(_b64chunk(img.b64));
     }
     lines.push(`--${relatedB}--`);
+    lines.push('');  // 빈 줄로 다음 outer part 와 명확히 분리
   } else {
     lines.push('Content-Type: text/html; charset=UTF-8');
     lines.push('Content-Transfer-Encoding: base64');
@@ -2838,6 +2840,14 @@ function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}
 async function gmailSendOne({to, subject, body, attachments, inlineImages}){
   const token = await gmailRequestToken();
   const raw = _buildMimeMail({to, subject, bodyText: body, attachments, inlineImages});
+  // 디버그용: 디코딩된 MIME 을 콘솔에 출력 (F12 콘솔에서 확인)
+  try {
+    const decoded = decodeURIComponent(escape(atob(raw.replace(/-/g,'+').replace(/_/g,'/'))));
+    console.log('[Gmail MIME]\n' + decoded.slice(0, 2500) + (decoded.length>2500?'\n... ('+decoded.length+' chars total)':''));
+    window._lastGmailMime = decoded;  // 콘솔에서 _lastGmailMime 로 전체 접근 가능
+    console.log('[Gmail] attachments:', (attachments||[]).map(a => ({name:a.name, type:a.type, b64Len:(a.b64||'').length})));
+    console.log('[Gmail] inlineImages:', (inlineImages||[]).map(i => ({cid:i.cid, type:i.type, b64Len:(i.b64||'').length})));
+  } catch(e) { console.warn('[Gmail] debug log 실패:', e); }
   const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer '+token, 'Content-Type': 'application/json' },
