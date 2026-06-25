@@ -2822,36 +2822,41 @@ function _brandLabel(alias){
   if (a.includes('자꾸가게')) return '옐로우브릿지';
   return '';
 }
-// ── 사업자별 명함 (이메일 첨부용) ──
-const LS_GMAIL_CARD_GROBN = 'yb_gmail_card_grobn';
-const LS_GMAIL_CARD_YB    = 'yb_gmail_card_yb';
-// 저장 형식: { name, type, b64 }  — b64 는 순수 base64 (data:url prefix 제외)
-function gmailGetCard(brand){
-  const key = brand==='그로븐'?LS_GMAIL_CARD_GROBN:(brand==='옐로우브릿지'?LS_GMAIL_CARD_YB:null);
-  if (!key) return null;
-  try { return JSON.parse(localStorage.getItem(key)||'null'); } catch { return null; }
+// ── 명함 (이메일 첨부용, 단일) ──
+const LS_GMAIL_CARD = 'yb_gmail_card';
+// 저장 형식: { name, type, b64 } — b64 는 순수 base64 (data:url prefix 제외)
+function gmailGetCard(){
+  // legacy: 그로븐 명함 우선 사용
+  try {
+    const cur = JSON.parse(localStorage.getItem(LS_GMAIL_CARD)||'null');
+    if (cur) return cur;
+    const legacy = JSON.parse(localStorage.getItem('yb_gmail_card_grobn')||'null');
+    if (legacy) { localStorage.setItem(LS_GMAIL_CARD, JSON.stringify(legacy)); return legacy; }
+  } catch {}
+  return null;
 }
-function gmailSetCard(brand, card){
-  const key = brand==='그로븐'?LS_GMAIL_CARD_GROBN:(brand==='옐로우브릿지'?LS_GMAIL_CARD_YB:null);
-  if (!key) return;
-  if (card) localStorage.setItem(key, JSON.stringify(card)); else localStorage.removeItem(key);
+function gmailSetCard(card){
+  if (card) localStorage.setItem(LS_GMAIL_CARD, JSON.stringify(card));
+  else localStorage.removeItem(LS_GMAIL_CARD);
 }
-function onGmailCardUpload(brand, input){
+function onGmailCardUpload(input){
   const f = input.files && input.files[0]; if (!f) return;
   if (f.size > 2*1024*1024) { alert('명함 이미지는 2MB 이하만 가능해요.'); return; }
   const reader = new FileReader();
   reader.onload = e => {
     const dataUrl = String(e.target.result||'');
     const b64 = dataUrl.split(',')[1] || '';
-    gmailSetCard(brand, { name: f.name, type: f.type||'image/png', b64 });
-    _poShowToast(`✅ ${brand} 명함 저장됨`);
+    gmailSetCard({ name: f.name, type: f.type||'image/png', b64 });
+    _poShowToast('✅ 명함 저장됨');
     renderGmailSettingsArea();
   };
   reader.readAsDataURL(f);
 }
-function gmailRemoveCard(brand){
-  if (!confirm(`${brand} 명함을 삭제할까요?`)) return;
-  gmailSetCard(brand, null);
+function gmailRemoveCard(){
+  if (!confirm('명함을 삭제할까요?')) return;
+  gmailSetCard(null);
+  // legacy 키도 정리
+  try { localStorage.removeItem('yb_gmail_card_grobn'); localStorage.removeItem('yb_gmail_card_yb'); } catch {}
   renderGmailSettingsArea();
 }
 // 메인: 전체 자동 발송
@@ -2929,11 +2934,9 @@ async function autoSendAll(){
       attachments.push({ name: built.fname, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', b64 });
       fnames.push(built.fname);
     }
-    // 사업자별 명함 자동 첨부 (등장하는 모든 사업자, 중복 제거)
-    for (const brand of brands) {
-      const card = gmailGetCard(brand);
-      if (card && card.b64) attachments.push({ name: card.name||(brand+'_명함.png'), type: card.type||'image/png', b64: card.b64 });
-    }
+    // 명함 자동 첨부 (등록되어 있으면 1개만)
+    const _card = gmailGetCard();
+    if (_card && _card.b64) attachments.push({ name: _card.name||'명함.png', type: _card.type||'image/png', b64: _card.b64 });
     try {
       await gmailSendOne({to, subject, body, attachments});
       for (const gk of gks) {
@@ -3009,19 +3012,19 @@ function renderGmailSettingsArea(){
         <button class="btn btn-sm" onclick="gmailSaveTemplate(document.getElementById('gmailTplSubject').value, document.getElementById('gmailTplBody').value);_poShowToast('템플릿 저장됨')" style="margin-top:6px">💾 템플릿 저장</button>
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:6px">🪪 사업자별 명함 (이메일 자동 첨부)</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">이미지 파일 (PNG/JPG, 2MB 이하). 발주서 발송 시 사업자에 맞는 명함이 자동으로 함께 첨부돼요.</div>
-        ${['그로븐','옐로우브릿지'].map(brand => {
-          const card = gmailGetCard(brand);
-          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
-            <span style="font-size:12px;font-weight:600;min-width:90px">${brand}</span>
-            ${card ? `<img src="data:${card.type};base64,${card.b64}" style="max-height:48px;max-width:120px;border:1px solid var(--border);border-radius:4px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">🪪 명함 (이메일 자동 첨부)</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">이미지 파일 (PNG/JPG, 2MB 이하). 모든 발주처에 동일하게 자동 첨부됩니다.</div>
+        ${(() => {
+          const card = gmailGetCard();
+          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0">
+            ${card ? `<img src="data:${card.type};base64,${card.b64}" style="max-height:60px;max-width:160px;border:1px solid var(--border);border-radius:4px">
               <span style="font-size:11px;color:var(--text3);flex:1">${escHtml(card.name||'명함')}</span>
-              <button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="gmailRemoveCard('${brand}')">삭제</button>`
-            : `<label class="btn btn-sm" style="cursor:pointer">📎 명함 업로드<input type="file" accept="image/*" style="display:none" onchange="onGmailCardUpload('${brand}', this)"></label>
-              <span style="font-size:11px;color:var(--text3);flex:1">미등록</span>`}
+              <label class="btn btn-sm" style="cursor:pointer">🔄 교체<input type="file" accept="image/*" style="display:none" onchange="onGmailCardUpload(this)"></label>
+              <button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="gmailRemoveCard()">삭제</button>`
+            : `<label class="btn btn-sm" style="cursor:pointer">📎 명함 업로드<input type="file" accept="image/*" style="display:none" onchange="onGmailCardUpload(this)"></label>
+              <span style="font-size:11px;color:var(--text3);flex:1">미등록 — 등록 안 해도 엑셀만 첨부됨</span>`}
           </div>`;
-        }).join('')}
+        })()}
       </div>
       ${recent.length?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">📋 최근 발송 이력 (${hist.length}건 중 최근 5건)</div>
