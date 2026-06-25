@@ -2879,7 +2879,10 @@ async function autoSendAll(){
     alert('발송할 발주처가 없어요.\n📇 발주처 전달방식 등록 패널에서 이메일/카톡/사이트 중 하나를 지정해 주세요.');
     return;
   }
-  if (!confirm(`전체 자동 발송 시작할까요?\n\n📧 이메일 자동 발송: ${sendList.length}곳\n💬🌐 수동 처리 알림 (사본 저장): ${manualList.length}곳\n❓ 전달방식 미지정 (건너뜀): ${skipList.length}곳\n\n· 모든 발주처는 동시에 PC 발주서 폴더에도 사본 저장됨\n· 카톡/발주사이트 거래처는 발송 후 알림 표시`)) return;
+  // 발송 시 같은 발주처(다른 사업자)는 1통으로 합쳐 보내므로, 메일 통수는 발주처 기준 카운트
+  const sendVendorSet = new Set(sendList.map(gk => gk.split('|')[0]));
+  const manualVendorSet = new Set(manualList.map(gk => gk.split('|')[0]));
+  if (!confirm(`전체 자동 발송 시작할까요?\n\n📧 이메일 자동 발송: ${sendVendorSet.size}곳 (총 ${sendList.length}건, 같은 거래처는 한 메일로 합쳐 발송)\n💬🌐 수동 처리 알림 (사본 저장): ${manualVendorSet.size}곳\n❓ 전달방식 미지정 (건너뜀): ${skipList.length}곳\n\n· 모든 발주처는 동시에 PC 발주서 폴더에도 사본 저장됨\n· 카톡/발주사이트 거래처는 발송 후 알림 표시`)) return;
   // 사전 토큰 확보 (실패하면 중단)
   if (sendList.length) {
     try { await gmailRequestToken(); } catch(e) { alert('Gmail 인증 실패: '+e.message); return; }
@@ -2898,46 +2901,72 @@ async function autoSendAll(){
       console.warn('발주서 생성 실패:', gk, e);
     }
   }
-  // 2) 이메일 발송
+  // 2) 이메일 발송 — 같은 발주처(다른 사업자)는 1통의 메일로 합치기 (엑셀 N개 첨부)
+  const sentVendors = new Set();
+  // 발주처별로 gk 그룹화
+  const byVendor = {};
   for (const gk of sendList) {
-    const built = builtMap[gk]; if (!built) continue;
-    const v = built.vendor, a = built.alias;
-    const brand = _brandLabel(a);  // 그로븐 / 옐로우브릿지
+    const v = gk.split('|')[0];
+    (byVendor[v] = byVendor[v] || []).push(gk);
+  }
+  for (const [v, gks] of Object.entries(byVendor)) {
     const to = emails[v];
-    const subject = _applyTpl(tpl.subject, v, today, brand);
-    const body    = _applyTpl(tpl.body,    v, today, brand);
-    try {
+    const aliases = gks.map(gk => gk.split('|')[1]);
+    const brands = [...new Set(aliases.map(a => _brandLabel(a)).filter(Boolean))];
+    const brandStr = brands.length ? brands.join('+') : '';
+    const subject = _applyTpl(tpl.subject, v, today, brandStr);
+    const body    = _applyTpl(tpl.body,    v, today, brandStr);
+    const attachments = [];
+    const fnames = [];
+    for (const gk of gks) {
+      const built = builtMap[gk]; if (!built) continue;
       const b64 = _wbToBase64(built.wb);
-      const attachments = [
-        { name: built.fname, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', b64 }
-      ];
-      // 사업자별 명함 자동 첨부
+      attachments.push({ name: built.fname, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', b64 });
+      fnames.push(built.fname);
+    }
+    // 사업자별 명함 자동 첨부 (등장하는 모든 사업자, 중복 제거)
+    for (const brand of brands) {
       const card = gmailGetCard(brand);
-      if (card && card.b64) attachments.push({ name: card.name||'명함.png', type: card.type||'image/png', b64: card.b64 });
+      if (card && card.b64) attachments.push({ name: card.name||(brand+'_명함.png'), type: card.type||'image/png', b64: card.b64 });
+    }
+    try {
       await gmailSendOne({to, subject, body, attachments});
-      sent.push({gk, vendor:v, alias:a, to, fname:built.fname});
-      logSent({vendor:v, alias:a, to, fname:built.fname, status:'sent'});
+      for (const gk of gks) {
+        const [vv, aa] = gk.split('|');
+        const built = builtMap[gk];
+        sent.push({gk, vendor:vv, alias:aa, to, fname: built?.fname||''});
+        logSent({vendor:vv, alias:aa, to, fname: built?.fname||'', status:'sent', merged: gks.length>1});
+      }
+      sentVendors.add(v);
     } catch(e) {
-      failed.push({gk, vendor:v, alias:a, to, error:e.message});
-      logSent({vendor:v, alias:a, to, fname:built.fname, status:'failed', error:e.message});
+      for (const gk of gks) {
+        const [vv, aa] = gk.split('|');
+        failed.push({gk, vendor:vv, alias:aa, to, error:e.message});
+        logSent({vendor:vv, alias:aa, to, fname: builtMap[gk]?.fname||'', status:'failed', error:e.message});
+      }
       console.error('발송 실패:', v, e);
     }
   }
   // 3) UI 갱신
   if (typeof renderStep3 === 'function') renderStep3();
-  // 4) 결과 모달
-  const manualMsg = manualList.length ? manualList.map(gk => {
-    const v = gk.split('|')[0];
+  // 4) 결과 모달 (발주처 단위로 표시)
+  const sentVendorsArr = [...new Set(sent.map(s => s.vendor))];
+  const failedVendorsArr = [...new Set(failed.map(f => f.vendor))];
+  const manualVendorsArr = [...new Set(manualList.map(gk => gk.split('|')[0]))];
+  const manualMsg = manualVendorsArr.length ? manualVendorsArr.map(v => {
     const methods = (delivery[v]||[]).filter(m => m === 'kakao' || m === 'site');
     const labels = methods.map(m => m==='kakao'?'💬 카톡':'🌐 발주사이트').join(' + ');
     return `  ${labels} — ${v} → 사본 폴더에 저장됨, 직접 전달 필요`;
   }).join('\n') : '';
-  const failedMsg = failed.length ? '\n\n❌ 실패:\n' + failed.map(f => `  ${f.vendor} (${f.to}): ${f.error}`).join('\n') : '';
-  const msg = `📧 이메일 자동 발송: ${sent.length}건 성공${failed.length?` / ${failed.length}건 실패`:''}` +
-              (manualList.length ? `\n\n📋 수동 처리 필요 (${manualList.length}곳):\n${manualMsg}` : '') +
+  const failedMsg = failedVendorsArr.length ? '\n\n❌ 실패:\n' + failedVendorsArr.map(v => {
+    const f = failed.find(x => x.vendor===v);
+    return `  ${v} (${f.to}): ${f.error}`;
+  }).join('\n') : '';
+  const msg = `📧 이메일 자동 발송: ${sentVendorsArr.length}곳 (총 ${sent.length}건) 성공${failedVendorsArr.length?` / ${failedVendorsArr.length}곳 실패`:''}` +
+              (manualVendorsArr.length ? `\n\n📋 수동 처리 필요 (${manualVendorsArr.length}곳):\n${manualMsg}` : '') +
               failedMsg;
   alert(msg);
-  _poShowToast(`✅ 발송 완료: 이메일 ${sent.length}건 · 수동 ${manualList.length}건`);
+  _poShowToast(`✅ 발송 완료: 이메일 ${sentVendorsArr.length}곳 · 수동 ${manualVendorsArr.length}곳`);
 }
 // ── Gmail 설정 패널 (코드 관리 탭에 들어감) ──
 function renderGmailSettingsArea(){
