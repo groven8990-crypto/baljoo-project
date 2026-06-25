@@ -2773,7 +2773,7 @@ function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}
     + '</div>';
   for (const img of (inlineImages||[])) {
     if (!img || !img.b64 || !img.cid) continue;
-    htmlBody += `<div style="margin-top:18px"><img src="cid:${img.cid}" style="max-width:480px;height:auto;display:block"></div>`;
+    htmlBody += `<div style="margin-top:14px"><img src="cid:${img.cid}" style="width:260px;height:auto;display:block"></div>`;
   }
   htmlBody += '</body></html>';
   const outerB   = '_outer_'   + Math.random().toString(36).slice(2);
@@ -2814,13 +2814,18 @@ function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}
     lines.push(_b64chunk(btoa(unescape(encodeURIComponent(htmlBody)))));
   }
   // ─── 첨부 ───
+  // 한글 파일명: RFC 2231 표준 (name*=UTF-8''… / filename*=UTF-8''…) 사용
+  // 호환을 위해 ASCII 대체 name 값도 같이 제공 (한글 → '_' 치환)
+  const asciiSafe = n => String(n||'attachment').replace(/[^\x20-\x7E]/g, '_').replace(/[\\\/"]/g,'_').slice(0,80) || 'attachment';
   for (const a of (attachments||[])) {
     if (!a || !a.b64) continue;
     const fn = a.name || 'attachment';
+    const ascii = asciiSafe(fn);
+    const enc2231 = encodeURIComponent(fn);
     lines.push(`--${outerB}`);
-    lines.push(`Content-Type: ${a.type||'application/octet-stream'}; name="${enc2047(fn)}"`);
+    lines.push(`Content-Type: ${a.type||'application/octet-stream'}; name="${ascii}"; name*=UTF-8''${enc2231}`);
     lines.push('Content-Transfer-Encoding: base64');
-    lines.push(`Content-Disposition: attachment; ${encFnameParam(fn)}`);
+    lines.push(`Content-Disposition: attachment; filename="${ascii}"; filename*=UTF-8''${enc2231}`);
     lines.push('');
     lines.push(_b64chunk(a.b64));
   }
