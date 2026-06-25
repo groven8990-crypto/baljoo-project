@@ -2755,49 +2755,84 @@ function buildVendorWorkbook(gk){
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
   return { wb, vendor: v, alias: a, fname: makeFileName(v, a), orders };
 }
-// MIME multipart (with N attachments) → Base64 URL-safe
-//   attachments: [{ name, type, b64 }]
-function _buildMimeMail({to, from, subject, body, attachments}){
-  const boundary = '_b_' + Math.random().toString(36).slice(2);
-  const subjectEnc = '=?UTF-8?B?' + btoa(unescape(encodeURIComponent(subject))) + '?=';
-  // RFC 2047 인코딩 파일명 (한글 안전)
-  const encFname = n => '=?UTF-8?B?' + btoa(unescape(encodeURIComponent(n))) + '?=';
-  const parts = [
-    `--${boundary}`,
-    'Content-Type: text/plain; charset=UTF-8',
-    'Content-Transfer-Encoding: base64',
-    '',
-    btoa(unescape(encodeURIComponent(body||''))),
-  ];
+// base64 76자 단위 청크 (RFC 2045)
+function _b64chunk(s){ return String(s||'').replace(/(.{76})/g, '$1\r\n'); }
+// HTML 이스케이프
+function _htmlEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// MIME multipart 빌더 — HTML 본문 + 인라인 이미지(cid) + 첨부 분리
+//   bodyText: 평문 본문 (\n 자동으로 <br>)
+//   attachments: [{name, type, b64}]  → 첨부
+//   inlineImages: [{cid, type, b64}]   → 본문 끝 인라인 이미지 (서명 명함 등)
+function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}){
+  const enc2047 = s => '=?UTF-8?B?' + btoa(unescape(encodeURIComponent(s||''))) + '?=';
+  // RFC 2231 filename 파라미터 (한글 안전)
+  const encFnameParam = n => "filename*=UTF-8''" + encodeURIComponent(n||'');
+  // HTML 본문 빌드
+  let htmlBody = '<html><body><div style="font-family:\'맑은 고딕\',Malgun Gothic,sans-serif;font-size:14px;color:#212121;white-space:pre-wrap">'
+    + _htmlEsc(bodyText).replace(/\n/g, '<br>')
+    + '</div>';
+  for (const img of (inlineImages||[])) {
+    if (!img || !img.b64 || !img.cid) continue;
+    htmlBody += `<div style="margin-top:18px"><img src="cid:${img.cid}" style="max-width:480px;height:auto;display:block"></div>`;
+  }
+  htmlBody += '</body></html>';
+  const outerB   = '_outer_'   + Math.random().toString(36).slice(2);
+  const relatedB = '_related_' + Math.random().toString(36).slice(2);
+  const lines = [];
+  lines.push(`To: ${to}`);
+  if (from) lines.push(`From: ${from}`);
+  lines.push(`Subject: ${enc2047(subject)}`);
+  lines.push('MIME-Version: 1.0');
+  lines.push(`Content-Type: multipart/mixed; boundary="${outerB}"`);
+  lines.push('');
+  // ─── multipart/related: HTML + 인라인 이미지 ───
+  lines.push(`--${outerB}`);
+  const useRelated = (inlineImages||[]).some(i => i && i.b64);
+  if (useRelated) {
+    lines.push(`Content-Type: multipart/related; boundary="${relatedB}"`);
+    lines.push('');
+    lines.push(`--${relatedB}`);
+    lines.push('Content-Type: text/html; charset=UTF-8');
+    lines.push('Content-Transfer-Encoding: base64');
+    lines.push('');
+    lines.push(_b64chunk(btoa(unescape(encodeURIComponent(htmlBody)))));
+    for (const img of (inlineImages||[])) {
+      if (!img || !img.b64 || !img.cid) continue;
+      lines.push(`--${relatedB}`);
+      lines.push(`Content-Type: ${img.type||'image/png'}`);
+      lines.push('Content-Transfer-Encoding: base64');
+      lines.push(`Content-ID: <${img.cid}>`);
+      lines.push('Content-Disposition: inline');
+      lines.push('');
+      lines.push(_b64chunk(img.b64));
+    }
+    lines.push(`--${relatedB}--`);
+  } else {
+    lines.push('Content-Type: text/html; charset=UTF-8');
+    lines.push('Content-Transfer-Encoding: base64');
+    lines.push('');
+    lines.push(_b64chunk(btoa(unescape(encodeURIComponent(htmlBody)))));
+  }
+  // ─── 첨부 ───
   for (const a of (attachments||[])) {
     if (!a || !a.b64) continue;
     const fn = a.name || 'attachment';
-    parts.push(
-      `--${boundary}`,
-      `Content-Type: ${a.type||'application/octet-stream'}; name="${encFname(fn)}"`,
-      'Content-Transfer-Encoding: base64',
-      `Content-Disposition: attachment; filename="${encFname(fn)}"`,
-      '',
-      a.b64
-    );
+    lines.push(`--${outerB}`);
+    lines.push(`Content-Type: ${a.type||'application/octet-stream'}; name="${enc2047(fn)}"`);
+    lines.push('Content-Transfer-Encoding: base64');
+    lines.push(`Content-Disposition: attachment; ${encFnameParam(fn)}`);
+    lines.push('');
+    lines.push(_b64chunk(a.b64));
   }
-  parts.push(`--${boundary}--`, '');
-  const headers = [
-    `To: ${to}`,
-    from ? `From: ${from}` : null,
-    `Subject: ${subjectEnc}`,
-    'MIME-Version: 1.0',
-    `Content-Type: multipart/mixed; boundary="${boundary}"`,
-    '',
-  ].filter(x => x !== null);
-  const lines = headers.concat(parts).join('\r\n');
-  // URL-safe base64
-  return btoa(unescape(encodeURIComponent(lines))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  lines.push(`--${outerB}--`);
+  lines.push('');
+  const raw = lines.join('\r\n');
+  return btoa(unescape(encodeURIComponent(raw))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 }
 // Gmail API send
-async function gmailSendOne({to, subject, body, attachments}){
+async function gmailSendOne({to, subject, body, attachments, inlineImages}){
   const token = await gmailRequestToken();
-  const raw = _buildMimeMail({to, subject, body, attachments});
+  const raw = _buildMimeMail({to, subject, bodyText: body, attachments, inlineImages});
   const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer '+token, 'Content-Type': 'application/json' },
@@ -2940,11 +2975,11 @@ async function autoSendAll(){
       attachments.push({ name: built.fname, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', b64 });
       fnames.push(built.fname);
     }
-    // 명함 자동 첨부 (등록되어 있으면 1개만)
+    // 명함은 본문 끝 인라인 이미지(서명)로 — 첨부 아님
     const _card = gmailGetCard();
-    if (_card && _card.b64) attachments.push({ name: _card.name||'명함.png', type: _card.type||'image/png', b64: _card.b64 });
+    const inlineImages = (_card && _card.b64) ? [{ cid: 'card_sig', type: _card.type||'image/png', b64: _card.b64 }] : [];
     try {
-      await gmailSendOne({to, subject, body, attachments});
+      await gmailSendOne({to, subject, body, attachments, inlineImages});
       for (const gk of gks) {
         const [vv, aa] = gk.split('|');
         const built = builtMap[gk];
@@ -3086,10 +3121,11 @@ async function autoSendVendor(vendorName){
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     b64: _wbToBase64(b.wb)
   }));
+  // 명함은 본문 끝 인라인 이미지(서명)로 — 첨부 아님
   const card = gmailGetCard();
-  if (card && card.b64) attachments.push({ name: card.name||'명함.png', type: card.type||'image/png', b64: card.b64 });
+  const inlineImages = (card && card.b64) ? [{ cid: 'card_sig', type: card.type||'image/png', b64: card.b64 }] : [];
   try {
-    await gmailSendOne({to: emails[vendorName], subject, body, attachments});
+    await gmailSendOne({to: emails[vendorName], subject, body, attachments, inlineImages});
     for (const b of built) logSent({vendor:b.vendor, alias:b.alias, to: emails[vendorName], fname:b.fname, status:'sent', merged: built.length>1});
     _poShowToast(`✅ ${vendorName} 발송 완료 (첨부 ${attachments.length}개)`);
     if (typeof renderStep3 === 'function') renderStep3();
