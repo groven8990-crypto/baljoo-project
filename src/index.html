@@ -329,6 +329,7 @@
     <button class="sub-tab-btn active" id="stab-code" onclick="switchSubTab('code')">🔑 코드 등록</button>
     <button class="sub-tab-btn" id="stab-codemap" onclick="switchSubTab('codemap')">📋 변환 코드 목록</button>
     <button class="sub-tab-btn" id="stab-optmap" onclick="switchSubTab('optmap')">🔀 옵션 변환 규칙</button>
+    <button class="sub-tab-btn" id="stab-vendortpl" onclick="switchSubTab('vendortpl');renderCustomVendorList()">📇 발주처 양식</button>
   </div>
 
   <!-- 서브탭: 코드 등록 ─────────────────────────────── -->
@@ -507,6 +508,36 @@
       <div id="optMapList"><p style="font-size:13px;color:var(--text3)">등록된 규칙이 없습니다.</p></div>
     </div>
     <div class="alert alert-info">💾 변환 규칙도 브라우저에 자동 저장됩니다. 위 <strong>전체 데이터 내보내기</strong>로 함께 백업됩니다.</div>
+  </div>
+
+  <!-- 서브탭: 발주처 양식 ─────────────────────────────── -->
+  <div class="sub-content" id="subtab-vendortpl">
+    <div class="card">
+      <div class="card-title">📇 발주처 양식 추가</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+        새 발주처를 코드 없이 등록할 수 있어요. 베이스 양식을 골라서 발주처 이름·코드 prefix 만 입력하면 발주서 생성에 바로 반영됩니다.<br>
+        <strong style="color:var(--danger)">Prefix</strong>는 판매자상품코드 시작 패턴이에요 (예: <code>그린캠]</code>, <code>그린캠_</code>). 콤마(,)로 여러 개 입력 가능.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1.5fr 1fr auto;gap:8px;align-items:end">
+        <div><label style="font-size:11px;color:var(--text3);font-weight:500">발주처 이름</label><input class="inp" id="cvName" placeholder="예: 그린캠"></div>
+        <div><label style="font-size:11px;color:var(--text3);font-weight:500">코드 prefix (콤마구분)</label><input class="inp" id="cvPrefixes" placeholder="예: 그린캠], 그린캠_"></div>
+        <div><label style="font-size:11px;color:var(--text3);font-weight:500">베이스 양식</label>
+          <select class="inp" id="cvBaseFormat">
+            <option value="">선택…</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="onAddCustomVendor()" style="height:36px">+ 추가</button>
+      </div>
+      <div id="cvAddError" style="font-size:12px;color:var(--danger);margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📋 등록된 발주처 양식 <span id="cvCountText" style="font-weight:400;font-size:12px;color:var(--text3)"></span></div>
+      <div id="customVendorList"><p style="font-size:13px;color:var(--text3)">등록된 발주처 양식이 없습니다.</p></div>
+    </div>
+    <div class="alert alert-info" style="font-size:12px">
+      ℹ <b>베이스 양식</b>이란 발주서 컬럼 구조예요. 같은 베이스를 쓰는 발주처들은 똑같은 컬럼/순서로 엑셀이 만들어져요. 새 양식이 필요하면 코드 추가가 필요하니 알려주세요.
+    </div>
   </div>
 
 </div>
@@ -1215,7 +1246,111 @@ const VENDOR_PREFIXES = {
   '공덕농협':      ['공덕-','공덕_','공덕'],
   '도매꾹':        ['도매꾹]','도매꾹-','도매꾹_'],
   '동일':          ['동일]','동일-','동일_'],
+  '그린캠':        ['그린캠]','그린캠-','그린캠_'],
 };
+// 사용자 등록 발주처 (UI 에서 추가) — 기존 양식을 베이스로 발주처 이름/prefix 만 새로
+// 저장 형식: { '발주처명': { prefixes: ['x]','x_'], baseFormat: '일비' } }
+const LS_CUSTOM_VENDORS = 'yb_custom_vendors';
+const BASE_FORMAT_OPTIONS = ['일비','최고집','늘푸른우리','거풍푸드','생선상륙','공덕농협','푸드엔드베스트','한마당식품','남부파머스','해담별'];
+function loadCustomVendors(){ try{ return JSON.parse(localStorage.getItem(LS_CUSTOM_VENDORS)||'{}'); }catch{ return {}; } }
+function saveCustomVendors(map){ try{ localStorage.setItem(LS_CUSTOM_VENDORS, JSON.stringify(map)); }catch(e){} }
+function mergeCustomVendorPrefixes(){
+  const cv = loadCustomVendors();
+  for (const [name, def] of Object.entries(cv)) {
+    if (Array.isArray(def?.prefixes) && def.prefixes.length) {
+      VENDOR_PREFIXES[name] = def.prefixes.filter(Boolean);
+    }
+  }
+}
+mergeCustomVendorPrefixes();
+function addCustomVendor(name, prefixesStr, baseFormat){
+  name = String(name||'').trim();
+  if (!name) { alert('발주처 이름을 입력해 주세요.'); return false; }
+  if (VENDOR_PREFIXES[name] && !loadCustomVendors()[name]) {
+    alert(`'${name}' 은 이미 내장된 발주처예요. 다른 이름을 써주세요.`);
+    return false;
+  }
+  if (!BASE_FORMAT_OPTIONS.includes(baseFormat)) { alert('베이스 양식을 선택해 주세요.'); return false; }
+  const prefixes = String(prefixesStr||'').split(',').map(s=>s.trim()).filter(Boolean);
+  if (!prefixes.length) { alert('코드 prefix 를 한 개 이상 입력해 주세요. (콤마 구분)'); return false; }
+  const cv = loadCustomVendors();
+  cv[name] = { prefixes, baseFormat };
+  saveCustomVendors(cv);
+  VENDOR_PREFIXES[name] = prefixes;
+  return true;
+}
+function removeCustomVendor(name){
+  const cv = loadCustomVendors();
+  if (!cv[name]) return;
+  delete cv[name];
+  saveCustomVendors(cv);
+  delete VENDOR_PREFIXES[name];
+}
+// 베이스 양식 셀렉트 채우기
+function fillBaseFormatSelect(){
+  const sel = document.getElementById('cvBaseFormat');
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">선택…</option>' +
+    BASE_FORMAT_OPTIONS.map(b => `<option value="${b}" ${cur===b?'selected':''}>${b} 양식</option>`).join('');
+}
+function onAddCustomVendor(){
+  const errEl = document.getElementById('cvAddError');
+  if (errEl) errEl.textContent = '';
+  const name = document.getElementById('cvName').value;
+  const pref = document.getElementById('cvPrefixes').value;
+  const base = document.getElementById('cvBaseFormat').value;
+  if (!addCustomVendor(name, pref, base)) return;
+  document.getElementById('cvName').value = '';
+  document.getElementById('cvPrefixes').value = '';
+  document.getElementById('cvBaseFormat').value = '';
+  renderCustomVendorList();
+  // 주문 다시 매칭 + UI 갱신
+  if (typeof rematchAllOrders === 'function') rematchAllOrders();
+  if (typeof renderStep2 === 'function') renderStep2();
+  if (typeof renderStep3 === 'function') renderStep3();
+}
+function onRemoveCustomVendor(name){
+  if (!confirm(`'${name}' 발주처 양식을 삭제할까요?\n(이 발주처에 잡혀있던 주문들은 미매칭으로 돌아갑니다)`)) return;
+  removeCustomVendor(name);
+  renderCustomVendorList();
+  if (typeof rematchAllOrders === 'function') rematchAllOrders();
+  if (typeof renderStep2 === 'function') renderStep2();
+  if (typeof renderStep3 === 'function') renderStep3();
+}
+function renderCustomVendorList(){
+  fillBaseFormatSelect();
+  const el = document.getElementById('customVendorList');
+  if (!el) return;
+  const cv = loadCustomVendors();
+  const names = Object.keys(cv);
+  const cntEl = document.getElementById('cvCountText');
+  if (cntEl) cntEl.textContent = names.length ? `(${names.length}개)` : '';
+  if (!names.length) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--text3)">등록된 발주처 양식이 없습니다.</p>';
+    return;
+  }
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:#F3F4F6;color:#374151">
+      <th style="padding:8px;text-align:left;font-weight:600">발주처</th>
+      <th style="padding:8px;text-align:left;font-weight:600">코드 prefix</th>
+      <th style="padding:8px;text-align:left;font-weight:600">베이스 양식</th>
+      <th style="padding:8px;text-align:right;font-weight:600">관리</th>
+    </tr></thead>
+    <tbody>${names.sort().map(n => {
+      const d = cv[n] || {};
+      const pfxs = (d.prefixes||[]).map(p => `<code style="background:#FEF3C7;padding:1px 5px;border-radius:3px;margin-right:3px">${escHtml(p)}</code>`).join('');
+      return `<tr style="border-bottom:1px solid #F3F4F6">
+        <td style="padding:8px;font-weight:600">${escHtml(n)}</td>
+        <td style="padding:8px">${pfxs||'<span style="color:var(--text3)">없음</span>'}</td>
+        <td style="padding:8px">${escHtml(d.baseFormat||'-')} 양식</td>
+        <td style="padding:8px;text-align:right">
+          <button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="onRemoveCustomVendor('${esc(n)}')">삭제</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
 // 발주 마감시간 우선순위 (작을수록 빨리 마감 → 위에 정렬)
 const VENDOR_CUTOFF_PRIORITY = {
   '늘푸른우리':       1,  // 09:00~09:30
@@ -2619,6 +2754,11 @@ function applyMergeForVendor(orders, vendor){
 }
 
 function buildRows(vk,orders,alias){
+  // 사용자 등록 발주처면 베이스 양식으로 위임
+  const _cv = loadCustomVendors();
+  if (_cv[vk] && _cv[vk].baseFormat && _cv[vk].baseFormat !== vk) {
+    return buildRows(_cv[vk].baseFormat, orders, alias);
+  }
   orders = applyMergeForVendor(orders, vk);
   // 택배사 정규화: 발주처 기본 택배사가 있을 때, 파일 값이 비표준('기타택배'·빈칸 등)이면 기본값으로 자동 보정
   const defCarrier = VENDOR_COURIER_DEFAULT && VENDOR_COURIER_DEFAULT[vk];
@@ -2628,7 +2768,7 @@ function buildRows(vk,orders,alias){
   }
   const s=getSender(alias);
   switch(vk){
-    case '일비':case '일해수산':case '충남마른김수협':
+    case '일비':case '일해수산':case '충남마른김수협':case '그린캠':
       return [['받는분성명','받는분전화번호','받는분주소(전체, 분할)','품목명','수량','배송메세지','','택배사','보내는분성명','보내는분주소(전체, 분할)','보내는분전화번호'],
         ...orders.map(o=>[o.recv_name,o.recv_phone,o.addr,ilbiItem(o),effQty(o),o.memo,'',o.carrier||'',s.name,s.addr,s.phone])];
     case '최고집':
