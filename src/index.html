@@ -2667,8 +2667,8 @@ function gmailTokenValid(){
 }
 function gmailGetTemplate(){
   const def = {
-    subject: '[발주서] {DATE} {VENDOR}',
-    body: '안녕하세요. {VENDOR} 담당자님,\n\n{DATE} 발주 건 송부드립니다.\n첨부된 엑셀 확인 부탁드립니다.\n\n감사합니다.\n발주 자동화 시스템'
+    subject: '[{BRAND}]({YYMMDD}) 발주서',
+    body: '안녕하세요, {VENDOR} 담당자님\n\n금일 발주서 보내드립니다.\n감사합니다.'
   };
   try { return {...def, ...JSON.parse(localStorage.getItem(LS_GMAIL_TPL)||'{}')}; } catch { return def; }
 }
@@ -2749,38 +2749,49 @@ function buildVendorWorkbook(gk){
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
   return { wb, vendor: v, alias: a, fname: makeFileName(v, a), orders };
 }
-// MIME multipart (with attachment) → Base64 URL-safe
-function _buildMimeMail({to, from, subject, body, attachName, attachB64}){
+// MIME multipart (with N attachments) → Base64 URL-safe
+//   attachments: [{ name, type, b64 }]
+function _buildMimeMail({to, from, subject, body, attachments}){
   const boundary = '_b_' + Math.random().toString(36).slice(2);
   const subjectEnc = '=?UTF-8?B?' + btoa(unescape(encodeURIComponent(subject))) + '?=';
-  const lines = [
+  // RFC 2047 인코딩 파일명 (한글 안전)
+  const encFname = n => '=?UTF-8?B?' + btoa(unescape(encodeURIComponent(n))) + '?=';
+  const parts = [
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    btoa(unescape(encodeURIComponent(body||''))),
+  ];
+  for (const a of (attachments||[])) {
+    if (!a || !a.b64) continue;
+    const fn = a.name || 'attachment';
+    parts.push(
+      `--${boundary}`,
+      `Content-Type: ${a.type||'application/octet-stream'}; name="${encFname(fn)}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${encFname(fn)}"`,
+      '',
+      a.b64
+    );
+  }
+  parts.push(`--${boundary}--`, '');
+  const headers = [
     `To: ${to}`,
     from ? `From: ${from}` : null,
     `Subject: ${subjectEnc}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
     '',
-    `--${boundary}`,
-    'Content-Type: text/plain; charset=UTF-8',
-    'Content-Transfer-Encoding: base64',
-    '',
-    btoa(unescape(encodeURIComponent(body))),
-    `--${boundary}`,
-    `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; name="${attachName}"`,
-    'Content-Transfer-Encoding: base64',
-    `Content-Disposition: attachment; filename="${attachName}"`,
-    '',
-    attachB64,
-    `--${boundary}--`,
-    ''
-  ].filter(x => x !== null).join('\r\n');
+  ].filter(x => x !== null);
+  const lines = headers.concat(parts).join('\r\n');
   // URL-safe base64
   return btoa(unescape(encodeURIComponent(lines))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 }
 // Gmail API send
-async function gmailSendOne({to, subject, body, attachName, attachB64}){
+async function gmailSendOne({to, subject, body, attachments}){
   const token = await gmailRequestToken();
-  const raw = _buildMimeMail({to, subject, body, attachName, attachB64});
+  const raw = _buildMimeMail({to, subject, body, attachments});
   const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
     headers: { 'Authorization': 'Bearer '+token, 'Content-Type': 'application/json' },
@@ -2792,8 +2803,52 @@ async function gmailSendOne({to, subject, body, attachName, attachB64}){
   }
   return await resp.json();
 }
-function _applyTpl(tpl, vendor, date){
-  return tpl.replace(/\{VENDOR\}/g, vendor).replace(/\{DATE\}/g, date);
+function _applyTpl(tpl, vendor, date, brand){
+  const yymmdd = String(date||'').replace(/-/g,'').slice(2);
+  return String(tpl||'')
+    .replace(/\{VENDOR\}/g, vendor||'')
+    .replace(/\{DATE\}/g, date||'')
+    .replace(/\{YYMMDD\}/g, yymmdd)
+    .replace(/\{BRAND\}/g, brand||'');
+}
+// alias → 사업자명 (그로븐 / 옐로우브릿지)
+function _brandLabel(alias){
+  const a = String(alias||'');
+  if (a.includes('로또상회')) return '그로븐';
+  if (a.includes('자꾸가게')) return '옐로우브릿지';
+  return '';
+}
+// ── 사업자별 명함 (이메일 첨부용) ──
+const LS_GMAIL_CARD_GROBN = 'yb_gmail_card_grobn';
+const LS_GMAIL_CARD_YB    = 'yb_gmail_card_yb';
+// 저장 형식: { name, type, b64 }  — b64 는 순수 base64 (data:url prefix 제외)
+function gmailGetCard(brand){
+  const key = brand==='그로븐'?LS_GMAIL_CARD_GROBN:(brand==='옐로우브릿지'?LS_GMAIL_CARD_YB:null);
+  if (!key) return null;
+  try { return JSON.parse(localStorage.getItem(key)||'null'); } catch { return null; }
+}
+function gmailSetCard(brand, card){
+  const key = brand==='그로븐'?LS_GMAIL_CARD_GROBN:(brand==='옐로우브릿지'?LS_GMAIL_CARD_YB:null);
+  if (!key) return;
+  if (card) localStorage.setItem(key, JSON.stringify(card)); else localStorage.removeItem(key);
+}
+function onGmailCardUpload(brand, input){
+  const f = input.files && input.files[0]; if (!f) return;
+  if (f.size > 2*1024*1024) { alert('명함 이미지는 2MB 이하만 가능해요.'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataUrl = String(e.target.result||'');
+    const b64 = dataUrl.split(',')[1] || '';
+    gmailSetCard(brand, { name: f.name, type: f.type||'image/png', b64 });
+    _poShowToast(`✅ ${brand} 명함 저장됨`);
+    renderGmailSettingsArea();
+  };
+  reader.readAsDataURL(f);
+}
+function gmailRemoveCard(brand){
+  if (!confirm(`${brand} 명함을 삭제할까요?`)) return;
+  gmailSetCard(brand, null);
+  renderGmailSettingsArea();
 }
 // 메인: 전체 자동 발송
 async function autoSendAll(){
@@ -2847,12 +2902,19 @@ async function autoSendAll(){
   for (const gk of sendList) {
     const built = builtMap[gk]; if (!built) continue;
     const v = built.vendor, a = built.alias;
+    const brand = _brandLabel(a);  // 그로븐 / 옐로우브릿지
     const to = emails[v];
-    const subject = _applyTpl(tpl.subject, v, today);
-    const body    = _applyTpl(tpl.body,    v, today);
+    const subject = _applyTpl(tpl.subject, v, today, brand);
+    const body    = _applyTpl(tpl.body,    v, today, brand);
     try {
       const b64 = _wbToBase64(built.wb);
-      await gmailSendOne({to, subject, body, attachName: built.fname, attachB64: b64});
+      const attachments = [
+        { name: built.fname, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', b64 }
+      ];
+      // 사업자별 명함 자동 첨부
+      const card = gmailGetCard(brand);
+      if (card && card.b64) attachments.push({ name: card.name||'명함.png', type: card.type||'image/png', b64: card.b64 });
+      await gmailSendOne({to, subject, body, attachments});
       sent.push({gk, vendor:v, alias:a, to, fname:built.fname});
       logSent({vendor:v, alias:a, to, fname:built.fname, status:'sent'});
     } catch(e) {
@@ -2906,10 +2968,26 @@ function renderGmailSettingsArea(){
         ${connected?`<button class="btn" onclick="gmailDisconnect()" style="height:36px">연결 해제</button>`:''}
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:6px">📝 메일 템플릿 <span style="font-size:11px;color:var(--text3);font-weight:400">— {VENDOR} = 발주처명, {DATE} = 오늘 날짜</span></div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">📝 메일 템플릿</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">치환 변수: <code>{VENDOR}</code> 발주처명 · <code>{BRAND}</code> 그로븐/옐로우브릿지 · <code>{DATE}</code> 2026-06-25 · <code>{YYMMDD}</code> 260625</div>
         <input class="inp" id="gmailTplSubject" value="${escHtml(tpl.subject)}" placeholder="제목" style="margin-bottom:6px">
         <textarea class="inp" id="gmailTplBody" rows="6" placeholder="본문">${escHtml(tpl.body)}</textarea>
         <button class="btn btn-sm" onclick="gmailSaveTemplate(document.getElementById('gmailTplSubject').value, document.getElementById('gmailTplBody').value);_poShowToast('템플릿 저장됨')" style="margin-top:6px">💾 템플릿 저장</button>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">🪪 사업자별 명함 (이메일 자동 첨부)</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">이미지 파일 (PNG/JPG, 2MB 이하). 발주서 발송 시 사업자에 맞는 명함이 자동으로 함께 첨부돼요.</div>
+        ${['그로븐','옐로우브릿지'].map(brand => {
+          const card = gmailGetCard(brand);
+          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:12px;font-weight:600;min-width:90px">${brand}</span>
+            ${card ? `<img src="data:${card.type};base64,${card.b64}" style="max-height:48px;max-width:120px;border:1px solid var(--border);border-radius:4px">
+              <span style="font-size:11px;color:var(--text3);flex:1">${escHtml(card.name||'명함')}</span>
+              <button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="gmailRemoveCard('${brand}')">삭제</button>`
+            : `<label class="btn btn-sm" style="cursor:pointer">📎 명함 업로드<input type="file" accept="image/*" style="display:none" onchange="onGmailCardUpload('${brand}', this)"></label>
+              <span style="font-size:11px;color:var(--text3);flex:1">미등록</span>`}
+          </div>`;
+        }).join('')}
       </div>
       ${recent.length?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">📋 최근 발송 이력 (${hist.length}건 중 최근 5건)</div>
