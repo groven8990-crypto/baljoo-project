@@ -12497,7 +12497,7 @@ function wrRender(){
   const html = `
     <div id="wrReportContent" style="background:transparent;max-width:680px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
       <div class="wr-page" data-page="1" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06)">
-        <div style="font-size:20px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 주간 매출·매입 현황 <span style="font-size:11px;color:#888;font-weight:400">[1/3]</span></div>
+        <div style="font-size:20px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 주간 매출 현황 <span style="font-size:11px;color:#888;font-weight:400">[1/4]</span></div>
         <div style="font-size:11px;color:#888;margin-top:2px">월~일 누적 · 누적된 일일 ${inWeek.length}건</div>
 
         <!-- ═════════ 📊 매출 현황 섹션 ═════════ -->
@@ -12593,7 +12593,13 @@ function wrRender(){
             </tr>`;
           }).join('');
           return `
-        <div style="margin-top:26px;background:linear-gradient(135deg,#7B4B00,#A86E2E);color:#fff;padding:12px 18px;border-radius:8px;font-size:16px;font-weight:700;letter-spacing:.5px">💰 매입 현황</div>
+        </div><!-- 매출 섹션 끝 -->
+        <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 1/4</div>
+      </div><!-- /wr-page 1 -->
+      <div class="wr-page" data-page="2" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06);margin-top:14px">
+        <div style="font-size:20px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 주간 매입 현황 <span style="font-size:11px;color:#888;font-weight:400">[2/4]</span></div>
+        <div style="font-size:11px;color:#888;margin-top:2px">월~일 누적</div>
+        <div style="margin-top:18px;background:linear-gradient(135deg,#7B4B00,#A86E2E);color:#fff;padding:12px 18px;border-radius:8px;font-size:16px;font-weight:700;letter-spacing:.5px">💰 매입 현황</div>
         <div style="background:#FAF6EE;border:1px solid #E8DFC8;border-top:none;border-radius:0 0 8px 8px;padding:16px">
           <div style="background:#FFF5E3;padding:18px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
             <div>
@@ -12662,20 +12668,20 @@ function wrRender(){
               </tr></tfoot>
             </table>
           </div>
-        </div>`;
+        </div>
+        <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 2/4</div>`;
         })()}
-        <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 1/3</div>
-      </div>
-      <div class="wr-page" data-page="2" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06);margin-top:14px">
-        <div style="font-size:16px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 브랜드별 누적 <span style="font-size:11px;color:#888;font-weight:400">[2/3]</span></div>
+      </div><!-- /wr-page 2 -->
+      <div class="wr-page" data-page="3" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06);margin-top:14px">
+        <div style="font-size:16px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 브랜드별 누적 <span style="font-size:11px;color:#888;font-weight:400">[3/4]</span></div>
         ${srBrandSection('로또상회 (그로븐) — 주간 누적', '#1E3A5F', grAgg, {topProducts:3})}
         ${srBrandSection('자꾸가게 (옐로우브릿지) — 주간 누적', '#3A1E5F', ybAgg, {topProducts:3})}
-        <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 2/3</div>
+        <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 3/4</div>
       </div>
-      <div class="wr-page" data-page="3" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06);margin-top:14px">
-        <div style="font-size:16px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 디네트 B2B <span style="font-size:11px;color:#888;font-weight:400">[3/3]</span></div>
+      <div class="wr-page" data-page="4" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06);margin-top:14px">
+        <div style="font-size:16px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / 디네트 B2B <span style="font-size:11px;color:#888;font-weight:400">[4/4]</span></div>
         ${srDinetteSection(dnAgg) || '<div style="padding:30px 0;text-align:center;color:#888;font-size:13px">디네트 발주 없음</div>'}
-        <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 3/3</div>
+        <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 4/4</div>
       </div>
     </div>`;
   document.getElementById('wrReport').innerHTML = html;
@@ -12868,12 +12874,31 @@ async function wrExportImage(){
       _wrDownloadCanvas(canvas, safeName);
       saved.push('Downloads/'+safeName);
     };
+    // PNG 캡쳐 전: 페이지 내 input 들을 텍스트(span)로 변환 (html2canvas 가 입력칸 값을 잘 못 그림)
+    const _wrSwapInputsForExport = (root) => {
+      const subs = [];
+      root.querySelectorAll('input[type="number"], input[type="text"]').forEach(inp => {
+        const span = document.createElement('span');
+        const v = inp.value;
+        span.textContent = (v === '' || v == null) ? '0' : Number(v).toLocaleString();
+        // 원본 input 의 스타일 복사 (보이는 모습 동일하게)
+        const cs = window.getComputedStyle(inp);
+        span.style.cssText = `display:inline-block;font-size:${cs.fontSize};font-weight:${cs.fontWeight};color:${cs.color};padding:${cs.padding};text-align:${cs.textAlign};font-variant-numeric:tabular-nums`;
+        inp.parentNode.replaceChild(span, inp);
+        subs.push({span, original: inp});
+      });
+      return subs;
+    };
     if (pages.length === 0) {
+      const subs = _wrSwapInputsForExport(el);
       const canvas = await html2canvas(el, {backgroundColor:'#ffffff', scale:2, useCORS:true});
+      subs.forEach(({span, original}) => span.parentNode.replaceChild(original, span));
       await writeOne(canvas, `${today}-주간매출보고_${tag}.png`);
     } else {
       for (let i = 0; i < pages.length; i++) {
+        const subs = _wrSwapInputsForExport(pages[i]);
         const canvas = await html2canvas(pages[i], {backgroundColor:'#ffffff', scale:2, useCORS:true});
+        subs.forEach(({span, original}) => span.parentNode.replaceChild(original, span));
         await writeOne(canvas, `${today}-주간매출보고_${tag}_${i+1}of${pages.length}.png`);
         await new Promise(r => setTimeout(r, 250));
       }
