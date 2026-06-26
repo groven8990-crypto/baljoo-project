@@ -10974,12 +10974,22 @@ function srRender(){
   // 매입/순이익도 같이 스냅샷에 저장 — 이력 다시 봐도 그날 값 그대로
   const profitRows = srBuildProfitRows(allOrders);
   const profitSummary = profitRows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=r.fee;s.vat+=r.vat;s.profit+=r.profit;s.count+=r.count;return s;},{sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
+  // 광고비 — 그날의 사업자별 광고비 합계 (주간 합산용)
+  const adByBiz = {};
+  let adTotal = 0;
+  ['그로븐','옐로우브릿지','기타'].forEach(b => {
+    const a = (typeof srAdTotalFor === 'function') ? srAdTotalFor(b) : 0;
+    adByBiz[b] = a; adTotal += a;
+  });
+  profitSummary.adTotal = adTotal;
+  profitSummary.adByBiz = adByBiz;
   // 미리보기만 — 이력 저장은 사용자가 명시적으로 💾 이력에 저장 눌러야 함
   _srLastSnapshot = {
     date: dateStr,
     grAgg, ybAgg, dnAgg,
     selfSales, selfCnt, totalSales, totalCnt,
     profitRows, profitSummary,
+    adTotal, adByBiz,
     savedAt: Date.now()
   };
   const saveBtn = document.getElementById('srSaveBtn'); if (saveBtn) saveBtn.disabled = false;
@@ -12311,10 +12321,15 @@ function wrMergeDinette(snaps){
 }
 // 주간 매입/순이익 누적 — profitRows + profitSummary 기반
 function wrMergePurchase(snaps){
-  const total = {sales:0, purchase:0, fee:0, vat:0, profit:0, count:0};
+  const total = {sales:0, purchase:0, fee:0, vat:0, profit:0, count:0, adTotal:0, adjProfit:0};
   const byVendor = {};   // vendor -> {sales, purchase, count}
   const byBrand  = {};   // brand  -> {sales, purchase, count, fee, vat, profit}
   const byDateBrand = {}; // date -> {brand: {purchase, count}}
+  // 현재 광고비 설정 (구 스냅샷에 광고비 없을 때 폴백)
+  let _fallbackDailyAd = 0;
+  if (typeof srAdTotalFor === 'function') {
+    _fallbackDailyAd = (srAdTotalFor('그로븐')||0) + (srAdTotalFor('옐로우브릿지')||0) + (srAdTotalFor('기타')||0);
+  }
   for (const s of snaps) {
     const ps = s.profitSummary;
     if (ps) {
@@ -12325,6 +12340,11 @@ function wrMergePurchase(snaps){
       total.profit   += ps.profit   ||0;
       total.count    += ps.count    ||0;
     }
+    // 그 날의 광고비 — 스냅샷에 저장돼있으면 그걸 사용, 없으면 현재 설정값으로 폴백 (1일치)
+    const _dayAd = (ps && ps.adTotal != null) ? Number(ps.adTotal)||0
+                 : (s.adTotal != null         ? Number(s.adTotal)||0
+                                              : _fallbackDailyAd);
+    total.adTotal += _dayAd;
     if (!byDateBrand[s.date]) byDateBrand[s.date] = {};
     for (const r of (s.profitRows||[])) {
       const v = r.vendor || '-';
@@ -12345,6 +12365,8 @@ function wrMergePurchase(snaps){
       byDateBrand[s.date][b].count    += r.count   ||0;
     }
   }
+  // 광고비 차감한 최종 순이익
+  total.adjProfit = total.profit - total.adTotal;
   return { total, byVendor, byBrand, byDateBrand };
 }
 function wrRender(){
@@ -12563,16 +12585,28 @@ function wrRender(){
             <div>
               <div style="font-size:11px;color:#888">총 매입액</div>
               <div style="font-size:22px;font-weight:700;color:#7B4B00;margin-top:2px;white-space:nowrap">${purT.purchase.toLocaleString()}원</div>
-              <div style="font-size:11px;color:#888;margin-top:2px">순이익 <b style="color:${purT.profit>=0?'#16A34A':'#DC2626'}">${purT.profit.toLocaleString()}원</b></div>
+              <div style="font-size:11px;color:#888;margin-top:2px">매입 전 순이익 <b>${purT.profit.toLocaleString()}원</b></div>
             </div>
             <div>
+              <div style="font-size:11px;color:#888">📢 광고비 합계</div>
+              <div style="font-size:22px;font-weight:700;color:#DC2626;margin-top:2px;white-space:nowrap">${(purT.adTotal||0).toLocaleString()}원</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">일일 누적</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:#888">최종 순이익 (광고비 차감)</div>
+              <div style="font-size:22px;font-weight:700;color:${(purT.adjProfit||0)>=0?'#16A34A':'#DC2626'};margin-top:2px;white-space:nowrap">${(purT.adjProfit||0).toLocaleString()}원</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">${purT.profit.toLocaleString()} − ${(purT.adTotal||0).toLocaleString()}</div>
+            </div>
+          </div>
+          <div style="background:#FFF5E3;padding:12px 16px;border-radius:6px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div>
               <div style="font-size:11px;color:#888">그로븐 매입</div>
-              <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px;white-space:nowrap">${grPur.purchase.toLocaleString()}원</div>
+              <div style="font-size:16px;font-weight:700;color:#212121;margin-top:2px;white-space:nowrap">${grPur.purchase.toLocaleString()}원</div>
               <div style="font-size:11px;color:#888;margin-top:2px">${grPur.count.toLocaleString()}건</div>
             </div>
             <div>
               <div style="font-size:11px;color:#888">옐로우브릿지 매입</div>
-              <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px;white-space:nowrap">${ybPur.purchase.toLocaleString()}원</div>
+              <div style="font-size:16px;font-weight:700;color:#212121;margin-top:2px;white-space:nowrap">${ybPur.purchase.toLocaleString()}원</div>
               <div style="font-size:11px;color:#888;margin-top:2px">${ybPur.count.toLocaleString()}건</div>
             </div>
           </div>
