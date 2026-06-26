@@ -12319,6 +12319,19 @@ function wrMergeDinette(snaps){
   }
   return {count, sales, byCfg};
 }
+// 주간 광고비 수동 오버라이드 — 화면에서만 즉시 반영 (저장 안 함)
+let _wrCurrentProfitTotal = 0;
+function wrApplyAdOverride(v){
+  const ad = Math.max(0, parseInt(v)||0);
+  const newProfit = _wrCurrentProfitTotal - ad;
+  const adjEl = document.getElementById('wrAdjProfit');
+  const fEl = document.getElementById('wrAdjFormula');
+  if (adjEl) {
+    adjEl.textContent = newProfit.toLocaleString() + '원';
+    adjEl.style.color = newProfit >= 0 ? '#16A34A' : '#DC2626';
+  }
+  if (fEl) fEl.textContent = _wrCurrentProfitTotal.toLocaleString() + ' − ' + ad.toLocaleString();
+}
 // 주간 매입/순이익 누적 — profitRows + profitSummary 기반
 function wrMergePurchase(snaps){
   const total = {sales:0, purchase:0, fee:0, vat:0, profit:0, count:0, adTotal:0, adjProfit:0};
@@ -12387,6 +12400,7 @@ function wrRender(){
   const ybAgg = wrMergeAggs(inWeek, 'ybAgg');
   const dnAgg = wrMergeDinette(inWeek);
   const pur   = wrMergePurchase(inWeek);  // 매입 누적
+  _wrCurrentProfitTotal = pur.total.profit;  // 광고비 오버라이드 시 차감 기준값
   const selfSales = grAgg.totalSales + ybAgg.totalSales;
   const selfCnt   = grAgg.count + ybAgg.count;
   const totalSales = selfSales + dnAgg.sales;
@@ -12588,14 +12602,19 @@ function wrRender(){
               <div style="font-size:11px;color:#888;margin-top:2px">매입 전 순이익 <b>${purT.profit.toLocaleString()}원</b></div>
             </div>
             <div>
-              <div style="font-size:11px;color:#888">📢 광고비 합계</div>
-              <div style="font-size:22px;font-weight:700;color:#DC2626;margin-top:2px;white-space:nowrap">${(purT.adTotal||0).toLocaleString()}원</div>
-              <div style="font-size:11px;color:#888;margin-top:2px">일일 누적</div>
+              <div style="font-size:11px;color:#888">📢 광고비 합계 <span style="color:#888;font-weight:400">(직접 수정 가능)</span></div>
+              <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
+                <input type="number" id="wrAdOverride" min="0" step="1" value="${(purT.adTotal||0)}"
+                  oninput="wrApplyAdOverride(this.value)"
+                  style="width:140px;font-size:22px;font-weight:700;color:#DC2626;border:1px solid #FCA5A5;border-radius:6px;padding:4px 8px;background:#FFFBFB;text-align:right">
+                <span style="font-size:18px;font-weight:700;color:#DC2626">원</span>
+              </div>
+              <div style="font-size:11px;color:#888;margin-top:2px">자동 계산: ${(purT.adTotal||0).toLocaleString()}원</div>
             </div>
             <div>
               <div style="font-size:11px;color:#888">최종 순이익 (광고비 차감)</div>
-              <div style="font-size:22px;font-weight:700;color:${(purT.adjProfit||0)>=0?'#16A34A':'#DC2626'};margin-top:2px;white-space:nowrap">${(purT.adjProfit||0).toLocaleString()}원</div>
-              <div style="font-size:11px;color:#888;margin-top:2px">${purT.profit.toLocaleString()} − ${(purT.adTotal||0).toLocaleString()}</div>
+              <div id="wrAdjProfit" style="font-size:22px;font-weight:700;color:${(purT.adjProfit||0)>=0?'#16A34A':'#DC2626'};margin-top:2px;white-space:nowrap">${(purT.adjProfit||0).toLocaleString()}원</div>
+              <div id="wrAdjFormula" style="font-size:11px;color:#888;margin-top:2px">${purT.profit.toLocaleString()} − ${(purT.adTotal||0).toLocaleString()}</div>
             </div>
           </div>
           <div style="background:#FFF5E3;padding:12px 16px;border-radius:6px;margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
