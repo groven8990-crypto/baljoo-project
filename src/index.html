@@ -11195,10 +11195,13 @@ function _srBuildDinetteProfitRows(db){
       b2bName,
       count: info.orders.length,
       qtySum: info.orders.reduce((s,o)=>s+o.qty, 0),
+      reviewCount: 0,    // 디네트는 리뷰 개념 없음 (NaN 방지 초기화)
+      reviewQty:   0,
       sales: info.totalSales,
       fee: 0,
       orderDetail: info.orders,
       unit:    Number(saved.unit)||0,
+      reviewUnit: Number(saved.reviewUnit)||0,
       shipFee: Number(saved.shipFee != null ? saved.shipFee : saved.ship)||0,
       shipTiers: Array.isArray(saved.shipTiers) ? saved.shipTiers.slice() : [],
       consol:  Number(saved.consol)||0,
@@ -11282,9 +11285,15 @@ function srBuildProfitRows(orders){
   const ovDB = srLoadOverridesDB();
   for (const r of Object.values(map)) {
     // 매입가 = 일반 수량 × 매입단가 + 리뷰 수량 × 리뷰단가 (리뷰단가 미입력시 매입단가로 폴백)
-    const _effReviewUnit = (Number(r.reviewUnit) > 0) ? Number(r.reviewUnit) : r.unit;
-    const _realQty = Math.max(0, r.qtySum - r.reviewQty);
-    r.itemCost = _realQty * r.unit + r.reviewQty * _effReviewUnit;
+    // 모든 값 Number 강제 변환 + NaN→0 fallback 으로 NaN 전파 방지
+    const _unit       = Number(r.unit) || 0;
+    const _qtySum     = Number(r.qtySum) || 0;
+    const _reviewQty  = Number(r.reviewQty) || 0;
+    r.reviewQty   = _reviewQty;   // 후속 표시용으로도 보정값 사용
+    r.reviewCount = Number(r.reviewCount) || 0;
+    const _effReviewUnit = (Number(r.reviewUnit) > 0) ? Number(r.reviewUnit) : _unit;
+    const _realQty = Math.max(0, _qtySum - _reviewQty);
+    r.itemCost = _realQty * _unit + _reviewQty * _effReviewUnit;
     let shipTotal = 0;
     for (const d of r.orderDetail) {
       const computed = r.consol > 0 ? Math.max(1, Math.ceil(d.units / r.consol)) : 1;
