@@ -4997,7 +4997,7 @@ function invGuessVendor(fname) {
   for (const entry of custom) {
     if (entry.keyword && fname.includes(entry.keyword)) return entry.keyword;
   }
-  const known = ['푸드앤','푸드엔','일비','거풍푸드','거풍','최고집','현해랑','도매꾹','늘푸른'];
+  const known = ['푸드앤','푸드엔','일비','거풍푸드','거풍','최고집','현해랑','도매꾹','늘푸른','그린캠','한마당','다모아','남부파머스','남부','해담별','동일','공덕','생선상륙','일해수산'];
   for (const v of known) { if (fname.includes(v)) return v; }
   const m = fname.match(/[가-힣]+/g);
   return m ? m[0] : '미확인';
@@ -5100,8 +5100,26 @@ function invProcess() {
       const vendorCourierDefault = vendor ? invLookupCourier(vendor).courier : null;
       const oAddr = addrCol ? String(row[addrCol]||'').trim() : '';
       let found = false, ambiguous = false;
+      // 마스킹된 이름 매칭 — '김미*' / '김**' 같은 패턴을 풀네임과 매칭
+      //  : 송장파일이 익명화돼서 오는 경우 (CJ대한통운 등)
+      const _matchMaskedName = (orderName, trackMap) => {
+        // 직접 매칭 우선
+        if (trackMap[orderName]) return trackMap[orderName];
+        // 마스킹된 이름들 중 prefix 가 같은 것 찾기
+        const cands = [];
+        for (const k of Object.keys(trackMap)) {
+          if (!k.includes('*')) continue;
+          // '김미*' → prefix '김미', 길이 3
+          const prefix = k.split('*')[0];
+          const totalLen = k.length;
+          if (prefix && orderName.startsWith(prefix) && orderName.length === totalLen) {
+            cands.push(...trackMap[k].map(e => ({...e, _maskedKey: k})));
+          }
+        }
+        return cands.length ? cands : null;
+      };
       for (const tf of invTrackFiles) {
-        const entries = tf.map[name];
+        const entries = tf.map[name] || _matchMaskedName(name, tf.map);
         if (!name || !entries || !entries.length) continue;
         let entry;
         if (entries.length === 1) {
