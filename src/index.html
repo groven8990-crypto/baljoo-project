@@ -9503,7 +9503,11 @@ function priceRender(){
   const head=document.getElementById('pHead');
   const body=document.getElementById('pBody');
   if(!head||!body)return;
-  const TH=s=>`<th style="padding:6px 8px;white-space:nowrap;border-bottom:2px solid var(--border);text-align:left;background:var(--bg);font-size:11px;color:var(--text2);font-weight:600">${s}</th>`;
+  const TH=s=>{
+    // 총매입가 헤더만 빨간색 강조
+    if (s === '총매입가') return `<th style="padding:6px 8px;white-space:nowrap;border-bottom:2px solid #DC2626;text-align:right;background:#FEF2F2;font-size:11px;color:#DC2626;font-weight:700">${s}</th>`;
+    return `<th style="padding:6px 8px;white-space:nowrap;border-bottom:2px solid var(--border);text-align:left;background:var(--bg);font-size:11px;color:var(--text2);font-weight:600">${s}</th>`;
+  };
   const TD=(s,r)=>`<td style="padding:5px 8px;border-bottom:1px solid var(--border);white-space:nowrap${r?';text-align:right':''}">${(s===''||s==null)?'—':s}</td>`;
   const fN=v=>{if(v===''||v==null)return'—';const n=parseFloat(String(v).replace(/,/g,''));return isNaN(n)?String(v):n.toLocaleString('ko-KR');};
   const ACT=i=>`<td style="padding:5px 8px;border-bottom:1px solid var(--border)">
@@ -9526,6 +9530,10 @@ function priceRender(){
       const ri = items.indexOf(r);
       const cells = displayFields.map(f => {
         const v = r[f.key];
+        // 총매입가 강조 — 빨간색 + 볼드 (눈에 잘 띄게)
+        if (f.key === 'total') {
+          return `<td style="padding:5px 8px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:right;color:#DC2626;font-weight:700;font-size:14px;background:#FEF2F2">${fN(v)}</td>`;
+        }
         // 숫자 필드 자동 콤마
         if (/단가|가격|매입가|판매가|배송비|마진액|네이버|쿠팡|공급단가/.test(f.label)) {
           return TD(fN(v), true);
