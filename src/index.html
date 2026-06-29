@@ -4816,7 +4816,7 @@ async function invGmailFetch() {
   try {
     const savedSender = _invGmailGetSender();
     const fromPart = savedSender ? ' from:' + savedSender : '';
-    const q = '(in:inbox has:attachment filename:xlsx OR in:inbox has:attachment filename:xls)' + fromPart;
+    const q = 'in:inbox has:attachment' + fromPart;
     statusEl.textContent = savedSender ? '"' + savedSender + '" 메일 검색 중...' : '불러오는 중...';
 
     const searchResp = await fetch(
@@ -9450,7 +9450,22 @@ function reconExportXlsx() {
   <div class="card">
     <div class="card-title">📋 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 발주서 노란색 행 = 리뷰주문으로 인식</span></div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-      <!-- 깐마늘 -->
+      <!-- 디네트 -->
+      <div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">🐠 디네트</div>
+        <div class="upload-zone" id="srDinetteReviewZone" onclick="document.getElementById('srDinetteReviewFile').click()"
+             ondragover="event.preventDefault();this.classList.add('dragover')"
+             ondragleave="this.classList.remove('dragover')"
+             ondrop="srDropDinetteReview(event)"
+             style="padding:14px 8px;min-height:90px;justify-content:center">
+          <div style="font-size:22px;margin-bottom:4px">🐠</div>
+          <div style="font-size:11px;font-weight:600;margin-bottom:2px;color:var(--text1)">디네트-발주서 파일 클릭/드롭</div>
+          <div style="font-size:10px;color:var(--text3)">노란색(FFFF00) = 리뷰</div>
+          <input type="file" id="srDinetteReviewFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadDinetteReview(this.files); this.value='';">
+        </div>
+        <div id="srDinetteReviewInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
+      </div>
+      <!-- 깐마늘 (동일) -->
       <div>
         <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">🧄 깐마늘</div>
         <div class="upload-zone" id="srReviewZone" onclick="document.getElementById('srReviewFile').click()"
@@ -9465,7 +9480,7 @@ function reconExportXlsx() {
         </div>
         <div id="srReviewInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
       </div>
-      <!-- 그린캠 -->
+      <!-- 그린캠 (제습제 포함) -->
       <div>
         <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">🐟 그린캠</div>
         <div class="upload-zone" id="srGrincamZone" onclick="document.getElementById('srGrincamFile').click()"
@@ -9479,21 +9494,6 @@ function reconExportXlsx() {
           <input type="file" id="srGrincamFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadGrincam(this.files); this.value='';">
         </div>
         <div id="srGrincamInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
-      </div>
-      <!-- 제습제 -->
-      <div>
-        <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">💧 제습제</div>
-        <div class="upload-zone" id="srDehumidZone" onclick="document.getElementById('srDehumidFile').click()"
-             ondragover="event.preventDefault();this.classList.add('dragover')"
-             ondragleave="this.classList.remove('dragover')"
-             ondrop="srDropDehumid(event)"
-             style="padding:14px 8px;min-height:90px;justify-content:center">
-          <div style="font-size:22px;margin-bottom:4px">💧</div>
-          <div style="font-size:11px;font-weight:600;margin-bottom:2px;color:var(--text1)">제습제-발주서 파일 클릭/드롭</div>
-          <div style="font-size:10px;color:var(--text3)">노란색(FFFF00) = 리뷰</div>
-          <input type="file" id="srDehumidFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadDehumid(this.files); this.value='';">
-        </div>
-        <div id="srDehumidInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
       </div>
     </div>
   </div>
@@ -10610,8 +10610,6 @@ function srAggregate(orders){
   const platMap={},prodMap={};let totalSales=0;
   // 깐마늘 전용 상세: 플랫폼 × 옵션 단위 집계
   const garlicMap = {};  // key = platform + '||' + option
-  // 제습제 전용 상세: 실주문 / 리뷰주문 분리
-  const dehumidMap = {count:0, sales:0, realCount:0, realSales:0, reviewCount:0, reviewSales:0};
   for(const o of orders){
     const amt=Number(o.order_amt)||0;totalSales+=amt;
     const p=srPlatform(o);
@@ -10620,17 +10618,6 @@ function srAggregate(orders){
     const n=srNormalize(o.product);
     if(!prodMap[n])prodMap[n]={count:0,sales:0};
     prodMap[n].count++;prodMap[n].sales+=amt;
-    // 제습제
-    const isDehumid = (o.item_name||'').includes('제습제') || n.includes('제습제') || (o.product||'').includes('제습제');
-    if (isDehumid) {
-      const _b = srBrand(o.alias);
-      const _r = String(o.recv_name||'').trim();
-      const _isRev = _r && srDehumidReviewSet && srDehumidReviewSet.size > 0 && srDehumidReviewSet.has(_b+'||'+_r);
-      dehumidMap.count++;
-      dehumidMap.sales += amt;
-      if (_isRev) { dehumidMap.reviewCount++; dehumidMap.reviewSales += amt; }
-      else         { dehumidMap.realCount++;   dehumidMap.realSales   += amt; }
-    }
     // 깐마늘 (item_name 또는 normalize 결과 또는 product에 '깐마늘' 포함)
     const isGarlic = (o.item_name||'').includes('깐마늘')
                   || n === '깐마늘'
@@ -10673,7 +10660,7 @@ function srAggregate(orders){
       }
     }
   }
-  return {totalSales,count:orders.length,platMap,prodMap,garlicMap,dehumidMap};
+  return {totalSales,count:orders.length,platMap,prodMap,garlicMap};
 }
 function srBrandSection(title, color, agg, opts){
   if(agg.count===0) return '';
@@ -10733,8 +10720,7 @@ function srBrandSection(title, color, agg, opts){
         <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.totalSales.toLocaleString()}원</td>
       </tr></tfoot>
     </table>
-    ${srGarlicDetailHtml(agg, color)}
-    ${srDehumidDetailHtml(agg)}`;
+    ${srGarlicDetailHtml(agg, color)}`;
 }
 // 깐마늘 상세 — 플랫폼 × 옵션 단위
 function srGarlicDetailHtml(agg, color){
@@ -10840,44 +10826,6 @@ function srGarlicDetailHtml(agg, color){
     </table>`;
   }
   return block1 + block2;
-}
-// 제습제 실주문 / 리뷰주문 분리
-function srDehumidDetailHtml(agg){
-  const d = agg.dehumidMap;
-  if (!d || d.count === 0) return '';
-  const hasReview = d.reviewCount > 0;
-  if (!hasReview) return '';
-  return `
-    <div style="background:#EFF6FF;color:#1E40AF;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #93C5FD">💧 제습제 실주문 / 리뷰주문 분리</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#F0F9FF">
-      <colgroup><col style="width:28%"><col style="width:18%"><col style="width:26%"><col style="width:28%"></colgroup>
-      <thead><tr style="background:#DBEAFE">
-        <th style="padding:8px 10px;text-align:left;color:#1E40AF;font-weight:700">구분</th>
-        <th style="padding:8px 10px;text-align:right;color:#1E40AF;font-weight:700">건수</th>
-        <th style="padding:8px 10px;text-align:right;color:#1E40AF;font-weight:700">매출액</th>
-        <th style="padding:8px 10px;text-align:right;color:#1E40AF;font-weight:700">비중</th>
-      </tr></thead>
-      <tbody>
-        <tr style="background:#F0F9FF">
-          <td style="padding:7px 10px;border-bottom:1px solid #BFDBFE;color:#1E40AF;font-weight:600">실주문</td>
-          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#1D4ED8">${d.realCount.toLocaleString()}건</td>
-          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#1D4ED8;font-weight:600">${d.realSales.toLocaleString()}원</td>
-          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#6B7280">${d.count>0?(d.realCount/d.count*100).toFixed(0):'0'}%</td>
-        </tr>
-        <tr style="background:#FEF3C7">
-          <td style="padding:7px 10px;border-bottom:1px solid #BFDBFE;color:#92400E;font-weight:600">리뷰주문</td>
-          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#92400E">${d.reviewCount.toLocaleString()}건</td>
-          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#92400E;font-weight:600">${d.reviewSales.toLocaleString()}원</td>
-          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#6B7280">${d.count>0?(d.reviewCount/d.count*100).toFixed(0):'0'}%</td>
-        </tr>
-      </tbody>
-      <tfoot><tr style="background:#BFDBFE;font-weight:700">
-        <td style="padding:7px 10px;color:#1E3A8A">합계</td>
-        <td style="padding:7px 10px;text-align:right;color:#1E3A8A">${d.count.toLocaleString()}건</td>
-        <td style="padding:7px 10px;text-align:right;color:#1E3A8A">${d.sales.toLocaleString()}원</td>
-        <td style="padding:7px 10px;text-align:right;color:#1E3A8A">100%</td>
-      </tr></tfoot>
-    </table>`;
 }
 // ─ 디네트 박대 ─
 // 평시(기본) 단가
@@ -11224,16 +11172,16 @@ function srClearGrincam(){
   }
 }
 
-// ── 제습제 리뷰주문 분리 ──────────────────────────────────────────
-const srDehumidReviewSet = new Set();
-const srDehumidFileMeta  = [];
-function srDropDehumid(e){
+// ── 디네트 리뷰주문 분리 ──────────────────────────────────────────
+const srDinetteReviewSet = new Set();
+const srDinetteReviewFileMeta = [];
+function srDropDinetteReview(e){
   e.preventDefault();
   e.currentTarget.classList.remove('dragover');
   const files = e.dataTransfer && e.dataTransfer.files;
-  if (files && files.length) srLoadDehumid(files);
+  if (files && files.length) srLoadDinetteReview(files);
 }
-function srLoadDehumid(files){
+function srLoadDinetteReview(files){
   if (!files || !files.length) return;
   const arr = Array.from(files);
   let done = 0;
@@ -11257,20 +11205,20 @@ function srLoadDehumid(files){
           const name = nameCell ? String(nameCell.v||'').trim() : '';
           if (!name) continue;
           if (brand) {
-            srDehumidReviewSet.add(brand+'||'+name);
+            srDinetteReviewSet.add(brand+'||'+name);
           } else {
-            srDehumidReviewSet.add('grobn||'+name);
-            srDehumidReviewSet.add('yb||'+name);
+            srDinetteReviewSet.add('grobn||'+name);
+            srDinetteReviewSet.add('yb||'+name);
           }
           cnt++;
         }
-        srDehumidFileMeta.push({name:file.name, brand, count:cnt});
+        srDinetteReviewFileMeta.push({name:file.name, brand, count:cnt});
       } catch(err) {
-        srDehumidFileMeta.push({name:file.name, brand:null, count:0, err:err.message});
+        srDinetteReviewFileMeta.push({name:file.name, brand:null, count:0, err:err.message});
       } finally {
         done++;
         if (done === arr.length) {
-          srRenderDehumidInfo();
+          srRenderDinetteReviewInfo();
           const _pp = document.getElementById('srProfitPanel');
           if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
             srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
@@ -11281,23 +11229,23 @@ function srLoadDehumid(files){
     reader.readAsArrayBuffer(file);
   });
 }
-function srRenderDehumidInfo(){
-  const info = document.getElementById('srDehumidInfo');
+function srRenderDinetteReviewInfo(){
+  const info = document.getElementById('srDinetteReviewInfo');
   if (!info) return;
-  if (!srDehumidFileMeta.length) { info.innerHTML=''; return; }
-  const lines = srDehumidFileMeta.map(m => {
+  if (!srDinetteReviewFileMeta.length) { info.innerHTML=''; return; }
+  const lines = srDinetteReviewFileMeta.map(m => {
     if (m.err) return `<span style="color:var(--danger)">❌ ${escHtml(m.name)} — ${escHtml(m.err)}</span>`;
     const tag = m.brand==='grobn' ? '<span style="color:#1E40AF;font-weight:600">그로븐</span>'
              : m.brand==='yb' ? '<span style="color:#A47800;font-weight:600">옐로우브릿지</span>'
              : '<span style="color:#888">브랜드 미감지(양쪽 매칭)</span>';
     return `<span style="color:var(--success)">✅ ${escHtml(m.name)}</span> — ${tag} · 리뷰 <b>${m.count}건</b> 인식`;
   });
-  info.innerHTML = lines.join('<br>') + ` <button class="btn btn-sm" style="margin-left:6px;margin-top:6px;padding:2px 8px;font-size:10px" onclick="srClearDehumid()">전체 제거</button>`;
+  info.innerHTML = lines.join('<br>') + ` <button class="btn btn-sm" style="margin-left:6px;margin-top:6px;padding:2px 8px;font-size:10px" onclick="srClearDinetteReview()">전체 제거</button>`;
 }
-function srClearDehumid(){
-  srDehumidReviewSet.clear();
-  srDehumidFileMeta.length = 0;
-  const info = document.getElementById('srDehumidInfo');
+function srClearDinetteReview(){
+  srDinetteReviewSet.clear();
+  srDinetteReviewFileMeta.length = 0;
+  const info = document.getElementById('srDinetteReviewInfo');
   if (info) info.innerHTML = '';
   const _pp = document.getElementById('srProfitPanel');
   if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
@@ -11728,13 +11676,13 @@ function srBuildProfitRows(orders){
     const r = map[key];
     const amt = Number(o.order_amt)||0;
     const units = srPurchaseUnits(o);
-    // 리뷰 주문 여부 — 깐마늘(srReviewSet) / 그린캠(srGrincamReviewSet) / 제습제(srDehumidReviewSet) 발주서 기반
+    // 리뷰 주문 여부 — 디네트(srDinetteReviewSet) / 깐마늘(srReviewSet) / 그린캠(srGrincamReviewSet) 발주서 기반
     const _brand = srBrand(o.alias);
     const _rname = String(o.recv_name||'').trim();
+    const _inDinette  = (typeof srDinetteReviewSet !== 'undefined' && srDinetteReviewSet && srDinetteReviewSet.size > 0 && _rname && srDinetteReviewSet.has(_brand + '||' + _rname));
     const _inGarlic   = (typeof srReviewSet !== 'undefined' && srReviewSet && srReviewSet.size > 0 && _rname && srReviewSet.has(_brand + '||' + _rname));
     const _inGrincam  = (typeof srGrincamReviewSet !== 'undefined' && srGrincamReviewSet && srGrincamReviewSet.size > 0 && _rname && srGrincamReviewSet.has(_brand + '||' + _rname));
-    const _inDehumid  = (typeof srDehumidReviewSet !== 'undefined' && srDehumidReviewSet && srDehumidReviewSet.size > 0 && _rname && srDehumidReviewSet.has(_brand + '||' + _rname));
-    const isReview = _inGarlic || _inGrincam || _inDehumid;
+    const isReview = _inDinette || _inGarlic || _inGrincam;
     r.count  += 1;
     r.qtySum += units;
     if (isReview) {
