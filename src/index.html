@@ -4816,7 +4816,9 @@ async function invGmailFetch() {
   try {
     const savedSender = _invGmailGetSender();
     const fromPart = savedSender ? ' from:' + savedSender : '';
-    const q = 'in:inbox has:attachment' + fromPart;
+    const _td = new Date();
+    const todayFilter = ' after:' + _td.getFullYear() + '/' + String(_td.getMonth()+1).padStart(2,'0') + '/' + String(_td.getDate()).padStart(2,'0');
+    const q = 'in:inbox has:attachment' + todayFilter + fromPart;
     statusEl.textContent = savedSender ? '"' + savedSender + '" 메일 검색 중...' : '불러오는 중...';
 
     const searchResp = await fetch(
