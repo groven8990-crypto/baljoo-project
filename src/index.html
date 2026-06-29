@@ -4818,13 +4818,11 @@ async function invGmailFetch() {
   try {
     const savedSender = _invGmailGetSender();
     const fromPart = savedSender ? ' from:' + savedSender : '';
-    const _td = new Date();
-    const todayFilter = ' after:' + _td.getFullYear() + '/' + String(_td.getMonth()+1).padStart(2,'0') + '/' + String(_td.getDate()).padStart(2,'0');
-    const q = 'in:inbox has:attachment' + todayFilter + fromPart;
+    const q = 'in:inbox has:attachment' + fromPart;
     statusEl.textContent = savedSender ? '"' + savedSender + '" 메일 검색 중...' : '불러오는 중...';
 
     const searchResp = await fetch(
-      'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=30&q=' + encodeURIComponent(q),
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=' + encodeURIComponent(q),
       { headers: { Authorization: 'Bearer ' + token } }
     );
     if (!searchResp.ok) throw new Error('검색 실패 ' + searchResp.status);
@@ -4834,20 +4832,32 @@ async function invGmailFetch() {
 
     statusEl.textContent = msgs.length + '개 메일 확인 중...';
 
-    const details = await Promise.all(msgs.slice(0, 20).map(m =>
+    const details = await Promise.all(msgs.slice(0, 30).map(m =>
       fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + m.id +
             '?format=full',
-        { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json())
+        { headers: { Authorization: 'Bearer ' + token } })
+        .then(r => r.ok ? r.json() : null).catch(() => null)
     ));
+
+    // 오늘 날짜 기준 (로컬 시간)
+    const _now = new Date();
+    const _todayStr = _now.getFullYear() + '/' + String(_now.getMonth()+1).padStart(2,'0') + '/' + String(_now.getDate()).padStart(2,'0');
+    function _isToday(dateStr) {
+      if (!dateStr) return false;
+      try { const d = new Date(dateStr); return d.getFullYear() === _now.getFullYear() && d.getMonth() === _now.getMonth() && d.getDate() === _now.getDate(); }
+      catch { return false; }
+    }
 
     const items = [];
     for (const msg of details) {
+      if (!msg || !msg.payload) continue;
       const parts = _gmailFindXlsxParts(msg.payload);
       if (!parts.length) continue;
       const hds     = msg.payload.headers || [];
       const subject = (hds.find(h => h.name === 'Subject') || {}).value || '(제목없음)';
       const date    = (hds.find(h => h.name === 'Date')    || {}).value || '';
       const from    = (hds.find(h => h.name === 'From')    || {}).value || '';
+      if (!_isToday(date)) continue;  // 오늘 메일만
       for (const part of parts) {
         items.push({ msgId: msg.id, attachId: part.body.attachmentId, filename: part.filename, subject, date, from });
       }
