@@ -599,10 +599,12 @@
       <span id="invGmailSenderLabel" style="font-weight:600;color:var(--primary)"></span>
       <button onclick="invGmailClearSender()" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:14px;line-height:1;padding:0 2px" title="발신자 고정 해제">✕</button>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
       <button class="btn btn-sm btn-primary" onclick="invGmailFetch()">📬 받은메일함 검색</button>
+      <button class="btn btn-sm" onclick="invGmailPickSaveDir()" style="background:var(--bg2);border:1px solid var(--border)">📁 저장 폴더 지정</button>
       <span id="invGmailStatus" style="font-size:12px;color:var(--text3)"></span>
     </div>
+    <div id="invGmailSaveDirChip" style="display:none;margin-bottom:8px;font-size:11px;color:var(--text3)">📂 저장 폴더: <span id="invGmailSaveDirName" style="font-weight:600;color:var(--text2)"></span></div>
     <div id="invGmailList"></div>
   </div>
 
@@ -4863,7 +4865,10 @@ async function invGmailFetch() {
           <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.subject)} · ${_gmailShortDate(it.date)}</div>
           <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">✉ ${escHtml(_invGmailParseName(it.from) || it.from)}</div>
         </div>
-        <button class="btn btn-sm btn-primary" style="flex-shrink:0" onclick="invGmailLoadAttachment(${i})">업로드</button>
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <button class="btn btn-sm btn-primary" onclick="invGmailLoadAttachment(${i})">업로드</button>
+          <button class="btn btn-sm" style="background:var(--bg2);border:1px solid var(--border);font-size:11px" onclick="invGmailDownloadAttachment(${i})">다운로드</button>
+        </div>
       </div>`).join('');
   } catch(e) {
     statusEl.textContent = '❌ 오류: ' + e.message;
@@ -4932,6 +4937,66 @@ async function invGmailLoadAttachment(idx) {
   } catch(e) {
     statusEl.textContent = '❌ 오류: ' + e.message;
     console.error('[invGmailLoadAttachment]', e);
+  }
+}
+
+let _invGmailSaveDir = null;
+
+async function invGmailPickSaveDir() {
+  if (!window.showDirectoryPicker) { alert('이 브라우저는 폴더 지정을 지원하지 않아요. Chrome을 사용해 주세요.'); return; }
+  try {
+    _invGmailSaveDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    document.getElementById('invGmailSaveDirName').textContent = _invGmailSaveDir.name;
+    document.getElementById('invGmailSaveDirChip').style.display = '';
+  } catch(e) { /* 취소 */ }
+}
+
+async function invGmailDownloadAttachment(idx) {
+  const item  = (window._invGmailItems || [])[idx];
+  const token = window._invGmailToken;
+  if (!item || !token) { alert('먼저 받은메일함을 검색해 주세요.'); return; }
+
+  const statusEl = document.getElementById('invGmailStatus');
+
+  try {
+    statusEl.textContent = '"' + item.filename + '" 다운로드 중...';
+    const attResp = await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + item.msgId + '/attachments/' + item.attachId,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!attResp.ok) throw new Error('첨부파일 다운로드 실패 ' + attResp.status);
+    const attData = await attResp.json();
+    const b64 = (attData.data || '').replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    if (!_invGmailSaveDir) {
+      if (!window.showDirectoryPicker) {
+        // 폴더 지정 불가 브라우저: 그냥 브라우저 기본 다운로드
+        const blob = new Blob([bytes]);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = item.filename;
+        a.click();
+        statusEl.textContent = '✅ "' + item.filename + '" 다운로드 완료';
+        return;
+      }
+      try {
+        _invGmailSaveDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+        document.getElementById('invGmailSaveDirName').textContent = _invGmailSaveDir.name;
+        document.getElementById('invGmailSaveDirChip').style.display = '';
+      } catch(e) { statusEl.textContent = '폴더 선택 취소됨'; return; }
+    }
+
+    const fileHandle = await _invGmailSaveDir.getFileHandle(item.filename, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(bytes);
+    await writable.close();
+    statusEl.textContent = '✅ "' + item.filename + '" → ' + _invGmailSaveDir.name + ' 저장 완료';
+  } catch(e) {
+    statusEl.textContent = '❌ 오류: ' + e.message;
+    console.error('[invGmailDownloadAttachment]', e);
   }
 }
 
