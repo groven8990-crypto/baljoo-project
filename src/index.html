@@ -9449,22 +9449,7 @@ function reconExportXlsx() {
   </div>
   <div class="card">
     <div class="card-title">📋 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 발주서 노란색 행 = 리뷰주문으로 인식</span></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-      <!-- 디네트 -->
-      <div>
-        <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">🐠 디네트</div>
-        <div class="upload-zone" id="srDinetteReviewZone" onclick="document.getElementById('srDinetteReviewFile').click()"
-             ondragover="event.preventDefault();this.classList.add('dragover')"
-             ondragleave="this.classList.remove('dragover')"
-             ondrop="srDropDinetteReview(event)"
-             style="padding:14px 8px;min-height:90px;justify-content:center">
-          <div style="font-size:22px;margin-bottom:4px">🐠</div>
-          <div style="font-size:11px;font-weight:600;margin-bottom:2px;color:var(--text1)">디네트-발주서 파일 클릭/드롭</div>
-          <div style="font-size:10px;color:var(--text3)">노란색(FFFF00) = 리뷰</div>
-          <input type="file" id="srDinetteReviewFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadDinetteReview(this.files); this.value='';">
-        </div>
-        <div id="srDinetteReviewInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
-      </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <!-- 깐마늘 (동일) -->
       <div>
         <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">🧄 깐마늘</div>
@@ -11676,13 +11661,12 @@ function srBuildProfitRows(orders){
     const r = map[key];
     const amt = Number(o.order_amt)||0;
     const units = srPurchaseUnits(o);
-    // 리뷰 주문 여부 — 디네트(srDinetteReviewSet) / 깐마늘(srReviewSet) / 그린캠(srGrincamReviewSet) 발주서 기반
+    // 리뷰 주문 여부 — 깐마늘(srReviewSet) / 그린캠(srGrincamReviewSet) 발주서 기반
     const _brand = srBrand(o.alias);
     const _rname = String(o.recv_name||'').trim();
-    const _inDinette  = (typeof srDinetteReviewSet !== 'undefined' && srDinetteReviewSet && srDinetteReviewSet.size > 0 && _rname && srDinetteReviewSet.has(_brand + '||' + _rname));
     const _inGarlic   = (typeof srReviewSet !== 'undefined' && srReviewSet && srReviewSet.size > 0 && _rname && srReviewSet.has(_brand + '||' + _rname));
     const _inGrincam  = (typeof srGrincamReviewSet !== 'undefined' && srGrincamReviewSet && srGrincamReviewSet.size > 0 && _rname && srGrincamReviewSet.has(_brand + '||' + _rname));
-    const isReview = _inDinette || _inGarlic || _inGrincam;
+    const isReview = _inGarlic || _inGrincam;
     r.count  += 1;
     r.qtySum += units;
     if (isReview) {
