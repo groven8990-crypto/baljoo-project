@@ -4832,7 +4832,7 @@ async function invGmailFetch() {
 
     const details = await Promise.all(msgs.slice(0, 20).map(m =>
       fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + m.id +
-            '?format=metadata&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=From',
+            '?format=full',
         { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json())
     ));
 
