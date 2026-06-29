@@ -593,6 +593,20 @@
   </div>
 
   <div class="card">
+    <div class="card-title">📧 Gmail 받은메일함에서 운송장 가져오기</div>
+    <div id="invGmailSenderChip" style="display:none;margin-bottom:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:20px;font-size:12px;display:inline-flex;align-items:center;gap:6px">
+      <span>📌 발신자 고정:</span>
+      <span id="invGmailSenderLabel" style="font-weight:600;color:var(--primary)"></span>
+      <button onclick="invGmailClearSender()" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:14px;line-height:1;padding:0 2px" title="발신자 고정 해제">✕</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-primary" onclick="invGmailFetch()">📬 받은메일함 검색</button>
+      <span id="invGmailStatus" style="font-size:12px;color:var(--text3)"></span>
+    </div>
+    <div id="invGmailList"></div>
+  </div>
+
+  <div class="card">
     <div class="card-title">🚚 운송장 파일 업로드 <span style="font-size:12px;font-weight:400;color:var(--text3)">(여러 개 가능)</span></div>
     <div class="upload-zone" id="invTrackZone" onclick="document.getElementById('invTrackFile').click()"
       ondragover="event.preventDefault();this.classList.add('dragover')"
@@ -2655,11 +2669,12 @@ function renderVendorRegistry(){
 // ══════════════════════════════════════════════════════════
 // Gmail API 자동 발송 (OAuth + 첨부 발송)
 // ══════════════════════════════════════════════════════════
-const LS_GMAIL_CLIENT_ID = 'yb_gmail_client_id';
-const LS_GMAIL_TOKEN     = 'yb_gmail_token';
-const LS_GMAIL_TPL       = 'yb_gmail_tpl';
-const LS_SEND_HISTORY    = 'yb_send_history';
-const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/contacts.readonly';
+const LS_GMAIL_CLIENT_ID   = 'yb_gmail_client_id';
+const LS_GMAIL_TOKEN       = 'yb_gmail_token';
+const LS_GMAIL_TPL         = 'yb_gmail_tpl';
+const LS_SEND_HISTORY      = 'yb_send_history';
+const LS_INV_GMAIL_SENDER  = 'yb_inv_gmail_sender';
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly';
 let _gmailTokenClient = null;
 function gmailGetClientId(){ return (localStorage.getItem(LS_GMAIL_CLIENT_ID)||'').trim(); }
 function gmailSetClientId(id){ localStorage.setItem(LS_GMAIL_CLIENT_ID, String(id||'').trim()); }
@@ -3314,8 +3329,8 @@ function buildRows(vk,orders,alias){
       return [['받는분성명','받는분전화번호','받는분주소(전체, 분할)','품목명','수량','배송메세지','','택배사','보내는분성명','보내는분주소(전체, 분할)','보내는분전화번호'],
         ...orders.map(o=>[o.recv_name,o.recv_phone,o.addr,ilbiItem(o),effQty(o),o.memo,'',o.carrier||'',s.name,s.addr,s.phone])];
     case '최고집':
-      return [['업체주문번호','품목명','수량','주문자성명','주문자전화번호','받는분성명','받는분전화번호','받는분우편번호','받는분주소(전체, 분할)','배송메세지1','공급가','택배사','송장번호','코드','고객주문번호'],
-        ...orders.map(o=>['',combined(o),effQty(o),s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,o.memo,'',o.carrier||'','','',o.order_no])];
+      return [['고객주문번호','상품코드','품목명','수량','주문자성명','주문자전화번호','받는분성명','받는분전화번호','받는분우편번호','받는분주소(전체)','배송메세지','공급가','택배사','송장번호'],
+        ...orders.map(o=>[o.order_no,'',combined(o),effQty(o),s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,o.memo,'','',''])];
     case '늘푸른우리':
       return [['제품명','옵션명(옵션 없을시 공란)','수량','수령인','우편번호',' 주  소','전화번호','배송메세지','업체명(필수)','업체주소(필수)','업체전화(필수)','주문번호(없을시 공란)'],
         ...orders.map(o=>[o.item_name,o.option_name,effQty(o),o.recv_name,o.zip,o.addr,o.recv_phone,o.memo,s.name,s.addr,s.phone,o.order_no])];
@@ -4752,6 +4767,172 @@ function invDropTrack(e) {
   invLoadTracks(e.dataTransfer.files);
 }
 
+function _invGmailParseEmail(fromStr) {
+  // "Name <email@domain.com>" → "email@domain.com", or return as-is
+  const m = (fromStr || '').match(/<([^>]+)>/);
+  return m ? m[1].trim() : (fromStr || '').trim();
+}
+function _invGmailParseName(fromStr) {
+  const m = (fromStr || '').match(/^([^<]+)</);
+  return m ? m[1].trim() : _invGmailParseEmail(fromStr);
+}
+function _invGmailGetSender()  { return localStorage.getItem(LS_INV_GMAIL_SENDER) || ''; }
+function _invGmailSaveSender(email, displayName) {
+  localStorage.setItem(LS_INV_GMAIL_SENDER, email);
+  _invGmailRenderSenderChip(displayName || email);
+}
+function _invGmailRenderSenderChip(displayName) {
+  const chip  = document.getElementById('invGmailSenderChip');
+  const label = document.getElementById('invGmailSenderLabel');
+  const saved = _invGmailGetSender();
+  if (!chip || !label) return;
+  if (saved) {
+    label.textContent = displayName || saved;
+    chip.style.display = 'inline-flex';
+  } else {
+    chip.style.display = 'none';
+  }
+}
+function invGmailClearSender() {
+  localStorage.removeItem(LS_INV_GMAIL_SENDER);
+  _invGmailRenderSenderChip();
+  document.getElementById('invGmailStatus').textContent = '발신자 고정 해제됨';
+}
+
+async function invGmailFetch() {
+  const statusEl = document.getElementById('invGmailStatus');
+  const listEl   = document.getElementById('invGmailList');
+  listEl.innerHTML = '';
+  window._invGmailItems = [];
+
+  // 저장된 발신자 칩 표시
+  _invGmailRenderSenderChip();
+
+  let token;
+  try { token = await gmailRequestToken(); }
+  catch(e) { statusEl.textContent = '❌ Gmail 연결 실패: ' + e.message; return; }
+  window._invGmailToken = token;
+
+  try {
+    const savedSender = _invGmailGetSender();
+    const fromPart = savedSender ? ' from:' + savedSender : '';
+    const q = '(in:inbox has:attachment filename:xlsx OR in:inbox has:attachment filename:xls)' + fromPart;
+    statusEl.textContent = savedSender ? '"' + savedSender + '" 메일 검색 중...' : '불러오는 중...';
+
+    const searchResp = await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=30&q=' + encodeURIComponent(q),
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!searchResp.ok) throw new Error('검색 실패 ' + searchResp.status);
+    const searchData = await searchResp.json();
+    const msgs = searchData.messages || [];
+    if (!msgs.length) { statusEl.textContent = '엑셀 첨부파일이 있는 메일이 없어요.'; return; }
+
+    statusEl.textContent = msgs.length + '개 메일 확인 중...';
+
+    const details = await Promise.all(msgs.slice(0, 20).map(m =>
+      fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + m.id +
+            '?format=metadata&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=From',
+        { headers: { Authorization: 'Bearer ' + token } }).then(r => r.json())
+    ));
+
+    const items = [];
+    for (const msg of details) {
+      const parts = _gmailFindXlsxParts(msg.payload);
+      if (!parts.length) continue;
+      const hds     = msg.payload.headers || [];
+      const subject = (hds.find(h => h.name === 'Subject') || {}).value || '(제목없음)';
+      const date    = (hds.find(h => h.name === 'Date')    || {}).value || '';
+      const from    = (hds.find(h => h.name === 'From')    || {}).value || '';
+      for (const part of parts) {
+        items.push({ msgId: msg.id, attachId: part.body.attachmentId, filename: part.filename, subject, date, from });
+      }
+    }
+
+    if (!items.length) { statusEl.textContent = '엑셀 첨부파일이 있는 메일이 없어요.'; return; }
+    window._invGmailItems = items;
+    statusEl.textContent = items.length + '개 엑셀 파일 발견';
+
+    listEl.innerHTML = items.map((it, i) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+        <span style="font-size:20px;flex-shrink:0">📎</span>
+        <div style="flex:1;min-width:0;overflow:hidden">
+          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.filename)}</div>
+          <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.subject)} · ${_gmailShortDate(it.date)}</div>
+          <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">✉ ${escHtml(_invGmailParseName(it.from) || it.from)}</div>
+        </div>
+        <button class="btn btn-sm btn-primary" style="flex-shrink:0" onclick="invGmailLoadAttachment(${i})">업로드</button>
+      </div>`).join('');
+  } catch(e) {
+    statusEl.textContent = '❌ 오류: ' + e.message;
+    console.error('[invGmailFetch]', e);
+  }
+}
+
+function _gmailFindXlsxParts(payload, result) {
+  if (!result) result = [];
+  if (!payload) return result;
+  const fn = payload.filename || '';
+  if (/\.(xlsx|xls)$/i.test(fn) && payload.body && payload.body.attachmentId) {
+    result.push(payload);
+  }
+  if (payload.parts) {
+    for (const p of payload.parts) _gmailFindXlsxParts(p, result);
+  }
+  return result;
+}
+
+function _gmailShortDate(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
+           String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  } catch { return dateStr.slice(0, 10); }
+}
+
+async function invGmailLoadAttachment(idx) {
+  const item  = (window._invGmailItems || [])[idx];
+  const token = window._invGmailToken;
+  if (!item || !token) { alert('먼저 받은메일함을 검색해 주세요.'); return; }
+
+  const statusEl = document.getElementById('invGmailStatus');
+  statusEl.textContent = '"' + item.filename + '" 다운로드 중...';
+
+  try {
+    const attResp = await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + item.msgId + '/attachments/' + item.attachId,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!attResp.ok) throw new Error('첨부파일 다운로드 실패 ' + attResp.status);
+    const attData = await attResp.json();
+
+    // Gmail returns base64url; convert to ArrayBuffer
+    const b64 = (attData.data || '').replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    const ext  = /\.xlsx$/i.test(item.filename) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/vnd.ms-excel';
+    const blob = new Blob([bytes], { type: ext });
+    const file = new File([blob], item.filename, { type: ext });
+
+    invLoadTracks([file]);
+
+    // 이 발신자를 기억해서 다음 검색에 자동 필터
+    if (item.from) {
+      const email = _invGmailParseEmail(item.from);
+      const name  = _invGmailParseName(item.from);
+      _invGmailSaveSender(email, name);
+    }
+
+    statusEl.textContent = '✅ "' + item.filename + '" 업로드 완료';
+  } catch(e) {
+    statusEl.textContent = '❌ 오류: ' + e.message;
+    console.error('[invGmailLoadAttachment]', e);
+  }
+}
+
 function invLoadOrder(file) {
   if (!file) return;
   invOrderFileName = file.name;
@@ -4759,7 +4940,7 @@ function invLoadOrder(file) {
   reader.onload = function(e) {
     try {
       const arrayBuf = e.target.result;
-      invOrderWb = XLSX.read(arrayBuf, {type:'array'});
+      invOrderWb = _xlsxReadAuto(arrayBuf);
       const ws = invOrderWb.Sheets[invOrderWb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
       invOrderData = rows;
@@ -4807,7 +4988,7 @@ function _invAppendOrderFile(file) {
   const reader = new FileReader();
   reader.onload = function(e) {
     try {
-      const wb = XLSX.read(e.target.result, {type:'array'});
+      const wb = _xlsxReadAuto(e.target.result);
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
       if (!rows.length) return;
@@ -4932,13 +5113,13 @@ function invLoadTracks(files) {
     const reader = new FileReader();
     reader.onload = function(e) {
       try {
-        const wb = XLSX.read(e.target.result, {type:'array'});
+        const wb = _xlsxReadAuto(e.target.result);
         const ws = wb.Sheets[wb.SheetNames[0]];
         // rawRows 방식: 20행 스캔하여 헤더 행 자동 탐지
         const rawRows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
         const norm = c => String(c).replace(/\s/g,'').toLowerCase();
         const isTrackCol   = c => /운송장|송장|배송번호|발송번호|등기번호|추적번호|대한통운|한진|롯데|우체국|로젠|경동|cj/.test(norm(c));
-        const isNameCol    = c => { const n = norm(c); return /^받는분$|받는분성명|수취인명|수령자|수취인|받는분이름|받는사람|수신자|수령인|수화인|수하인/.test(n) && !/주소|전화|전번|연락처|우편|코드|번호/.test(n); };
+        const isNameCol    = c => { const n = norm(c); return /받는분|수취인명|수령자|수취인|받는사람|수신자|수령인|수화인|수하인/.test(n) && !/주소|전화|전번|연락처|우편|코드|번호/.test(n); };
         const isCourierCol = c => /택배사|배송사|운송사|courier/.test(norm(c));
         const isAddrCol     = c => { const n = norm(c); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); };
         const isRecvAddrCol = c => { const n = norm(c); return /주소/.test(n) && /받는분|수취인|수령인|배송지|도착|수화인|수하인/.test(n); };
@@ -6756,7 +6937,7 @@ function switchTab(name){
     if(name==='codes'){try{renderCodeList();}catch(e){console.error(e);}try{renderOptMapList();}catch(e){console.error(e);}try{renderUnmatchedHints();}catch(e){console.error(e);}try{renderOmPreview();}catch(e){console.error(e);}try{renderCodeMappingList();}catch(e){console.error(e);}}
     if(name==='expense'){try{initExpenseTab();}catch(e){console.error(e);}}
     if(name==='income'){try{initIncomeTab();}catch(e){console.error(e);}}
-    if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}}
+    if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}try{_invGmailRenderSenderChip();}catch(e){}}
     if(name==='recon'){try{reconInitIfNeeded();}catch(e){console.error(e);}}
     if(name==='report'){try{const d=document.getElementById('rptDate');if(d&&!d.value)d.value=_localISO();}catch(e){console.error(e);}}
     if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
@@ -6894,6 +7075,21 @@ function ekey(s){return s.replace(/[^a-zA-Z0-9가-힣]/g,'_');}
 function esc(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
 function escHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
+// HTML-XLS(EUC-KR 등) 자동 감지 XLSX reader — 도매꾹 등 HTML 테이블 형식 대응
+function _xlsxReadAuto(buf, extraOpts) {
+  const uint8 = new Uint8Array(buf);
+  if (uint8[0] === 0x3C) { // '<' → HTML 기반 XLS
+    const preview = new TextDecoder('iso-8859-1').decode(uint8.slice(0, 600));
+    const csMatch = preview.match(/charset\s*=\s*["']?\s*([^"';\s>]+)/i);
+    const cs = csMatch ? csMatch[1].trim() : 'utf-8';
+    let htmlStr;
+    try { htmlStr = new TextDecoder(cs).decode(uint8); }
+    catch { htmlStr = new TextDecoder('utf-8', {fatal:false}).decode(uint8); }
+    return XLSX.read(htmlStr, Object.assign({type:'string'}, extraOpts||{}));
+  }
+  return XLSX.read(buf, Object.assign({type:'array'}, extraOpts||{}));
+}
+
 // ══════════════════════════════════════════════════════════
 // 주문 이력 저장/조회
 // ══════════════════════════════════════════════════════════
@@ -6901,7 +7097,13 @@ const LS_HISTORY  = 'yb_history';
 const LS_LASTFILE = 'yb_lastfile';
 
 function loadHistory() { try{ return JSON.parse(localStorage.getItem(LS_HISTORY)||'[]'); }catch{ return []; } }
-function saveHistory(a){ localStorage.setItem(LS_HISTORY, JSON.stringify(a)); }
+function saveHistory(a){
+  let arr = a.slice(-200); // 최대 200개, 오래된 것부터 제거
+  while (arr.length > 0) {
+    try { localStorage.setItem(LS_HISTORY, JSON.stringify(arr)); return; }
+    catch(e) { if (e.name==='QuotaExceededError'||e.code===22) { arr = arr.slice(Math.floor(arr.length*0.3)); } else throw e; }
+  }
+}
 
 // 주문 처리 완료 시 이력 저장
 function saveToHistory(fileName, orders) {
@@ -7043,7 +7245,13 @@ let curExpCo = '옐로우브릿지';
 function loadBankInfo() { try{ return JSON.parse(localStorage.getItem(LS_BANK)||'[]'); }catch{ return []; } }
 function saveBankInfo(a){ localStorage.setItem(LS_BANK, JSON.stringify(a)); }
 function loadExpHist() { try{ return JSON.parse(localStorage.getItem(LS_EXPHIST)||'[]'); }catch{ return []; } }
-function saveExpHist(a){ localStorage.setItem(LS_EXPHIST, JSON.stringify(a)); }
+function saveExpHist(a){
+  let arr = a.slice(0, 100); // 최대 100개 유지
+  while (arr.length > 0) {
+    try { localStorage.setItem(LS_EXPHIST, JSON.stringify(arr)); return; }
+    catch(e) { if (e.name==='QuotaExceededError'||e.code===22) { arr = arr.slice(0, Math.floor(arr.length*0.7)); } else throw e; }
+  }
+}
 
 // 거래처명 통합 정규화 — 같은 곳인데 다르게 적힌 이름을 하나로 통일
 const VENDOR_ALIAS_MAP = {
@@ -7967,7 +8175,7 @@ function saveExpense() {
   const record = { ...d, id: newId, savedAt: new Date().toISOString() };
   if (file) record.hasAttach = true;
   hist.unshift(record);
-  if (hist.length > 200) hist.splice(200);
+  if (hist.length > 100) hist.splice(100);
   saveExpHist(hist);
   if (file) {
     const reader = new FileReader();
@@ -9240,20 +9448,54 @@ function reconExportXlsx() {
     </details>
   </div>
   <div class="card">
-    <div class="card-title">🧄 깐마늘 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택</span></div>
-    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">
-      동일(깐마늘) 발주서에서 <b>노란색 칠한 행 = 리뷰주문</b>으로 인식해요. 그로븐/옐로우브릿지 발주서를 올리면 깐마늘 상세표에 <b>실주문 vs 리뷰주문</b>이 나눠서 표시됩니다. 두 파일 한 번에 올려도 OK.
+    <div class="card-title">📋 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 발주서 노란색 행 = 리뷰주문으로 인식</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <!-- 깐마늘 -->
+      <div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">🧄 깐마늘</div>
+        <div class="upload-zone" id="srReviewZone" onclick="document.getElementById('srReviewFile').click()"
+             ondragover="event.preventDefault();this.classList.add('dragover')"
+             ondragleave="this.classList.remove('dragover')"
+             ondrop="srDropReview(event)"
+             style="padding:14px 8px;min-height:90px;justify-content:center">
+          <div style="font-size:22px;margin-bottom:4px">🧄</div>
+          <div style="font-size:11px;font-weight:600;margin-bottom:2px;color:var(--text1)">동일-발주서 파일 클릭/드롭</div>
+          <div style="font-size:10px;color:var(--text3)">노란색(FFFF00) = 리뷰</div>
+          <input type="file" id="srReviewFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadReview(this.files); this.value='';">
+        </div>
+        <div id="srReviewInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
+      </div>
+      <!-- 그린캠 -->
+      <div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">🐟 그린캠</div>
+        <div class="upload-zone" id="srGrincamZone" onclick="document.getElementById('srGrincamFile').click()"
+             ondragover="event.preventDefault();this.classList.add('dragover')"
+             ondragleave="this.classList.remove('dragover')"
+             ondrop="srDropGrincam(event)"
+             style="padding:14px 8px;min-height:90px;justify-content:center">
+          <div style="font-size:22px;margin-bottom:4px">🐟</div>
+          <div style="font-size:11px;font-weight:600;margin-bottom:2px;color:var(--text1)">그린캠-발주서 파일 클릭/드롭</div>
+          <div style="font-size:10px;color:var(--text3)">노란색(FFFF00) = 리뷰</div>
+          <input type="file" id="srGrincamFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadGrincam(this.files); this.value='';">
+        </div>
+        <div id="srGrincamInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
+      </div>
+      <!-- 제습제 -->
+      <div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">💧 제습제</div>
+        <div class="upload-zone" id="srDehumidZone" onclick="document.getElementById('srDehumidFile').click()"
+             ondragover="event.preventDefault();this.classList.add('dragover')"
+             ondragleave="this.classList.remove('dragover')"
+             ondrop="srDropDehumid(event)"
+             style="padding:14px 8px;min-height:90px;justify-content:center">
+          <div style="font-size:22px;margin-bottom:4px">💧</div>
+          <div style="font-size:11px;font-weight:600;margin-bottom:2px;color:var(--text1)">제습제-발주서 파일 클릭/드롭</div>
+          <div style="font-size:10px;color:var(--text3)">노란색(FFFF00) = 리뷰</div>
+          <input type="file" id="srDehumidFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadDehumid(this.files); this.value='';">
+        </div>
+        <div id="srDehumidInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
+      </div>
     </div>
-    <div class="upload-zone" id="srReviewZone" onclick="document.getElementById('srReviewFile').click()"
-         ondragover="event.preventDefault();this.classList.add('dragover')"
-         ondragleave="this.classList.remove('dragover')"
-         ondrop="srDropReview(event)">
-      <div style="font-size:24px;margin-bottom:4px">🧄</div>
-      <div style="font-weight:600;margin-bottom:2px">YYMMDD-동일-발주서_그로븐/옐로우브릿지.xlsx 끌어다 놓거나 클릭</div>
-      <div style="font-size:11px;color:var(--text3)">파일명으로 브랜드 자동 감지 · 노란색(FFFF00) 채움 = 리뷰</div>
-      <input type="file" id="srReviewFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadReview(this.files); this.value='';">
-    </div>
-    <div id="srReviewInfo" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
   </div>
   <div class="card">
     <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('paBody');var t=document.getElementById('paToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';srRenderProductAliases();}else{b.style.display='none';t.textContent='▼ 펼치기';}">
@@ -10368,6 +10610,8 @@ function srAggregate(orders){
   const platMap={},prodMap={};let totalSales=0;
   // 깐마늘 전용 상세: 플랫폼 × 옵션 단위 집계
   const garlicMap = {};  // key = platform + '||' + option
+  // 제습제 전용 상세: 실주문 / 리뷰주문 분리
+  const dehumidMap = {count:0, sales:0, realCount:0, realSales:0, reviewCount:0, reviewSales:0};
   for(const o of orders){
     const amt=Number(o.order_amt)||0;totalSales+=amt;
     const p=srPlatform(o);
@@ -10376,6 +10620,17 @@ function srAggregate(orders){
     const n=srNormalize(o.product);
     if(!prodMap[n])prodMap[n]={count:0,sales:0};
     prodMap[n].count++;prodMap[n].sales+=amt;
+    // 제습제
+    const isDehumid = (o.item_name||'').includes('제습제') || n.includes('제습제') || (o.product||'').includes('제습제');
+    if (isDehumid) {
+      const _b = srBrand(o.alias);
+      const _r = String(o.recv_name||'').trim();
+      const _isRev = _r && srDehumidReviewSet && srDehumidReviewSet.size > 0 && srDehumidReviewSet.has(_b+'||'+_r);
+      dehumidMap.count++;
+      dehumidMap.sales += amt;
+      if (_isRev) { dehumidMap.reviewCount++; dehumidMap.reviewSales += amt; }
+      else         { dehumidMap.realCount++;   dehumidMap.realSales   += amt; }
+    }
     // 깐마늘 (item_name 또는 normalize 결과 또는 product에 '깐마늘' 포함)
     const isGarlic = (o.item_name||'').includes('깐마늘')
                   || n === '깐마늘'
@@ -10418,7 +10673,7 @@ function srAggregate(orders){
       }
     }
   }
-  return {totalSales,count:orders.length,platMap,prodMap,garlicMap};
+  return {totalSales,count:orders.length,platMap,prodMap,garlicMap,dehumidMap};
 }
 function srBrandSection(title, color, agg, opts){
   if(agg.count===0) return '';
@@ -10478,7 +10733,8 @@ function srBrandSection(title, color, agg, opts){
         <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.totalSales.toLocaleString()}원</td>
       </tr></tfoot>
     </table>
-    ${srGarlicDetailHtml(agg, color)}`;
+    ${srGarlicDetailHtml(agg, color)}
+    ${srDehumidDetailHtml(agg)}`;
 }
 // 깐마늘 상세 — 플랫폼 × 옵션 단위
 function srGarlicDetailHtml(agg, color){
@@ -10584,6 +10840,44 @@ function srGarlicDetailHtml(agg, color){
     </table>`;
   }
   return block1 + block2;
+}
+// 제습제 실주문 / 리뷰주문 분리
+function srDehumidDetailHtml(agg){
+  const d = agg.dehumidMap;
+  if (!d || d.count === 0) return '';
+  const hasReview = d.reviewCount > 0;
+  if (!hasReview) return '';
+  return `
+    <div style="background:#EFF6FF;color:#1E40AF;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #93C5FD">💧 제습제 실주문 / 리뷰주문 분리</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#F0F9FF">
+      <colgroup><col style="width:28%"><col style="width:18%"><col style="width:26%"><col style="width:28%"></colgroup>
+      <thead><tr style="background:#DBEAFE">
+        <th style="padding:8px 10px;text-align:left;color:#1E40AF;font-weight:700">구분</th>
+        <th style="padding:8px 10px;text-align:right;color:#1E40AF;font-weight:700">건수</th>
+        <th style="padding:8px 10px;text-align:right;color:#1E40AF;font-weight:700">매출액</th>
+        <th style="padding:8px 10px;text-align:right;color:#1E40AF;font-weight:700">비중</th>
+      </tr></thead>
+      <tbody>
+        <tr style="background:#F0F9FF">
+          <td style="padding:7px 10px;border-bottom:1px solid #BFDBFE;color:#1E40AF;font-weight:600">실주문</td>
+          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#1D4ED8">${d.realCount.toLocaleString()}건</td>
+          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#1D4ED8;font-weight:600">${d.realSales.toLocaleString()}원</td>
+          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#6B7280">${d.count>0?(d.realCount/d.count*100).toFixed(0):'0'}%</td>
+        </tr>
+        <tr style="background:#FEF3C7">
+          <td style="padding:7px 10px;border-bottom:1px solid #BFDBFE;color:#92400E;font-weight:600">리뷰주문</td>
+          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#92400E">${d.reviewCount.toLocaleString()}건</td>
+          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#92400E;font-weight:600">${d.reviewSales.toLocaleString()}원</td>
+          <td style="padding:7px 10px;text-align:right;border-bottom:1px solid #BFDBFE;color:#6B7280">${d.count>0?(d.reviewCount/d.count*100).toFixed(0):'0'}%</td>
+        </tr>
+      </tbody>
+      <tfoot><tr style="background:#BFDBFE;font-weight:700">
+        <td style="padding:7px 10px;color:#1E3A8A">합계</td>
+        <td style="padding:7px 10px;text-align:right;color:#1E3A8A">${d.count.toLocaleString()}건</td>
+        <td style="padding:7px 10px;text-align:right;color:#1E3A8A">${d.sales.toLocaleString()}원</td>
+        <td style="padding:7px 10px;text-align:right;color:#1E3A8A">100%</td>
+      </tr></tfoot>
+    </table>`;
 }
 // ─ 디네트 박대 ─
 // 평시(기본) 단가
@@ -10778,7 +11072,7 @@ function srLoadReview(files){
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        const wb = XLSX.read(e.target.result, {type:'array', cellStyles:true});
+        const wb = _xlsxReadAuto(e.target.result, {cellStyles:true});
         const ws = wb.Sheets[wb.SheetNames[0]];
         const range = XLSX.utils.decode_range(ws['!ref']||'A1');
         let cnt = 0;
@@ -10849,6 +11143,168 @@ function srClearReview(){
     srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
   }
 }
+// ─ 그린캠 리뷰주문 (발주서의 노란색 채움 = 리뷰) ─
+const srGrincamReviewSet = new Set();    // 'grobn||홍길동' / 'yb||홍길동'
+const srGrincamFileMeta = [];
+function srDropGrincam(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (files && files.length) srLoadGrincam(files);
+}
+function srLoadGrincam(files){
+  if (!files || !files.length) return;
+  const arr = Array.from(files);
+  let done = 0;
+  arr.forEach(file => {
+    const brand = srDetectReviewBrand(file.name);
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = _xlsxReadAuto(e.target.result, {cellStyles:true});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const range = XLSX.utils.decode_range(ws['!ref']||'A1');
+        let cnt = 0;
+        for (let R = range.s.r + 1; R <= range.e.r; R++) {
+          let isReview = false;
+          for (let C = range.s.c; C <= range.e.c; C++) {
+            const cell = ws[XLSX.utils.encode_cell({r:R, c:C})];
+            if (srIsYellowCell(cell)) { isReview = true; break; }
+          }
+          if (!isReview) continue;
+          const nameCell = ws[XLSX.utils.encode_cell({r:R, c:0})];
+          const name = nameCell ? String(nameCell.v||'').trim() : '';
+          if (!name) continue;
+          if (brand) {
+            srGrincamReviewSet.add(brand+'||'+name);
+          } else {
+            srGrincamReviewSet.add('grobn||'+name);
+            srGrincamReviewSet.add('yb||'+name);
+          }
+          cnt++;
+        }
+        srGrincamFileMeta.push({name:file.name, brand, count:cnt});
+      } catch(err) {
+        srGrincamFileMeta.push({name:file.name, brand:null, count:0, err:err.message});
+      } finally {
+        done++;
+        if (done === arr.length) {
+          srRenderGrincamInfo();
+          const _pp = document.getElementById('srProfitPanel');
+          if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
+            srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+          }
+        }
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+function srRenderGrincamInfo(){
+  const info = document.getElementById('srGrincamInfo');
+  if (!info) return;
+  if (!srGrincamFileMeta.length) { info.innerHTML=''; return; }
+  const lines = srGrincamFileMeta.map(m => {
+    if (m.err) return `<span style="color:var(--danger)">❌ ${escHtml(m.name)} — ${escHtml(m.err)}</span>`;
+    const tag = m.brand==='grobn' ? '<span style="color:#1E40AF;font-weight:600">그로븐</span>'
+             : m.brand==='yb' ? '<span style="color:#A47800;font-weight:600">옐로우브릿지</span>'
+             : '<span style="color:#888">브랜드 미감지(양쪽 매칭)</span>';
+    return `<span style="color:var(--success)">✅ ${escHtml(m.name)}</span> — ${tag} · 리뷰 <b>${m.count}건</b> 인식`;
+  });
+  info.innerHTML = lines.join('<br>') + ` <button class="btn btn-sm" style="margin-left:6px;margin-top:6px;padding:2px 8px;font-size:10px" onclick="srClearGrincam()">전체 제거</button>`;
+}
+function srClearGrincam(){
+  srGrincamReviewSet.clear();
+  srGrincamFileMeta.length = 0;
+  const info = document.getElementById('srGrincamInfo');
+  if (info) info.innerHTML = '';
+  const _pp = document.getElementById('srProfitPanel');
+  if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
+    srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+  }
+}
+
+// ── 제습제 리뷰주문 분리 ──────────────────────────────────────────
+const srDehumidReviewSet = new Set();
+const srDehumidFileMeta  = [];
+function srDropDehumid(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (files && files.length) srLoadDehumid(files);
+}
+function srLoadDehumid(files){
+  if (!files || !files.length) return;
+  const arr = Array.from(files);
+  let done = 0;
+  arr.forEach(file => {
+    const brand = srDetectReviewBrand(file.name);
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = _xlsxReadAuto(e.target.result, {cellStyles:true});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const range = XLSX.utils.decode_range(ws['!ref']||'A1');
+        let cnt = 0;
+        for (let R = range.s.r + 1; R <= range.e.r; R++) {
+          let isReview = false;
+          for (let C = range.s.c; C <= range.e.c; C++) {
+            const cell = ws[XLSX.utils.encode_cell({r:R, c:C})];
+            if (srIsYellowCell(cell)) { isReview = true; break; }
+          }
+          if (!isReview) continue;
+          const nameCell = ws[XLSX.utils.encode_cell({r:R, c:0})];
+          const name = nameCell ? String(nameCell.v||'').trim() : '';
+          if (!name) continue;
+          if (brand) {
+            srDehumidReviewSet.add(brand+'||'+name);
+          } else {
+            srDehumidReviewSet.add('grobn||'+name);
+            srDehumidReviewSet.add('yb||'+name);
+          }
+          cnt++;
+        }
+        srDehumidFileMeta.push({name:file.name, brand, count:cnt});
+      } catch(err) {
+        srDehumidFileMeta.push({name:file.name, brand:null, count:0, err:err.message});
+      } finally {
+        done++;
+        if (done === arr.length) {
+          srRenderDehumidInfo();
+          const _pp = document.getElementById('srProfitPanel');
+          if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
+            srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+          }
+        }
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+function srRenderDehumidInfo(){
+  const info = document.getElementById('srDehumidInfo');
+  if (!info) return;
+  if (!srDehumidFileMeta.length) { info.innerHTML=''; return; }
+  const lines = srDehumidFileMeta.map(m => {
+    if (m.err) return `<span style="color:var(--danger)">❌ ${escHtml(m.name)} — ${escHtml(m.err)}</span>`;
+    const tag = m.brand==='grobn' ? '<span style="color:#1E40AF;font-weight:600">그로븐</span>'
+             : m.brand==='yb' ? '<span style="color:#A47800;font-weight:600">옐로우브릿지</span>'
+             : '<span style="color:#888">브랜드 미감지(양쪽 매칭)</span>';
+    return `<span style="color:var(--success)">✅ ${escHtml(m.name)}</span> — ${tag} · 리뷰 <b>${m.count}건</b> 인식`;
+  });
+  info.innerHTML = lines.join('<br>') + ` <button class="btn btn-sm" style="margin-left:6px;margin-top:6px;padding:2px 8px;font-size:10px" onclick="srClearDehumid()">전체 제거</button>`;
+}
+function srClearDehumid(){
+  srDehumidReviewSet.clear();
+  srDehumidFileMeta.length = 0;
+  const info = document.getElementById('srDehumidInfo');
+  if (info) info.innerHTML = '';
+  const _pp = document.getElementById('srProfitPanel');
+  if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
+    srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+  }
+}
+
 function srDinettePrice(spec, qty){
   const unit = SR_DINETTE_UNIT[spec] || 2;
   // 사용자 수정 단가가 있으면 그걸 우선 (정책 변경 대응)
@@ -11272,10 +11728,13 @@ function srBuildProfitRows(orders){
     const r = map[key];
     const amt = Number(o.order_amt)||0;
     const units = srPurchaseUnits(o);
-    // 리뷰 주문 여부 — 매출보고 탭에서 업로드한 노란색 셀 발주서 기반 srReviewSet 활용
+    // 리뷰 주문 여부 — 깐마늘(srReviewSet) / 그린캠(srGrincamReviewSet) / 제습제(srDehumidReviewSet) 발주서 기반
     const _brand = srBrand(o.alias);
     const _rname = String(o.recv_name||'').trim();
-    const isReview = (typeof srReviewSet !== 'undefined' && srReviewSet && srReviewSet.size > 0 && _rname && srReviewSet.has(_brand + '||' + _rname));
+    const _inGarlic   = (typeof srReviewSet !== 'undefined' && srReviewSet && srReviewSet.size > 0 && _rname && srReviewSet.has(_brand + '||' + _rname));
+    const _inGrincam  = (typeof srGrincamReviewSet !== 'undefined' && srGrincamReviewSet && srGrincamReviewSet.size > 0 && _rname && srGrincamReviewSet.has(_brand + '||' + _rname));
+    const _inDehumid  = (typeof srDehumidReviewSet !== 'undefined' && srDehumidReviewSet && srDehumidReviewSet.size > 0 && _rname && srDehumidReviewSet.has(_brand + '||' + _rname));
+    const isReview = _inGarlic || _inGrincam || _inDehumid;
     r.count  += 1;
     r.qtySum += units;
     if (isReview) {
@@ -11419,7 +11878,7 @@ function _srBuildTopCardsHtml(T){
   const adjProfit = T.profit - adTotal;
   // Toss Clean A안 — 모노톤 베이스 + 매출(블루)/순이익(민트그린)만 컬러 액센트
   return `<div><div style="font-size:11px;color:#6B7684;font-weight:500">총 매출</div><div style="font-size:18px;font-weight:700;color:#3182F6;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${T.count.toLocaleString()}건</div></div>
-    <div><div style="font-size:11px;color:#6B7684;font-weight:500">총 매입</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.purchase.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#6B7684;font-weight:500">총 매입</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.purchase.toLocaleString()}원</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${T.sales>0?(T.purchase/T.sales*100).toFixed(1)+'%':'-'}</div></div>
     <div><div style="font-size:11px;color:#6B7684;font-weight:500">판매수수료</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.fee.toLocaleString()}원</div></div>
     <div><div style="font-size:11px;color:#6B7684;font-weight:500">광고비</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${adTotal.toLocaleString()}원</div></div>
     <div><div style="font-size:11px;color:#6B7684;font-weight:500">납부 부가세</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.vat.toLocaleString()}원</div><div style="font-size:10px;color:#9CA3AF;margin-top:2px;white-space:nowrap">(매출부가세 − 매입부가세)</div></div>
