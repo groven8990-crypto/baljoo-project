@@ -12079,12 +12079,13 @@ function _srBuildTopCardsHtml(T){
   const adTotal = srAdTotalFor('그로븐') + srAdTotalFor('옐로우브릿지') + srAdTotalFor('기타');
   const adjProfit = T.profit - adTotal;
   // Toss Clean A안 — 모노톤 베이스 + 매출(블루)/순이익(민트그린)만 컬러 액센트
+  const _p = v => T.sales > 0 ? `<div style="font-size:11px;color:#9CA3AF;margin-top:2px">${(v/T.sales*100).toFixed(1)}%</div>` : '';
   return `<div><div style="font-size:11px;color:#6B7684;font-weight:500">총 매출</div><div style="font-size:18px;font-weight:700;color:#3182F6;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${T.count.toLocaleString()}건</div></div>
-    <div><div style="font-size:11px;color:#6B7684;font-weight:500">총 매입</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.purchase.toLocaleString()}원</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${T.sales>0?(T.purchase/T.sales*100).toFixed(1)+'%':'-'}</div></div>
-    <div><div style="font-size:11px;color:#6B7684;font-weight:500">판매수수료</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.fee.toLocaleString()}원</div></div>
-    <div><div style="font-size:11px;color:#6B7684;font-weight:500">광고비</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${adTotal.toLocaleString()}원</div></div>
+    <div><div style="font-size:11px;color:#6B7684;font-weight:500">총 매입</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.purchase.toLocaleString()}원</div>${_p(T.purchase)}</div>
+    <div><div style="font-size:11px;color:#6B7684;font-weight:500">판매수수료</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.fee.toLocaleString()}원</div>${_p(T.fee)}</div>
+    <div><div style="font-size:11px;color:#6B7684;font-weight:500">광고비</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${adTotal.toLocaleString()}원</div>${_p(adTotal)}</div>
     <div><div style="font-size:11px;color:#6B7684;font-weight:500">납부 부가세</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.vat.toLocaleString()}원</div><div style="font-size:10px;color:#9CA3AF;margin-top:2px;white-space:nowrap">(매출부가세 − 매입부가세)</div></div>
-    <div><div style="font-size:11px;color:#6B7684;font-weight:500">순이익</div><div style="font-size:22px;font-weight:700;color:${adjProfit>=0?'#06B981':'#F04452'};margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${adjProfit.toLocaleString()}원</div></div>`;
+    <div><div style="font-size:11px;color:#6B7684;font-weight:500">순이익</div><div style="font-size:22px;font-weight:700;color:${adjProfit>=0?'#06B981':'#F04452'};margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${adjProfit.toLocaleString()}원</div>${_p(adjProfit)}</div>`;
 }
 // 사업자 헤더 스트립 inner HTML
 function _srBuildBizHeaderInner(biz, T){
