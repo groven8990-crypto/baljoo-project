@@ -5097,74 +5097,97 @@ function invLoadOrder(file) {
 }
 
 // ── 송장탭 주문파일 추가 업로드 (여러 개 합산) ──
+function _invReadFile(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = e => resolve(e.target.result);
+    r.onerror = () => reject(new Error('파일 읽기 실패'));
+    r.readAsArrayBuffer(file);
+  });
+}
 function invDropOrderAdd(e) {
   e.preventDefault();
   e.currentTarget.style.background='';
   if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) invLoadOrderAdd(e.dataTransfer.files);
 }
-function invLoadOrderAdd(files) {
+async function invLoadOrderAdd(files) {
   if (!files || !files.length) return;
   const list = [...files];
+  const infoEl = document.getElementById('invOrderInfo');
+  // 첫 파일이 없으면 첫 번째를 메인(영속화)으로 처리
   if (!invOrderData) {
-    // 메인 미업로드 상태 — 첫 파일은 메인으로 처리(영속화), 이후는 추가 합산
-    invLoadOrder(list[0]);
-    list.slice(1).forEach(f => _invAppendOrderFile(f));
-    return;
+    const file = list.shift();
+    if (infoEl) infoEl.innerHTML = '<span style="color:var(--text3)">⏳ ' + escHtml(file.name) + ' 로드 중...</span>';
+    try {
+      const arrayBuf = await _invReadFile(file);
+      invOrderWb = _xlsxReadAuto(arrayBuf);
+      const ws = invOrderWb.Sheets[invOrderWb.SheetNames[0]];
+      invOrderData = XLSX.utils.sheet_to_json(ws, {defval:''});
+      invOrderFileName = file.name;
+      try {
+        const bytes = new Uint8Array(arrayBuf);
+        let bin = ''; bytes.forEach(b => bin += String.fromCharCode(b));
+        const sa = Date.now().toString();
+        localStorage.setItem('invOrderB64', btoa(bin));
+        localStorage.setItem('invOrderName', file.name);
+        localStorage.setItem('invOrderSavedAt', sa);
+        localStorage.removeItem('invOrderAppended');
+        invOrderLoadedAt = sa;
+      } catch(_){}
+    } catch(err) {
+      if (infoEl) infoEl.innerHTML = '<span style="color:var(--danger)">❌ 파일 읽기 실패: ' + escHtml(err.message) + '</span>';
+      return;
+    }
   }
-  list.forEach(f => _invAppendOrderFile(f));
+  // 나머지 파일들은 순차적으로 합산
+  for (const file of list) {
+    await _invAppendOrderFile(file);
+  }
+  invShowOrderInfo(invOrderFileName, invOrderData.length);
+  invCheckReady();
 }
 function _invAppendOrderFile(file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const wb = _xlsxReadAuto(e.target.result);
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
-      if (!rows.length) return;
-      // 중복 거르기: 주문번호 키로 비교 (열 이름이 '주문번호' 또는 '고객주문번호' 등인 경우 인식)
-      const sample = (invOrderData && invOrderData[0]) || rows[0] || {};
-      const onKey = Object.keys(sample).find(k => /주문번호/.test(k));
-      const existingNos = onKey
-        ? new Set((invOrderData||[]).map(r => String(r[onKey]||'').trim()).filter(Boolean))
-        : null;
-      let dupSkipped = 0;
-      const fresh = onKey
-        ? rows.filter(r => {
-            const v = String(r[onKey]||'').trim();
-            if (v && existingNos.has(v)) { dupSkipped++; return false; }
-            if (v) existingNos.add(v);
-            return true;
-          })
-        : rows;
-      if (!fresh.length && dupSkipped > 0) {
-        const el = document.getElementById('invOrderInfo');
-        if (el) el.insertAdjacentHTML('beforeend',
-          '<div style="color:var(--warn);font-size:12px;margin-top:4px">⚠ ' + escHtml(file.name) + ': 모두 중복 — 제외 ' + dupSkipped + '건</div>');
-        return;
-      }
-      invOrderData = (invOrderData || []).concat(fresh);
-      invOrderFileName = invOrderFileName ? (invOrderFileName + ' + ' + file.name) : file.name;
-      // 추가 업로드 파일 영속화 (새로고침 후에도 유지)
-      try {
-        const appended = JSON.parse(localStorage.getItem('invOrderAppended')||'[]');
-        appended.push({ fname: file.name, rows: fresh });
-        localStorage.setItem('invOrderAppended', JSON.stringify(appended));
-      } catch(_e) {}
-      invShowOrderInfo(invOrderFileName, invOrderData.length);
-      invCheckReady();
-      if (dupSkipped > 0) {
-        const el = document.getElementById('invOrderInfo');
-        if (el) el.insertAdjacentHTML('beforeend',
-          '<div style="color:var(--text3);font-size:11px;margin-top:2px">↳ ' + escHtml(file.name) + ': +' + fresh.length + '건 추가 (중복 ' + dupSkipped + '건 제외)</div>');
-      }
-    } catch(err) {
-      const el = document.getElementById('invOrderInfo');
-      if (el) el.insertAdjacentHTML('beforeend',
-        '<div style="color:var(--danger);font-size:12px;margin-top:4px">❌ ' + escHtml(file.name) + ': ' + escHtml(err.message) + '</div>');
+  return _invReadFile(file).then(buf => {
+    const wb = _xlsxReadAuto(buf);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+    if (!rows.length) return;
+    const sample = (invOrderData && invOrderData[0]) || rows[0] || {};
+    const onKey = Object.keys(sample).find(k => /주문번호/.test(k));
+    const existingNos = onKey
+      ? new Set((invOrderData||[]).map(r => String(r[onKey]||'').trim()).filter(Boolean))
+      : null;
+    let dupSkipped = 0;
+    const fresh = onKey
+      ? rows.filter(r => {
+          const v = String(r[onKey]||'').trim();
+          if (v && existingNos.has(v)) { dupSkipped++; return false; }
+          if (v) existingNos.add(v);
+          return true;
+        })
+      : rows;
+    const infoEl = document.getElementById('invOrderInfo');
+    if (!fresh.length && dupSkipped > 0) {
+      if (infoEl) infoEl.insertAdjacentHTML('beforeend',
+        '<div style="color:var(--warn);font-size:12px;margin-top:4px">⚠ ' + escHtml(file.name) + ': 모두 중복 — 제외 ' + dupSkipped + '건</div>');
+      return;
     }
-  };
-  reader.readAsArrayBuffer(file);
+    invOrderData = (invOrderData || []).concat(fresh);
+    invOrderFileName = invOrderFileName ? (invOrderFileName + ' + ' + file.name) : file.name;
+    try {
+      const appended = JSON.parse(localStorage.getItem('invOrderAppended')||'[]');
+      appended.push({ fname: file.name, rows: fresh });
+      localStorage.setItem('invOrderAppended', JSON.stringify(appended));
+    } catch(_e) {}
+    if (dupSkipped > 0 && infoEl) {
+      infoEl.insertAdjacentHTML('beforeend',
+        '<div style="color:var(--text3);font-size:11px;margin-top:2px">↳ ' + escHtml(file.name) + ': +' + fresh.length + '건 추가 (중복 ' + dupSkipped + '건 제외)</div>');
+    }
+  }).catch(err => {
+    const infoEl = document.getElementById('invOrderInfo');
+    if (infoEl) infoEl.insertAdjacentHTML('beforeend',
+      '<div style="color:var(--danger);font-size:12px;margin-top:4px">❌ ' + escHtml(file.name) + ': ' + escHtml(err.message) + '</div>');
+  });
 }
 
 function invShowOrderInfo(fname, count) {
