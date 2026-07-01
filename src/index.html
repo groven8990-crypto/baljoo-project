@@ -10,7 +10,7 @@
 <style>
   /* Noto Sans KR: 인터넷 연결 시에만 적용, 오프라인에서는 시스템 sans-serif 사용 */
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
-  :root{--bg:#f5f4f0;--surface:#fff;--border:#e2e0d8;--border2:#ccc9be;--text:#1a1917;--text2:#6b6860;--text3:#9e9b93;--primary:#2563eb;--accent:#2563eb;--accent-bg:#eff6ff;--success:#16a34a;--success-bg:#f0fdf4;--warn-bg:#fffbeb;--warn:#b45309;--danger:#dc2626;--purple-bg:#faf5ff;--purple:#7c3aed;--radius:10px;--radius-sm:6px}
+  :root{--bg:#f5f4f0;--bg2:#eae7e1;--surface:#fff;--card:#fff;--border:#e2e0d8;--border2:#ccc9be;--text:#1a1917;--text2:#6b6860;--text3:#9e9b93;--primary:#2563eb;--accent:#2563eb;--accent-bg:#eff6ff;--success:#16a34a;--success-bg:#f0fdf4;--warn-bg:#fffbeb;--warn:#b45309;--danger:#dc2626;--purple-bg:#faf5ff;--purple:#7c3aed;--radius:10px;--radius-sm:6px}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
   header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
@@ -9598,6 +9598,11 @@ function reconExportXlsx() {
           <div><div style="font-size:11px;color:var(--text3);margin-bottom:3px">광고비(옐로우)</div><input type="number" id="sme_adYb" class="inp" placeholder="0" style="font-size:12px;width:100%"></div>
           <div><div style="font-size:11px;color:var(--text3);margin-bottom:3px">납부 부가세</div><input type="number" id="sme_vat" class="inp" placeholder="0" style="font-size:12px;width:100%"></div>
         </div>
+        <div style="background:var(--bg2);border-radius:6px;padding:10px;font-size:12px;font-weight:700;color:var(--text3);margin-top:4px;display:flex;align-items:center;justify-content:space-between">
+          <span>📦 거래처별 매입 내역 <span style="font-weight:400">(주간보고 품목별 합산용)</span></span>
+          <button type="button" class="btn btn-sm" onclick="smeAddVendorRow()" style="font-size:11px;padding:3px 10px">+ 거래처 추가</button>
+        </div>
+        <div id="sme_vendorRows" style="display:flex;flex-direction:column;gap:4px"></div>
       </div>
       <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end">
         <button class="btn" onclick="srHideManualEntry()">취소</button>
@@ -12673,12 +12678,39 @@ function srRestoreDetailBox(btn){
   srUpdateProfitIncremental(rowKey);
 }
 
+let _smeVendorRows = [];
+function smeAddVendorRow(vendor, purchase) {
+  _smeVendorRows.push({ vendor: vendor || '', purchase: purchase || '' });
+  _smeRenderVendorRows();
+}
+function smeRemoveVendorRow(i) {
+  _smeVendorRows.splice(i, 1);
+  _smeRenderVendorRows();
+}
+function _smeRenderVendorRows() {
+  const el = document.getElementById('sme_vendorRows');
+  if (!el) return;
+  if (_smeVendorRows.length === 0) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:4px 2px">거래처를 추가하면 주간보고에서 거래처별로 매입액이 합산됩니다.</div>';
+    return;
+  }
+  el.innerHTML = _smeVendorRows.map((r, i) => `
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center">
+      <input class="inp" placeholder="거래처명 (예: 동일)" style="font-size:12px"
+        value="${escHtml(r.vendor)}" oninput="_smeVendorRows[${i}].vendor=this.value">
+      <input type="number" class="inp" placeholder="매입액" style="font-size:12px"
+        value="${r.purchase}" oninput="_smeVendorRows[${i}].purchase=Number(this.value)||0">
+      <button type="button" onclick="smeRemoveVendorRow(${i})"
+        style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
+    </div>`).join('');
+}
 function srShowManualEntry(){
   const overlay = document.getElementById('srManualEntryOverlay');
   overlay.style.display = '';
-  // 오늘 날짜 기본값
   const d = document.getElementById('sme_date');
   if (!d.value) d.value = _localISO();
+  _smeVendorRows = [];
+  _smeRenderVendorRows();
 }
 function srHideManualEntry(){
   document.getElementById('srManualEntryOverlay').style.display = 'none';
@@ -12696,17 +12728,25 @@ function srSaveManualEntry(){
   const selfCnt    = grCnt + ybCnt;
   const adGr = v('sme_adGr'), adYb = v('sme_adYb');
   const adTotal = adGr + adYb;
+  const totalPurchase = v('sme_purchase');
   const profitSummary = {
-    sales: selfSales, purchase: v('sme_purchase'), fee: v('sme_fee'),
+    sales: selfSales, purchase: totalPurchase, fee: v('sme_fee'),
     vat: v('sme_vat'), profit: v('sme_profit'), count: selfCnt,
     adTotal, adByBiz: { '그로븐': adGr, '옐로우브릿지': adYb, '기타': 0 }
   };
+  // 거래처별 입력이 있으면 profitRows 구성, 없으면 총액 하나짜리 row
+  let profitRows = _smeVendorRows
+    .filter(r => r.vendor && (Number(r.purchase) || 0) > 0)
+    .map(r => ({ vendor: r.vendor, brand: r.vendor, purchase: Number(r.purchase)||0, sales: 0, count: 0, fee: 0, vat: 0, profit: 0 }));
+  if (profitRows.length === 0 && totalPurchase > 0) {
+    profitRows = [{ vendor: '수동입력', brand: '수동입력', purchase: totalPurchase, sales: 0, count: 0, fee: 0, vat: 0, profit: 0 }];
+  }
   const snap = {
     date, totalSales, totalCnt, selfSales, selfCnt,
     grAgg: { totalSales: grSales, count: grCnt },
     ybAgg: { totalSales: ybSales, count: ybCnt },
     dnAgg: { sales: dnSales, count: v('sme_totalCnt') - selfCnt || 0 },
-    profitRows: [], profitSummary,
+    profitRows, profitSummary,
     adTotal, adByBiz: profitSummary.adByBiz,
     _manual: true
   };
