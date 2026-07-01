@@ -595,8 +595,8 @@
       ondrop="invDropOrder(event)">
       <div style="font-size:32px;margin-bottom:8px">📋</div>
       <div style="font-weight:600;margin-bottom:4px">샵마인 발송대기 엑셀을 끌어다 놓거나 클릭하여 선택</div>
-      <div style="font-size:12px;color:var(--text3)">신규주문 / 발송대기 (.xls / .xlsx)</div>
-      <input type="file" id="invOrderFile" accept=".xls,.xlsx" style="display:none" onchange="invLoadOrder(this.files[0]); this.value='';">
+      <div style="font-size:12px;color:var(--text3)">신규주문 / 발송대기 (.xls / .xlsx) — 여러 개 동시 선택 가능</div>
+      <input type="file" id="invOrderFile" accept=".xls,.xlsx" multiple style="display:none" onchange="invLoadOrderAdd(this.files); this.value='';">
     </div>
     <div id="invOrderInfo" style="margin-top:10px;font-size:13px;color:var(--text2)"></div>
     <div id="invOrderAddZone"
@@ -4780,8 +4780,7 @@ function invSaveCarrierMap() {
 function invDropOrder(e) {
   e.preventDefault();
   document.getElementById('invOrderZone').classList.remove('dragover');
-  const f = e.dataTransfer.files[0];
-  if (f) invLoadOrder(f);
+  if (e.dataTransfer && e.dataTransfer.files.length) invLoadOrderAdd(e.dataTransfer.files);
 }
 function invDropTrack(e) {
   e.preventDefault();
@@ -9569,7 +9568,33 @@ function reconExportXlsx() {
   <!-- 수동 이력 추가 모달 -->
   <div id="srManualEntryOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;overflow-y:auto" onclick="if(event.target===this)srHideManualEntry()">
     <div style="background:var(--card);border-radius:12px;padding:24px;max-width:480px;margin:40px auto;box-shadow:0 8px 32px rgba(0,0,0,.25)">
-      <div style="font-size:16px;font-weight:700;margin-bottom:16px">✏️ 수동 이력 추가 <span style="font-size:12px;font-weight:400;color:var(--text3)">— 파일 없을 때 저장된 이미지 보고 입력</span></div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:16px">
+        <div style="font-size:16px;font-weight:700">✏️ 수동 이력 추가 <span style="font-size:12px;font-weight:400;color:var(--text3)">— 이미지 보고 숫자 자동 인식</span></div>
+        <button type="button" onclick="smeToggleVisionKey()" style="background:none;border:none;font-size:13px;color:var(--text3);cursor:pointer;white-space:nowrap" title="Google Vision API 키 설정">⚙️ API 키</button>
+      </div>
+      <!-- Google Vision API 키 설정 (접을 수 있음) -->
+      <div id="smeVisionKeyPanel" style="display:none;background:var(--bg2);border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px">
+        <div style="font-weight:600;margin-bottom:6px;color:var(--text2)">🔑 Google Cloud Vision API 키</div>
+        <div style="display:flex;gap:6px">
+          <input id="smeVisionKeyInput" class="inp" type="password" placeholder="AIza..." style="font-size:12px;flex:1"
+            value="" oninput="localStorage.setItem('yb_vision_api_key',this.value)">
+          <button type="button" class="btn btn-sm" onclick="smeTestVisionKey()">확인</button>
+        </div>
+        <div style="color:var(--text3);margin-top:5px;font-size:11px">Google Cloud Console → API 및 서비스 → 사용자 인증 정보 → API 키 생성 후 Cloud Vision API 활성화</div>
+        <div id="smeVisionKeyStatus" style="margin-top:4px;font-size:11px"></div>
+      </div>
+      <!-- 이미지 자동 인식 버튼 -->
+      <div style="margin-bottom:12px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="btn btn-sm" onclick="document.getElementById('smeImgFile').click()"
+            style="background:var(--accent-bg);color:var(--accent);border-color:var(--accent)">
+            📸 이미지로 자동입력
+          </button>
+          <span style="font-size:11px;color:var(--text3)">보고서 사진을 넣으면 숫자를 자동으로 채워줘요 (여러 장 가능)</span>
+        </div>
+        <input type="file" id="smeImgFile" accept="image/*" multiple style="display:none" onchange="smeOcrImages(this.files);this.value=''">
+        <div id="smeOcrStatus" style="margin-top:6px;font-size:12px"></div>
+      </div>
       <div style="display:grid;gap:10px;font-size:13px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center">
           <label style="font-weight:600">날짜</label>
@@ -12676,6 +12701,104 @@ function srRestoreDetailBox(btn){
   const k = srOverrideKey(rowKey, orderNo);
   if (ovDB[k]) { delete ovDB[k].boxes; if (!Object.keys(ovDB[k]).length) delete ovDB[k]; srSaveOverridesDB(ovDB); }
   srUpdateProfitIncremental(rowKey);
+}
+
+// ── 수동이력 Google Vision OCR ──
+function smeGetVisionKey(){ return (localStorage.getItem('yb_vision_api_key')||'').trim(); }
+function smeToggleVisionKey(){
+  const p = document.getElementById('smeVisionKeyPanel');
+  const inp = document.getElementById('smeVisionKeyInput');
+  if (!p) return;
+  const show = p.style.display === 'none';
+  p.style.display = show ? '' : 'none';
+  if (show && inp) inp.value = smeGetVisionKey();
+}
+async function smeTestVisionKey(){
+  const key = smeGetVisionKey();
+  const st = document.getElementById('smeVisionKeyStatus');
+  if (!key) { if(st) st.innerHTML='<span style="color:var(--danger)">키를 입력하세요</span>'; return; }
+  if(st) st.innerHTML='<span style="color:var(--text3)">확인 중...</span>';
+  try {
+    const r = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(key)}`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({requests:[{image:{content:'R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='},features:[{type:'TEXT_DETECTION',maxResults:1}]}]})
+    });
+    const j = await r.json();
+    if(j.error){ if(st) st.innerHTML=`<span style="color:var(--danger)">❌ ${escHtml(j.error.message)}</span>`; }
+    else { if(st) st.innerHTML='<span style="color:var(--success)">✅ API 키 정상</span>'; }
+  } catch(e){ if(st) st.innerHTML=`<span style="color:var(--danger)">❌ 오류: ${escHtml(e.message)}</span>`; }
+}
+async function smeOcrImages(files){
+  const key = smeGetVisionKey();
+  const st = document.getElementById('smeOcrStatus');
+  if (!key){
+    if(st) st.innerHTML='<span style="color:var(--warn)">⚙️ API 키 버튼을 눌러 Google Vision API 키를 먼저 설정하세요</span>';
+    document.getElementById('smeVisionKeyPanel').style.display='';
+    const inp=document.getElementById('smeVisionKeyInput'); if(inp) inp.value='';
+    return;
+  }
+  if (!files || !files.length) return;
+  if(st) st.innerHTML='<span style="color:var(--text3)">🔍 이미지 분석 중...</span>';
+  const allText = [];
+  for (const file of [...files]) {
+    const b64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result.split(',')[1]); r.onerror=rej; r.readAsDataURL(file); });
+    try {
+      const resp = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(key)}`,{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({requests:[{image:{content:b64},features:[{type:'DOCUMENT_TEXT_DETECTION'}]}]})
+      });
+      const j = await resp.json();
+      if(j.error) throw new Error(j.error.message);
+      const txt = j.responses?.[0]?.fullTextAnnotation?.text || '';
+      allText.push(txt);
+    } catch(e){ if(st) st.innerHTML=`<span style="color:var(--danger)">❌ ${escHtml(e.message)}</span>`; return; }
+  }
+  const combined = allText.join('\n');
+  const filled = _smeFillFromText(combined);
+  if(st) st.innerHTML = filled > 0
+    ? `<span style="color:var(--success)">✅ ${filled}개 항목 자동 입력됐어요 — 확인 후 저장하세요</span>`
+    : `<span style="color:var(--warn)">⚠ 숫자를 인식했지만 항목 매핑이 안 됐어요. 수동으로 입력해주세요.</span>`;
+}
+function _smeNum(s){ return Number(String(s).replace(/[,\s]/g,''))||0; }
+function _smeFillFromText(txt){
+  // 텍스트에서 "레이블 숫자" 패턴 매핑
+  const mappings = [
+    { ids:['sme_totalSales'], keys:['총매출액','총 매출액','total매출','전체매출'] },
+    { ids:['sme_totalCnt'],   keys:['총건수','총 건수','전체건수'] },
+    { ids:['sme_dnSales'],    keys:['디네트매출','디네트 매출','디네트'] },
+    { ids:['sme_grSales'],    keys:['그로븐매출','그로브매출','그로븐 매출','그로브 매출','로또상회매출','로또상회 매출'] },
+    { ids:['sme_grCnt'],      keys:['그로븐건수','그로브건수','그로븐 건수','그로브 건수','로또상회건수','로또상회 건수'] },
+    { ids:['sme_ybSales'],    keys:['옐로우매출','옐로우 매출','자꾸가게매출','자꾸가게 매출','yb매출'] },
+    { ids:['sme_ybCnt'],      keys:['옐로우건수','옐로우 건수','자꾸가게건수','자꾸가게 건수','yb건수'] },
+    { ids:['sme_purchase'],   keys:['총매입액','총 매입액','매입액','총매입'] },
+    { ids:['sme_fee'],        keys:['판매수수료','수수료'] },
+    { ids:['sme_profit'],     keys:['순이익','순 이익'] },
+    { ids:['sme_adGr'],       keys:['광고비그로브','광고비그로븐','광고비(그로브','광고비(그로븐'] },
+    { ids:['sme_adYb'],       keys:['광고비옐로우','광고비(옐로우','광고비 옐로우'] },
+    { ids:['sme_vat'],        keys:['부가세','납부부가세','납부 부가세'] },
+  ];
+  // 공백·특수문자 제거한 텍스트 + 원본 둘 다 사용
+  const clean = txt.replace(/\s+/g,'');
+  let filled = 0;
+  for (const { ids, keys } of mappings) {
+    for (const key of keys) {
+      const kClean = key.replace(/\s+/g,'');
+      // "레이블숫자" or "레이블:숫자" or "레이블 숫자" 패턴
+      const re = new RegExp(kClean.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '[:\\s]*([\\d,]+)', 'i');
+      const m = clean.match(re);
+      if (m) {
+        const num = _smeNum(m[1]);
+        if (num > 0) {
+          for (const id of ids) {
+            const el = document.getElementById(id);
+            if (el && !el.value) { el.value = num; filled++; }
+          }
+          break;
+        }
+      }
+    }
+  }
+  return filled;
 }
 
 let _smeVendorRows = [];
