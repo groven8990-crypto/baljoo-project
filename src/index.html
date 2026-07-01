@@ -12750,7 +12750,15 @@ function srExportImage(){
         document.body.removeChild(tmp);
       }
     }
-    if (saved.length) _poShowToast('✅ '+saved.length+'장 저장됨\n'+saved.join('\n'));
+    if (saved.length) {
+      _poShowToast('✅ '+saved.length+'장 저장됨\n'+saved.join('\n'));
+      // 이미지 저장 성공 시 이력도 자동 저장 (별도로 누를 필요 없음)
+      if (_srLastSnapshot) {
+        srSaveSnapshot(_srLastSnapshot);
+        const status = document.getElementById('srStatus');
+        if (status) status.innerHTML = `<span style="color:var(--success)">✅ ${_srLastSnapshot.date} 이미지 + 이력 자동 저장됨</span> <span style="color:var(--text3);font-size:11px">· 주간 매출에 합산됩니다</span>`;
+      }
+    }
   })();
 }
 
