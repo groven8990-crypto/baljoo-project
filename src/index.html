@@ -12401,23 +12401,26 @@ function _srBuildDetailRowHtml(r, i, firstOfGroup){
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${r.qtySum}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums">${r.sales.toLocaleString()}</td>
     <td style="padding:3px 3px;border-bottom:1px solid #eee">
-      <div style="display:flex;flex-direction:column;gap:2px">
+      ${ (() => {
+        const _showReview = r.reviewQty > 0 || Number(r.reviewUnit) > 0 || r.vendor === '동일' || r.vendor === '그린캠';
+        return `<div style="display:flex;flex-direction:column;gap:2px">
         <div style="display:flex;align-items:center;gap:3px">
-          <span style="font-size:9px;color:#6B7280;width:24px">${r.reviewQty>0?'일반':''}</span>
+          <span style="font-size:9px;color:#6B7280;width:24px">${_showReview&&r.reviewQty>0?'일반':''}</span>
           <input type="number" min="0" step="1" value="${r.unit||''}" placeholder="1개 가격" title="옵션 1개당 매입단가 (일반 주문용)"
             data-key="${_srEsc(r.key)}" data-role="unit"
             style="width:70px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
             oninput="srOnPurchaseInputChange(this)">
         </div>
-        <div style="display:flex;align-items:center;gap:3px" title="리뷰 주문 매입단가 — 미입력 시 일반 단가 사용">
+        ${_showReview ? `<div style="display:flex;align-items:center;gap:3px" title="리뷰 주문 매입단가 — 미입력 시 일반 단가 사용">
           <span style="font-size:9px;color:#92400E;width:24px;font-weight:600">리뷰</span>
           <input type="number" min="0" step="1" value="${r.reviewUnit||''}" placeholder="${r.unit||'리뷰가'}"
             data-key="${_srEsc(r.key)}" data-role="reviewUnit"
             style="width:70px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #FCD34D;background:#FFFBEB;border-radius:3px;font-variant-numeric:tabular-nums"
             oninput="srOnPurchaseInputChange(this)">
           ${r.reviewQty>0 ? `<span style="font-size:9px;color:#92400E;white-space:nowrap">×${r.reviewQty}</span>` : ''}
-        </div>
-      </div>
+        </div>` : ''}
+      </div>`;
+      })() }
     </td>
     <td data-cell="itemCost" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00">${r.itemCost.toLocaleString()}${r.reviewQty>0?`<div style="font-size:9px;color:#92400E;font-weight:400">리뷰 ${r.reviewCount}건 포함</div>`:''}</td>
     <td style="padding:3px 3px;border-bottom:1px solid #eee;white-space:nowrap">
