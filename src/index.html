@@ -9689,7 +9689,16 @@ function reconExportXlsx() {
   <!-- 예치금 현황 패널 -->
   <div class="sr-sub-content" id="srsub-deposit">
     <div class="card">
-      <div class="card-title">💳 예치금 현황</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <div style="font-size:15px;font-weight:700">💳 예치금 현황 <span id="depStoreLabel" style="font-size:12px;font-weight:400;color:var(--text3)">통합</span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-primary" onclick="depImportFile()">📂 파일 올리기</button>
+          <button class="btn btn-sm" onclick="depImportPaste()">📋 붙여넣기</button>
+          <button class="btn btn-sm" style="background:#22c55e;color:#fff;border-color:#22c55e" onclick="depExportPng()">📊 현황 보고(PNG)</button>
+          <button class="btn btn-sm" onclick="depDedup()">🔁 중복 정리</button>
+          <button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="depClearAll()">🗑 전체삭제</button>
+        </div>
+      </div>
       <div id="depMain"></div>
     </div>
   </div><!-- /srsub-deposit -->
@@ -13618,7 +13627,7 @@ function depSaveAll(arr) { try { localStorage.setItem(LS_DEPOSITS, JSON.stringif
 function depUid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 function depNum(v) { return Number(String(v).replace(/,/g, '')) || 0; }
 function depWon(v) { const n = depNum(v); return (n < 0 ? '-' : '') + Math.abs(n).toLocaleString() + '원'; }
-function depStNm(s) { return s === 'groven' ? '그로븐' : s === 'yb' ? '옐로우브릿지' : s || '기타'; }
+function depStNm(s) { return s === 'groven' ? '그로브' : s === 'yb' ? 'YB' : s || '기타'; }
 
 function depBalance(list) {
   let bal = 0;
@@ -13637,122 +13646,123 @@ function depRefresh() {
   renderDepositsView(main);
 }
 
+function depSetStore(s) { _depLastInput = {..._depLastInput, store: s}; depRefresh(); }
+function depSetVendor(v) { _depLastInput = {..._depLastInput, vendor: v}; depRefresh(); }
+function depSetKind(k) { _depLastInput = {..._depLastInput, kind: k}; depRefresh(); }
+
 function renderDepositsView(main) {
   const all = depLoadAll();
 
-  // KPI: 거래처별 잔액 카드
-  const byVendor = {};
+  // KPI: 스토어별 → 거래처별 3열 카드
+  const byStore = {};
   all.forEach(r => {
-    const key = (r.store || '') + '|' + (r.vendor || '');
-    if (!byVendor[key]) byVendor[key] = { store: r.store, vendor: r.vendor, rows: [] };
-    byVendor[key].rows.push(r);
+    const st = r.store || 'groven';
+    const v  = r.vendor || '미지정';
+    if (!byStore[st]) byStore[st] = {};
+    if (!byStore[st][v]) byStore[st][v] = [];
+    byStore[st][v].push(r);
   });
+  const storeOrder = ['groven', 'yb'];
+  let kpiHtml = '';
+  for (const st of storeOrder) {
+    if (!byStore[st] || !Object.keys(byStore[st]).length) continue;
+    kpiHtml += `<div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px;padding-left:2px">${depStNm(st)}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:18px">`;
+    for (const [vname, rows] of Object.entries(byStore[st])) {
+      const bal = depBalance(rows);
+      const charged = rows.filter(r=>r.kind==='충전'||r.kind==='적립').reduce((s,r)=>s+depNum(r.amount),0);
+      const used    = rows.filter(r=>r.kind==='사용'||r.kind==='차감').reduce((s,r)=>s+depNum(r.amount),0);
+      kpiHtml += `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:6px">${escHtml(vname)}</div>
+        <div style="font-size:20px;font-weight:800;color:#1a56db">₩${Math.abs(depNum(bal)).toLocaleString()}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">충전 ₩${charged.toLocaleString()} · 사용 ₩${used.toLocaleString()}</div>
+      </div>`;
+    }
+    kpiHtml += '</div>';
+  }
 
-  const kpiHtml = Object.values(byVendor).length
-    ? `<div class="dep-kpibar">` + Object.values(byVendor).map(g => {
-        const bal = depBalance(g.rows);
-        const used = g.rows.filter(r => r.kind==='사용'||r.kind==='차감').reduce((s,r)=>s+depNum(r.amount),0);
-        const charged = g.rows.filter(r => r.kind==='충전'||r.kind==='적립').reduce((s,r)=>s+depNum(r.amount),0);
-        const key = (g.store||'') + '|' + (g.vendor||'');
-        const on = _depFilter === key ? ' dep-kb-on' : '';
-        return `<div class="dep-kb${on}" onclick="depSetFilter('${escHtml(key)}')">
-          <div class="dep-kbl">${escHtml(depStNm(g.store))} · ${escHtml(g.vendor||'미지정')}</div>
-          <div class="dep-kbv" style="color:${bal>=0?'var(--success)':'var(--danger)'}">${depWon(bal)}</div>
-          <div class="dep-kbh">충전 ${depWon(charged)} / 사용 ${depWon(used)}</div>
-        </div>`;
-      }).join('') + `</div>`
-    : '';
+  // 기존 거래처 목록 (칩 선택용)
+  const allVendors = [...new Set(all.map(r => r.vendor||'').filter(Boolean))];
+  const chipVendor = allVendors.includes(_depLastInput.vendor) ? _depLastInput.vendor : '';
 
   // 직접 입력 폼
-  const formHtml = `<details style="margin-bottom:14px"><summary style="cursor:pointer;font-size:13px;font-weight:600;padding:6px 0">✏️ 직접 입력</summary>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:10px;padding:10px;background:var(--bg);border-radius:8px">
-      <div><label style="font-size:11px;color:var(--text3)">날짜</label>
+  const formHtml = `<div style="margin-bottom:20px;padding:14px;background:var(--bg);border-radius:10px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:12px">예치금 직접 입력</div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:5px">사업장</div>
+      <div style="display:flex;gap:6px">
+        <button class="dep-chip${_depLastInput.store==='groven'?' on':''}" onclick="depSetStore('groven')">그로브</button>
+        <button class="dep-chip${_depLastInput.store==='yb'?' on':''}" onclick="depSetStore('yb')">YB</button>
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:5px">거래처</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        ${allVendors.map(v=>`<button class="dep-chip${chipVendor===v?' on':''}" onclick="depSetVendor('${escHtml(v)}')">${escHtml(v)}</button>`).join('')}
+        <input type="text" id="depFVendor" class="inp" style="font-size:12px;width:110px" placeholder="${allVendors.length?'또는 직접 입력':'거래처 입력'}" value="${escHtml(chipVendor?'':_depLastInput.vendor)}" oninput="if(this.value.trim())_depLastInput.vendor=''">
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:5px">구분</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="dep-chip kc${_depLastInput.kind==='충전'?' on':''}" onclick="depSetKind('충전')">충전</button>
+        <button class="dep-chip ku${_depLastInput.kind==='사용'?' on':''}" onclick="depSetKind('사용')">사용</button>
+        <button class="dep-chip kc${_depLastInput.kind==='적립'?' on':''}" onclick="depSetKind('적립')">적립</button>
+        <button class="dep-chip ku${_depLastInput.kind==='차감'?' on':''}" onclick="depSetKind('차감')">차감</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">날짜</div>
         <input type="date" id="depFDate" class="inp" style="font-size:12px" value="${_depYmd(new Date())}"></div>
-      <div><label style="font-size:11px;color:var(--text3)">가게</label>
-        <select id="depFStore" class="inp" style="font-size:12px">
-          <option value="groven" ${_depLastInput.store==='groven'?'selected':''}>그로븐</option>
-          <option value="yb" ${_depLastInput.store==='yb'?'selected':''}>옐로우브릿지</option>
-        </select></div>
-      <div><label style="font-size:11px;color:var(--text3)">거래처</label>
-        <input type="text" id="depFVendor" class="inp" style="font-size:12px" placeholder="예: 마늘나라" value="${escHtml(_depLastInput.vendor)}"></div>
-      <div><label style="font-size:11px;color:var(--text3)">종류</label>
-        <select id="depFKind" class="inp" style="font-size:12px">
-          ${['충전','사용','적립','차감'].map(k=>`<option ${_depLastInput.kind===k?'selected':''}>${k}</option>`).join('')}
-        </select></div>
-      <div><label style="font-size:11px;color:var(--text3)">금액</label>
-        <input type="number" id="depFAmount" class="inp" style="font-size:12px" placeholder="0"></div>
-      <div><label style="font-size:11px;color:var(--text3)">메모</label>
-        <input type="text" id="depFMemo" class="inp" style="font-size:12px" placeholder="선택"></div>
+      <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">금액</div>
+        <input type="number" id="depFAmount" class="inp" style="font-size:12px;width:110px" placeholder="0"></div>
+      <div style="flex:1;min-width:100px"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">메모</div>
+        <input type="text" id="depFMemo" class="inp" style="font-size:12px;width:100%" placeholder="선택"></div>
+      <button class="btn btn-primary" onclick="depAddRow()" style="height:36px;white-space:nowrap">추가</button>
     </div>
-    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-      <button class="btn btn-sm btn-primary" onclick="depAddRow()">➕ 추가</button>
-    </div>
-  </details>`;
-
-  // 테이블 데이터
-  const filtered = _depFilter
-    ? all.filter(r => (_depFilter === (r.store||'')+'|'+(r.vendor||'')))
-    : all;
-  const sorted = [...filtered].sort((a,b) => (b.date||'').localeCompare(a.date||''));
-
-  const filterBtnHtml = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
-    <button class="dep-chip${_depFilter===''?' on':''}" onclick="depSetFilter('')">전체</button>
-    ${Object.values(byVendor).map(g=>{
-      const key=(g.store||'')+'|'+(g.vendor||'');
-      return `<button class="dep-chip${_depFilter===key?' on':''}" onclick="depSetFilter('${escHtml(key)}')">${escHtml(depStNm(g.store))}·${escHtml(g.vendor||'미지정')}</button>`;
-    }).join('')}
-    <div style="flex:1"></div>
-    <button class="btn btn-sm" onclick="depImportFile()" style="font-size:11px">📂 파일 가져오기</button>
-    <button class="btn btn-sm" onclick="depImportPaste()" style="font-size:11px">📋 붙여넣기</button>
-    <button class="btn btn-sm" onclick="depDedup()" style="font-size:11px">🔁 중복제거</button>
-    <button class="btn btn-sm" onclick="depExportPng()" style="font-size:11px">📸 보고서 PNG</button>
-    ${_depFilter ? `<button class="btn btn-sm" style="color:var(--danger);font-size:11px;border-color:var(--danger)" onclick="depClearFiltered()">🗑 선택 삭제</button>` : ''}
   </div>`;
 
-  const tableHtml = sorted.length ? `
-    <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="background:var(--bg2)">
-        <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">날짜</th>
-        <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">가게</th>
-        <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">거래처</th>
-        <th style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--border)">종류</th>
-        <th style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--border)">금액</th>
-        <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">메모</th>
-        <th style="padding:6px 8px;border-bottom:1px solid var(--border)"></th>
-      </tr></thead>
-      <tbody>${sorted.map(r => {
-        const isIn = r.kind==='충전'||r.kind==='적립';
-        return `<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:5px 8px">${escHtml(r.date||'')}</td>
-          <td style="padding:5px 8px">${escHtml(depStNm(r.store))}</td>
-          <td style="padding:5px 8px">${escHtml(r.vendor||'')}</td>
-          <td style="padding:5px 8px;text-align:center"><span class="dep-tag ${isIn?'in':'out'}">${escHtml(r.kind||'')}</span></td>
-          <td style="padding:5px 8px;text-align:right;font-weight:600;color:${isIn?'var(--success)':'var(--danger)'}">${depWon(r.amount)}</td>
-          <td style="padding:5px 8px;color:var(--text3)">${escHtml(r.memo||'')}</td>
-          <td style="padding:5px 8px;text-align:right">
-            <button class="btn btn-sm" style="font-size:10px;padding:2px 6px" onclick="depEditRow('${escHtml(r.id)}')">수정</button>
-            <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;color:var(--danger)" onclick="depDeleteRow('${escHtml(r.id)}')">삭제</button>
-          </td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table></div>` : `<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">데이터가 없어요. 직접 입력하거나 파일을 가져오세요.</div>`;
+  // 테이블
+  const sorted = [...all].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  const tableHtml = sorted.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="border-bottom:2px solid var(--border)">
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--text3)">날짜</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--text3)">사업장</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--text3)">거래처</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--text3)">구분</th>
+      <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--text3)">금액</th>
+      <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--text3)">메모</th>
+      <th style="padding:8px 6px;width:52px"></th>
+    </tr></thead>
+    <tbody>${sorted.map(r => {
+      const isIn = r.kind==='충전'||r.kind==='적립';
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:10px">${escHtml(r.date||'')}</td>
+        <td style="padding:10px">${escHtml(depStNm(r.store))}</td>
+        <td style="padding:10px">${escHtml(r.vendor||'')}</td>
+        <td style="padding:10px"><span style="display:inline-block;padding:2px 9px;border-radius:10px;font-size:12px;font-weight:600;background:${isIn?'#dcfce7':'#fee2e2'};color:${isIn?'#16a34a':'#dc2626'}">${escHtml(r.kind||'')}</span></td>
+        <td style="padding:10px;text-align:right;font-weight:600">₩${depNum(r.amount).toLocaleString()}</td>
+        <td style="padding:10px;color:var(--text3)">${escHtml(r.memo||'')}</td>
+        <td style="padding:10px 6px;text-align:right;white-space:nowrap">
+          <button onclick="depEditRow('${escHtml(r.id)}')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:15px;padding:0 3px" title="수정">✎</button>
+          <button onclick="depDeleteRow('${escHtml(r.id)}')" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:15px;padding:0 3px" title="삭제">✕</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`
+  : `<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">데이터가 없어요.<br>파일 올리기 또는 직접 입력으로 추가하세요.</div>`;
 
-  main.innerHTML = kpiHtml + formHtml + filterBtnHtml + tableHtml;
-}
-
-function depSetFilter(key) {
-  _depFilter = (_depFilter === key) ? '' : key;
-  depRefresh();
+  main.innerHTML = kpiHtml + formHtml + tableHtml;
 }
 
 function depAddRow() {
-  const date   = document.getElementById('depFDate').value;
-  const store  = document.getElementById('depFStore').value;
-  const vendor = document.getElementById('depFVendor').value.trim();
-  const kind   = document.getElementById('depFKind').value;
-  const amount = depNum(document.getElementById('depFAmount').value);
-  const memo   = document.getElementById('depFMemo').value.trim();
+  const date    = (document.getElementById('depFDate')||{}).value || '';
+  const store   = _depLastInput.store || 'groven';
+  const kind    = _depLastInput.kind  || '사용';
+  const textEl  = document.getElementById('depFVendor');
+  const vendor  = (textEl && textEl.value.trim()) || _depLastInput.vendor || '';
+  const amount  = depNum((document.getElementById('depFAmount')||{}).value);
+  const memo    = (document.getElementById('depFMemo')||{}).value.trim();
   if (!date || !vendor || !amount) { _poShowToast('날짜·거래처·금액을 모두 입력해주세요'); return; }
   _depLastInput = { store, vendor, kind };
   const all = depLoadAll();
@@ -13773,18 +13783,18 @@ function depEditRow(id) {
   const r = all.find(x => x.id === id);
   if (!r) return;
   depOpenModal('✏️ 수정', `
-    <div style="display:grid;gap:8px">
-      <label style="font-size:12px">날짜 <input type="date" id="depEDate" class="inp" value="${escHtml(r.date||'')}"></label>
-      <label style="font-size:12px">가게
-        <select id="depEStore" class="inp">
-          <option value="groven" ${r.store==='groven'?'selected':''}>그로븐</option>
-          <option value="yb" ${r.store==='yb'?'selected':''}>옐로우브릿지</option>
+    <div style="display:grid;gap:10px">
+      <label style="font-size:12px">날짜<br><input type="date" id="depEDate" class="inp" style="margin-top:3px" value="${escHtml(r.date||'')}"></label>
+      <label style="font-size:12px">사업장<br>
+        <select id="depEStore" class="inp" style="margin-top:3px">
+          <option value="groven" ${r.store==='groven'?'selected':''}>그로브</option>
+          <option value="yb" ${r.store==='yb'?'selected':''}>YB</option>
         </select></label>
-      <label style="font-size:12px">거래처 <input type="text" id="depEVendor" class="inp" value="${escHtml(r.vendor||'')}"></label>
-      <label style="font-size:12px">종류
-        <select id="depEKind" class="inp">${['충전','사용','적립','차감'].map(k=>`<option ${r.kind===k?'selected':''}>${k}</option>`).join('')}</select></label>
-      <label style="font-size:12px">금액 <input type="number" id="depEAmount" class="inp" value="${depNum(r.amount)}"></label>
-      <label style="font-size:12px">메모 <input type="text" id="depEMemo" class="inp" value="${escHtml(r.memo||'')}"></label>
+      <label style="font-size:12px">거래처<br><input type="text" id="depEVendor" class="inp" style="margin-top:3px" value="${escHtml(r.vendor||'')}"></label>
+      <label style="font-size:12px">구분<br>
+        <select id="depEKind" class="inp" style="margin-top:3px">${['충전','사용','적립','차감'].map(k=>`<option ${r.kind===k?'selected':''}>${k}</option>`).join('')}</select></label>
+      <label style="font-size:12px">금액<br><input type="number" id="depEAmount" class="inp" style="margin-top:3px" value="${depNum(r.amount)}"></label>
+      <label style="font-size:12px">메모<br><input type="text" id="depEMemo" class="inp" style="margin-top:3px" value="${escHtml(r.memo||'')}"></label>
     </div>`,
     [{ label: '💾 저장', primary: true, onclick: () => {
       r.date   = document.getElementById('depEDate').value;
@@ -13800,15 +13810,9 @@ function depEditRow(id) {
     { label: '취소', onclick: depCloseModal }]);
 }
 
-function depClearFiltered() {
-  const label = _depFilter ? '선택한 거래처' : '전체';
-  if (!confirm(label + ' 데이터를 모두 삭제할까요?')) return;
-  const all = depLoadAll();
-  const remaining = _depFilter
-    ? all.filter(r => (_depFilter !== (r.store||'')+'|'+(r.vendor||'')))
-    : [];
-  depSaveAll(remaining);
-  _depFilter = '';
+function depClearAll() {
+  if (!confirm('전체 예치금 데이터를 모두 삭제할까요?')) return;
+  depSaveAll([]);
   depRefresh();
 }
 
@@ -13876,7 +13880,7 @@ function depImportFile() {
     <div style="margin-bottom:10px;font-size:12px;color:var(--text3)">엑셀(.xlsx/.xls) 파일을 선택하세요. 컬럼: 날짜, 가게, 거래처, 종류(충전/사용/적립/차감), 금액, 메모</div>
     <div style="margin-bottom:10px"><label style="font-size:12px">가게 기본값
       <select id="depIStore" class="inp" style="font-size:12px">
-        <option value="groven">그로븐</option><option value="yb">옐로우브릿지</option>
+        <option value="groven">그로브</option><option value="yb">YB</option>
       </select></label></div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
       <button class="btn btn-sm" onclick="document.getElementById('depIFile').click()" style="white-space:nowrap">📂 파일 선택</button>
@@ -13924,7 +13928,7 @@ function depImportPaste() {
     </div>
     <div><label style="font-size:12px">가게 기본값
       <select id="depPStore" class="inp" style="font-size:12px">
-        <option value="groven">그로븐</option><option value="yb">옐로우브릿지</option>
+        <option value="groven">그로브</option><option value="yb">YB</option>
       </select></label></div>
     <textarea id="depPText" style="width:100%;height:140px;margin-top:8px;font-size:11px;font-family:monospace" class="inp" placeholder="여기에 붙여넣기..."></textarea>`,
     [{ label: '📥 가져오기', primary: true, onclick: () => {
