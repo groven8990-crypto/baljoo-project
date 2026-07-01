@@ -5654,6 +5654,16 @@ function toggleExpPaid(i) {
   renderExpHistList();
 }
 
+function toggleExpProof(i) {
+  const hist = loadExpHist();
+  if (!hist[i]) return;
+  hist[i].proof = !hist[i].proof;
+  if (hist[i].proof) hist[i].proofAt = _localISO();
+  else delete hist[i].proofAt;
+  saveExpHist(hist);
+  renderExpHistList();
+}
+
 function switchExpSubTab(name) {
   document.querySelectorAll('#tab-expense .sub-content').forEach(el => { el.classList.remove('active'); el.style.display = 'none'; });
   ['write','bank','list','import'].forEach(n => {
@@ -5788,6 +5798,14 @@ function renderExpHistList() {
       const paidBtn = isPaid
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap;font-variant-numeric:tabular-nums" title="' + paidTitle + '" onclick="toggleExpPaid(' + realIdx + ')">' + paidLabel + '</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="' + paidTitle + '" onclick="toggleExpPaid(' + realIdx + ')">' + paidLabel + '</button>';
+      const isProof = !!d.proof;
+      const proofLabel = isProof && d.proofAt
+        ? '✅ ' + (d.proofAt.slice(5) || '')
+        : (isProof ? '✅ 발행' : '☐ 증빙');
+      const proofTitle = isProof ? '지출증빙 발행완료 · 클릭하면 취소' : '지출증빙 발행 완료로 표시 (계산서/현금영수증)';
+      const proofBtn = isProof
+        ? '<button class="btn btn-sm" style="padding:2px 8px;background:#8b5cf6;color:#fff;border-color:#8b5cf6;white-space:nowrap;font-variant-numeric:tabular-nums" title="' + proofTitle + '" onclick="toggleExpProof(' + realIdx + ')">' + proofLabel + '</button>'
+        : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="' + proofTitle + '" onclick="toggleExpProof(' + realIdx + ')">' + proofLabel + '</button>';
       const attachBtn = d.hasAttach
         ? '<button class="btn btn-sm" style="padding:2px 8px;color:var(--primary);border-color:var(--primary)" title="거래내역서 보기" onclick="viewExpAttach(' + (d.id||0) + ')">📎</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3)" title="거래내역서 첨부" onclick="attachToExpHist(' + realIdx + ')">📎+</button>';
@@ -5797,12 +5815,13 @@ function renderExpHistList() {
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" title="' + imgTitle + '" onclick="saveExpImgFromHist(' + realIdx + ')">📷 ' + (d.imgSavedAt.slice(5)||'') + '</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px" title="' + imgTitle + '" onclick="saveExpImgFromHist(' + realIdx + ')">📷</button>';
       const descStyle = 'font-size:13px;cursor:pointer';
-      html += '<div id="exphi_' + realIdx + '" style="display:grid;grid-template-columns:24px 90px 1fr auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;' + rowBg + '">' +
+      html += '<div id="exphi_' + realIdx + '" style="display:grid;grid-template-columns:24px 90px 1fr auto auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;' + rowBg + '">' +
         '<input type="checkbox" class="exp-hist-chk" data-idx="' + realIdx + '" style="width:15px;height:15px;cursor:pointer" onchange="updateExpHistSelCount()">' +
         '<span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="previewHistItem(' + realIdx + ')">' + escHtml(d.date||'') + '</span>' +
         '<span style="' + descStyle + '" onclick="previewHistItem(' + realIdx + ')">' + escHtml(d.desc||'') + '</span>' +
         '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer" onclick="previewHistItem(' + realIdx + ')">' + fmtNum(d.total) + '원</span>' +
         paidBtn +
+        proofBtn +
         attachBtn +
         imgBtn +
         '<button class="btn btn-sm" style="padding:2px 8px;color:var(--accent);border-color:var(--accent)" onclick="editExpHist(' + realIdx + ')">✏️</button>' +
