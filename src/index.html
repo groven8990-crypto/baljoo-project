@@ -4995,7 +4995,8 @@ async function invGmailLoadAttachment(idx) {
     const blob = new Blob([bytes], { type: ext });
     const file = new File([blob], item.filename, { type: ext });
 
-    invLoadTracks([file]);
+    const vendorLabel = _invGmailMatchLabel(item.from);
+    invLoadTracks([file], vendorLabel || undefined);
     statusEl.textContent = '✅ "' + item.filename + '" 업로드 완료';
   } catch(e) {
     statusEl.textContent = '❌ 오류: ' + e.message;
@@ -5238,7 +5239,7 @@ function normalizeCourier(raw) {
   return String(raw||'').trim();
 }
 
-function invLoadTracks(files) {
+function invLoadTracks(files, vendorHint) {
   Array.from(files).forEach(file => {
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -5288,7 +5289,8 @@ function invLoadTracks(files) {
         });
         const hasCourier   = courierIdx >= 0;
         const lookup       = invLookupCourier(file.name);
-        const vendorGuess  = lookup.matchedKey || invGuessVendor(file.name);
+        const _rawGuess    = lookup.matchedKey || invGuessVendor(file.name);
+        const vendorGuess  = (_rawGuess !== '미확인') ? _rawGuess : (vendorHint || '미확인');
         const courierGuess = lookup.courier;
         invTrackFiles.push({fileName: file.name, vendorName: vendorGuess, courierName: courierGuess, hasCourier, map});
         invRenderTrackList();
@@ -12373,20 +12375,20 @@ function _srBuildDetailRowHtml(r, i, firstOfGroup){
     <td style="padding:3px 3px;border-bottom:1px solid #eee">
       <div style="display:flex;flex-direction:column;gap:2px">
         <div style="display:flex;align-items:center;gap:3px">
-          ${r.reviewQty>0 ? `<span style="font-size:9px;color:#6B7280;width:24px">일반</span>` : ''}
-          <input type="number" min="0" step="1" value="${r.unit||''}" placeholder="1개 가격" title="옵션 1개당 매입단가${r.reviewQty>0?' (일반 주문용)':''}"
+          <span style="font-size:9px;color:#6B7280;width:24px">${r.reviewQty>0?'일반':''}</span>
+          <input type="number" min="0" step="1" value="${r.unit||''}" placeholder="1개 가격" title="옵션 1개당 매입단가 (일반 주문용)"
             data-key="${_srEsc(r.key)}" data-role="unit"
             style="width:70px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
             oninput="srOnPurchaseInputChange(this)">
         </div>
-        ${r.reviewQty>0 ? `<div style="display:flex;align-items:center;gap:3px" title="리뷰 주문 ${r.reviewQty}개의 매입단가 — 미입력 시 일반 단가 사용">
+        <div style="display:flex;align-items:center;gap:3px" title="리뷰 주문 매입단가 — 미입력 시 일반 단가 사용">
           <span style="font-size:9px;color:#92400E;width:24px;font-weight:600">리뷰</span>
           <input type="number" min="0" step="1" value="${r.reviewUnit||''}" placeholder="${r.unit||'리뷰가'}"
             data-key="${_srEsc(r.key)}" data-role="reviewUnit"
             style="width:70px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #FCD34D;background:#FFFBEB;border-radius:3px;font-variant-numeric:tabular-nums"
             oninput="srOnPurchaseInputChange(this)">
-          <span style="font-size:9px;color:#92400E;white-space:nowrap">×${r.reviewQty}</span>
-        </div>` : ''}
+          ${r.reviewQty>0 ? `<span style="font-size:9px;color:#92400E;white-space:nowrap">×${r.reviewQty}</span>` : ''}
+        </div>
       </div>
     </td>
     <td data-cell="itemCost" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00">${r.itemCost.toLocaleString()}${r.reviewQty>0?`<div style="font-size:9px;color:#92400E;font-weight:400">리뷰 ${r.reviewCount}건 포함</div>`:''}</td>
@@ -13876,7 +13878,11 @@ function depImportFile() {
       <select id="depIStore" class="inp" style="font-size:12px">
         <option value="groven">그로븐</option><option value="yb">옐로우브릿지</option>
       </select></label></div>
-    <input type="file" id="depIFile" accept=".xlsx,.xls" style="font-size:12px">`,
+    <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+      <button class="btn btn-sm" onclick="document.getElementById('depIFile').click()" style="white-space:nowrap">📂 파일 선택</button>
+      <span id="depIFileName" style="font-size:12px;color:var(--text3)">선택된 파일 없음</span>
+    </div>
+    <input type="file" id="depIFile" accept=".xlsx,.xls" style="display:none" onchange="document.getElementById('depIFileName').textContent=this.files[0]?this.files[0].name:'선택된 파일 없음'">`,
     [{ label: '📥 가져오기', primary: true, onclick: async () => {
       const file = document.getElementById('depIFile').files[0];
       if (!file) { _poShowToast('파일을 선택하세요'); return; }
