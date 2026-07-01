@@ -99,6 +99,24 @@
   .vendor-item-name{font-weight:500}
   .vendor-item-sub{font-size:11px;color:var(--text3);margin-top:2px}
   .arrow{color:var(--text3);font-size:16px}
+  /* ── 예치금 현황 ── */
+  .dep-kpibar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .dep-kb{flex:1;min-width:150px;background:var(--card);border-radius:var(--radius);padding:12px 14px 10px;border:1px solid var(--border);position:relative;overflow:hidden;cursor:pointer;transition:box-shadow .15s}
+  .dep-kb:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+  .dep-kb::before{content:"";position:absolute;top:0;left:0;width:4px;height:100%;background:var(--primary)}
+  .dep-kb.dep-kb-on{outline:2px solid var(--primary)}
+  .dep-kbl{color:var(--text3);font-size:11px;font-weight:600}
+  .dep-kbv{font-size:18px;font-weight:800;margin-top:4px}
+  .dep-kbh{font-size:10px;color:var(--text3);margin-top:2px}
+  .dep-chip-row{display:flex;flex-wrap:wrap;gap:6px}
+  .dep-chip{border:1.5px solid var(--border);background:var(--surface,#fff);border-radius:20px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);transition:background .12s;font-family:inherit}
+  .dep-chip:hover{background:var(--bg)}
+  .dep-chip.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  .dep-chip.kc.on{background:#22c55e;border-color:#22c55e}
+  .dep-chip.ku.on{background:#ef4444;border-color:#ef4444}
+  .dep-tag{display:inline-block;padding:2px 7px;border-radius:9px;font-size:11px;font-weight:700}
+  .dep-tag.in{background:#dcfce7;color:#166534}
+  .dep-tag.out{background:#fee2e2;color:#991b1b}
 </style>
 </head>
 <body>
@@ -4821,12 +4839,16 @@ function invGmailAddSenderRow() {
 function invGmailUpdateSenderRow(i, field, val) {
   const list = invGmailLoadSenders();
   if (list[i]) { list[i][field] = val; invGmailSaveSenders(list); }
+  // 이미 검색된 목록이 있으면 즉시 재그룹핑
+  clearTimeout(invGmailUpdateSenderRow._t);
+  invGmailUpdateSenderRow._t = setTimeout(_invGmailRegroup, 400);
 }
 function invGmailDeleteSenderRow(i) {
   const list = invGmailLoadSenders();
   list.splice(i, 1);
   invGmailSaveSenders(list);
   invGmailRenderSenderRows();
+  _invGmailRegroup();
 }
 
 async function invGmailFetch() {
@@ -4889,37 +4911,40 @@ async function invGmailFetch() {
     if (!items.length) { statusEl.textContent = '오늘 엑셀 첨부파일이 있는 메일이 없어요.'; return; }
     window._invGmailItems = items;
     statusEl.textContent = items.length + '개 엑셀 파일 발견';
-
-    // 거래처별 그룹핑
-    const groups = {};
-    items.forEach((it, i) => {
-      const label = _invGmailMatchLabel(it.from) || '(미분류) ' + (_invGmailParseName(it.from) || it.from);
-      if (!groups[label]) groups[label] = [];
-      groups[label].push({...it, _idx: i});
-    });
-
-    const itemHtml = (it) => `
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--card)">
-        <span style="font-size:18px;flex-shrink:0">📎</span>
-        <div style="flex:1;min-width:0;overflow:hidden">
-          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.filename)}</div>
-          <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.subject)} · ${_gmailShortDate(it.date)}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-          <button class="btn btn-sm btn-primary" onclick="invGmailLoadAttachment(${it._idx})">업로드</button>
-          <button class="btn btn-sm" style="background:var(--bg2);border:1px solid var(--border);font-size:11px" onclick="invGmailDownloadAttachment(${it._idx})">다운로드</button>
-        </div>
-      </div>`;
-
-    listEl.innerHTML = Object.entries(groups).map(([label, group]) => `
-      <div style="margin-bottom:12px">
-        <div style="font-size:12px;font-weight:700;color:var(--text2);padding:5px 8px;background:var(--bg2);border-radius:6px;margin-bottom:6px;border-left:3px solid var(--primary)">📦 ${escHtml(label)} <span style="font-weight:400;color:var(--text3)">(${group.length}건)</span></div>
-        ${group.map(itemHtml).join('')}
-      </div>`).join('');
+    _invGmailRegroup();
   } catch(e) {
     statusEl.textContent = '❌ 오류: ' + e.message;
     console.error('[invGmailFetch]', e);
   }
+}
+
+function _invGmailRegroup() {
+  const items = window._invGmailItems || [];
+  const listEl = document.getElementById('invGmailList');
+  if (!listEl || !items.length) return;
+  const groups = {};
+  items.forEach((it, i) => {
+    const label = _invGmailMatchLabel(it.from) || '(미분류) ' + (_invGmailParseName(it.from) || it.from);
+    if (!groups[label]) groups[label] = [];
+    groups[label].push({...it, _idx: i});
+  });
+  const itemHtml = (it) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--card)">
+      <span style="font-size:18px;flex-shrink:0">📎</span>
+      <div style="flex:1;min-width:0;overflow:hidden">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.filename)}</div>
+        <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.subject)} · ${_gmailShortDate(it.date)}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+        <button class="btn btn-sm btn-primary" onclick="invGmailLoadAttachment(${it._idx})">업로드</button>
+        <button class="btn btn-sm" style="background:var(--bg2);border:1px solid var(--border);font-size:11px" onclick="invGmailDownloadAttachment(${it._idx})">다운로드</button>
+      </div>
+    </div>`;
+  listEl.innerHTML = Object.entries(groups).map(([label, group]) => `
+    <div style="margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--text2);padding:5px 8px;background:var(--bg2);border-radius:6px;margin-bottom:6px;border-left:3px solid var(--primary)">📦 ${escHtml(label)} <span style="font-weight:400;color:var(--text3)">(${group.length}건)</span></div>
+      ${group.map(itemHtml).join('')}
+    </div>`).join('');
 }
 
 function _gmailFindXlsxParts(payload, result) {
@@ -9561,8 +9586,9 @@ function reconExportXlsx() {
   </div>
   <!-- ── 서브탭: 매출 보고 / 매입 보고 ── -->
   <div class="sub-tab-nav" style="margin-top:6px">
-    <button class="sub-tab-btn active" id="stab-srsales"  onclick="switchSrSubTab('sales')">📈 매출 보고</button>
-    <button class="sub-tab-btn"        id="stab-srprofit" onclick="switchSrSubTab('profit')">📦 매입 / 순이익</button>
+    <button class="sub-tab-btn active" id="stab-srsales"   onclick="switchSrSubTab('sales')">📈 매출 보고</button>
+    <button class="sub-tab-btn"        id="stab-srprofit"  onclick="switchSrSubTab('profit')">📦 매입 / 순이익</button>
+    <button class="sub-tab-btn"        id="stab-srdeposit" onclick="switchSrSubTab('deposit')">💳 예치금 현황</button>
   </div>
   <!-- 매출 보고 패널 -->
   <div class="sr-sub-content active" id="srsub-sales">
@@ -9658,6 +9684,21 @@ function reconExportXlsx() {
   <div class="sr-sub-content" id="srsub-profit">
     <div id="srProfitPanel"></div>
   </div><!-- /srsub-profit -->
+  <!-- 예치금 현황 패널 -->
+  <div class="sr-sub-content" id="srsub-deposit">
+    <div class="card">
+      <div class="card-title">💳 예치금 현황</div>
+      <div id="depMain"></div>
+    </div>
+  </div><!-- /srsub-deposit -->
+  <!-- 예치금 모달 -->
+  <div id="depModalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9500;overflow-y:auto" onclick="if(event.target===this)depCloseModal()">
+    <div style="background:var(--card);border-radius:12px;padding:24px;max-width:540px;margin:40px auto;position:relative">
+      <div id="depModalTitle" style="font-size:15px;font-weight:700;margin-bottom:14px"></div>
+      <div id="depModalBody"></div>
+      <div id="depModalFooter" style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px"></div>
+    </div>
+  </div>
   <div class="card" style="margin-top:14px">
     <div class="card-title">📖 사용 방법</div>
     <div style="font-size:13px;color:var(--text2);line-height:1.7">
@@ -11907,9 +11948,10 @@ function _srEsc(s){ return String(s||'').replace(/"/g, '&quot;'); }
 // 서브탭 전환
 function switchSrSubTab(name){
   document.querySelectorAll('.sr-sub-content').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('#stab-srsales, #stab-srprofit').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('#stab-srsales, #stab-srprofit, #stab-srdeposit').forEach(b=>b.classList.remove('active'));
   const c = document.getElementById('srsub-'+name); if (c) c.classList.add('active');
   const b = document.getElementById('stab-sr'+name); if (b) b.classList.add('active');
+  if (name==='deposit') depRefresh();
 }
 // ══════════════════════════════════════════════════════════
 // 📦 매입 / 순이익 — 사업자별 섹션 + 발주처별 요약 + 상세 입력
@@ -13560,6 +13602,407 @@ function wrDeleteSnap(date){
   const filtered = srLoadHistory().filter(s=>s.date!==date);
   try { localStorage.setItem(SR_HISTORY_KEY, JSON.stringify(filtered)); } catch(e){}
   wrShowHistory(); wrShowHistory(); // toggle off then on
+}
+
+// ══════════════════════════════════════════════════════════
+// 💳 예치금 현황
+// ══════════════════════════════════════════════════════════
+const LS_DEPOSITS = 'yb_deposits';
+let _depFilter = '';
+let _depLastInput = { store: 'groven', vendor: '', kind: '사용' };
+
+function depLoadAll() { try { return JSON.parse(localStorage.getItem(LS_DEPOSITS) || '[]'); } catch { return []; } }
+function depSaveAll(arr) { try { localStorage.setItem(LS_DEPOSITS, JSON.stringify(arr)); } catch(e) { alert('저장 실패: ' + e.message); } }
+function depUid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function depNum(v) { return Number(String(v).replace(/,/g, '')) || 0; }
+function depWon(v) { const n = depNum(v); return (n < 0 ? '-' : '') + Math.abs(n).toLocaleString() + '원'; }
+function depStNm(s) { return s === 'groven' ? '그로븐' : s === 'yb' ? '옐로우브릿지' : s || '기타'; }
+
+function depBalance(list) {
+  let bal = 0;
+  list.forEach(r => {
+    const k = r.kind || '';
+    const a = depNum(r.amount);
+    if (k === '충전' || k === '적립') bal += a;
+    else if (k === '사용' || k === '차감') bal -= a;
+  });
+  return bal;
+}
+
+function depRefresh() {
+  const main = document.getElementById('depMain');
+  if (!main) return;
+  renderDepositsView(main);
+}
+
+function renderDepositsView(main) {
+  const all = depLoadAll();
+
+  // KPI: 거래처별 잔액 카드
+  const byVendor = {};
+  all.forEach(r => {
+    const key = (r.store || '') + '|' + (r.vendor || '');
+    if (!byVendor[key]) byVendor[key] = { store: r.store, vendor: r.vendor, rows: [] };
+    byVendor[key].rows.push(r);
+  });
+
+  const kpiHtml = Object.values(byVendor).length
+    ? `<div class="dep-kpibar">` + Object.values(byVendor).map(g => {
+        const bal = depBalance(g.rows);
+        const used = g.rows.filter(r => r.kind==='사용'||r.kind==='차감').reduce((s,r)=>s+depNum(r.amount),0);
+        const charged = g.rows.filter(r => r.kind==='충전'||r.kind==='적립').reduce((s,r)=>s+depNum(r.amount),0);
+        const key = (g.store||'') + '|' + (g.vendor||'');
+        const on = _depFilter === key ? ' dep-kb-on' : '';
+        return `<div class="dep-kb${on}" onclick="depSetFilter('${escHtml(key)}')">
+          <div class="dep-kbl">${escHtml(depStNm(g.store))} · ${escHtml(g.vendor||'미지정')}</div>
+          <div class="dep-kbv" style="color:${bal>=0?'var(--success)':'var(--danger)'}">${depWon(bal)}</div>
+          <div class="dep-kbh">충전 ${depWon(charged)} / 사용 ${depWon(used)}</div>
+        </div>`;
+      }).join('') + `</div>`
+    : '';
+
+  // 직접 입력 폼
+  const formHtml = `<details style="margin-bottom:14px"><summary style="cursor:pointer;font-size:13px;font-weight:600;padding:6px 0">✏️ 직접 입력</summary>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:10px;padding:10px;background:var(--bg);border-radius:8px">
+      <div><label style="font-size:11px;color:var(--text3)">날짜</label>
+        <input type="date" id="depFDate" class="inp" style="font-size:12px" value="${_depYmd(new Date())}"></div>
+      <div><label style="font-size:11px;color:var(--text3)">가게</label>
+        <select id="depFStore" class="inp" style="font-size:12px">
+          <option value="groven" ${_depLastInput.store==='groven'?'selected':''}>그로븐</option>
+          <option value="yb" ${_depLastInput.store==='yb'?'selected':''}>옐로우브릿지</option>
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3)">거래처</label>
+        <input type="text" id="depFVendor" class="inp" style="font-size:12px" placeholder="예: 마늘나라" value="${escHtml(_depLastInput.vendor)}"></div>
+      <div><label style="font-size:11px;color:var(--text3)">종류</label>
+        <select id="depFKind" class="inp" style="font-size:12px">
+          ${['충전','사용','적립','차감'].map(k=>`<option ${_depLastInput.kind===k?'selected':''}>${k}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3)">금액</label>
+        <input type="number" id="depFAmount" class="inp" style="font-size:12px" placeholder="0"></div>
+      <div><label style="font-size:11px;color:var(--text3)">메모</label>
+        <input type="text" id="depFMemo" class="inp" style="font-size:12px" placeholder="선택"></div>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-primary" onclick="depAddRow()">➕ 추가</button>
+    </div>
+  </details>`;
+
+  // 테이블 데이터
+  const filtered = _depFilter
+    ? all.filter(r => (_depFilter === (r.store||'')+'|'+(r.vendor||'')))
+    : all;
+  const sorted = [...filtered].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+
+  const filterBtnHtml = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+    <button class="dep-chip${_depFilter===''?' on':''}" onclick="depSetFilter('')">전체</button>
+    ${Object.values(byVendor).map(g=>{
+      const key=(g.store||'')+'|'+(g.vendor||'');
+      return `<button class="dep-chip${_depFilter===key?' on':''}" onclick="depSetFilter('${escHtml(key)}')">${escHtml(depStNm(g.store))}·${escHtml(g.vendor||'미지정')}</button>`;
+    }).join('')}
+    <div style="flex:1"></div>
+    <button class="btn btn-sm" onclick="depImportFile()" style="font-size:11px">📂 파일 가져오기</button>
+    <button class="btn btn-sm" onclick="depImportPaste()" style="font-size:11px">📋 붙여넣기</button>
+    <button class="btn btn-sm" onclick="depDedup()" style="font-size:11px">🔁 중복제거</button>
+    <button class="btn btn-sm" onclick="depExportPng()" style="font-size:11px">📸 보고서 PNG</button>
+    ${_depFilter ? `<button class="btn btn-sm" style="color:var(--danger);font-size:11px;border-color:var(--danger)" onclick="depClearFiltered()">🗑 선택 삭제</button>` : ''}
+  </div>`;
+
+  const tableHtml = sorted.length ? `
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:var(--bg2)">
+        <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">날짜</th>
+        <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">가게</th>
+        <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">거래처</th>
+        <th style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--border)">종류</th>
+        <th style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--border)">금액</th>
+        <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">메모</th>
+        <th style="padding:6px 8px;border-bottom:1px solid var(--border)"></th>
+      </tr></thead>
+      <tbody>${sorted.map(r => {
+        const isIn = r.kind==='충전'||r.kind==='적립';
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:5px 8px">${escHtml(r.date||'')}</td>
+          <td style="padding:5px 8px">${escHtml(depStNm(r.store))}</td>
+          <td style="padding:5px 8px">${escHtml(r.vendor||'')}</td>
+          <td style="padding:5px 8px;text-align:center"><span class="dep-tag ${isIn?'in':'out'}">${escHtml(r.kind||'')}</span></td>
+          <td style="padding:5px 8px;text-align:right;font-weight:600;color:${isIn?'var(--success)':'var(--danger)'}">${depWon(r.amount)}</td>
+          <td style="padding:5px 8px;color:var(--text3)">${escHtml(r.memo||'')}</td>
+          <td style="padding:5px 8px;text-align:right">
+            <button class="btn btn-sm" style="font-size:10px;padding:2px 6px" onclick="depEditRow('${escHtml(r.id)}')">수정</button>
+            <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;color:var(--danger)" onclick="depDeleteRow('${escHtml(r.id)}')">삭제</button>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>` : `<div style="text-align:center;padding:24px;color:var(--text3);font-size:13px">데이터가 없어요. 직접 입력하거나 파일을 가져오세요.</div>`;
+
+  main.innerHTML = kpiHtml + formHtml + filterBtnHtml + tableHtml;
+}
+
+function depSetFilter(key) {
+  _depFilter = (_depFilter === key) ? '' : key;
+  depRefresh();
+}
+
+function depAddRow() {
+  const date   = document.getElementById('depFDate').value;
+  const store  = document.getElementById('depFStore').value;
+  const vendor = document.getElementById('depFVendor').value.trim();
+  const kind   = document.getElementById('depFKind').value;
+  const amount = depNum(document.getElementById('depFAmount').value);
+  const memo   = document.getElementById('depFMemo').value.trim();
+  if (!date || !vendor || !amount) { _poShowToast('날짜·거래처·금액을 모두 입력해주세요'); return; }
+  _depLastInput = { store, vendor, kind };
+  const all = depLoadAll();
+  all.push({ id: depUid(), date, store, vendor, kind, amount, memo });
+  depSaveAll(all);
+  depRefresh();
+  _poShowToast('✅ 추가됨');
+}
+
+function depDeleteRow(id) {
+  if (!confirm('삭제할까요?')) return;
+  depSaveAll(depLoadAll().filter(r => r.id !== id));
+  depRefresh();
+}
+
+function depEditRow(id) {
+  const all = depLoadAll();
+  const r = all.find(x => x.id === id);
+  if (!r) return;
+  depOpenModal('✏️ 수정', `
+    <div style="display:grid;gap:8px">
+      <label style="font-size:12px">날짜 <input type="date" id="depEDate" class="inp" value="${escHtml(r.date||'')}"></label>
+      <label style="font-size:12px">가게
+        <select id="depEStore" class="inp">
+          <option value="groven" ${r.store==='groven'?'selected':''}>그로븐</option>
+          <option value="yb" ${r.store==='yb'?'selected':''}>옐로우브릿지</option>
+        </select></label>
+      <label style="font-size:12px">거래처 <input type="text" id="depEVendor" class="inp" value="${escHtml(r.vendor||'')}"></label>
+      <label style="font-size:12px">종류
+        <select id="depEKind" class="inp">${['충전','사용','적립','차감'].map(k=>`<option ${r.kind===k?'selected':''}>${k}</option>`).join('')}</select></label>
+      <label style="font-size:12px">금액 <input type="number" id="depEAmount" class="inp" value="${depNum(r.amount)}"></label>
+      <label style="font-size:12px">메모 <input type="text" id="depEMemo" class="inp" value="${escHtml(r.memo||'')}"></label>
+    </div>`,
+    [{ label: '💾 저장', primary: true, onclick: () => {
+      r.date   = document.getElementById('depEDate').value;
+      r.store  = document.getElementById('depEStore').value;
+      r.vendor = document.getElementById('depEVendor').value.trim();
+      r.kind   = document.getElementById('depEKind').value;
+      r.amount = depNum(document.getElementById('depEAmount').value);
+      r.memo   = document.getElementById('depEMemo').value.trim();
+      depSaveAll(all);
+      depCloseModal();
+      depRefresh();
+    }},
+    { label: '취소', onclick: depCloseModal }]);
+}
+
+function depClearFiltered() {
+  const label = _depFilter ? '선택한 거래처' : '전체';
+  if (!confirm(label + ' 데이터를 모두 삭제할까요?')) return;
+  const all = depLoadAll();
+  const remaining = _depFilter
+    ? all.filter(r => (_depFilter !== (r.store||'')+'|'+(r.vendor||'')))
+    : [];
+  depSaveAll(remaining);
+  _depFilter = '';
+  depRefresh();
+}
+
+function depDedup() {
+  const all = depLoadAll();
+  const seen = new Set();
+  const deduped = all.filter(r => {
+    const sig = [r.date, r.store, r.vendor, r.kind, r.amount].join('|');
+    if (seen.has(sig)) return false;
+    seen.add(sig); return true;
+  });
+  const removed = all.length - deduped.length;
+  depSaveAll(deduped);
+  depRefresh();
+  _poShowToast(removed ? `🔁 ${removed}건 중복 제거됨` : '중복 없음');
+}
+
+function depOpenModal(title, bodyHtml, buttons) {
+  document.getElementById('depModalTitle').innerHTML = title;
+  document.getElementById('depModalBody').innerHTML = bodyHtml;
+  const footer = document.getElementById('depModalFooter');
+  footer.innerHTML = '';
+  (buttons || []).forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm' + (b.primary ? ' btn-primary' : '');
+    btn.textContent = b.label;
+    btn.onclick = b.onclick;
+    footer.appendChild(btn);
+  });
+  document.getElementById('depModalOverlay').style.display = '';
+}
+function depCloseModal() { document.getElementById('depModalOverlay').style.display = 'none'; }
+
+function _depYmd(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function _depFmtDateTime(v) {
+  if (!v) return '';
+  if (v instanceof Date) return _depYmd(v);
+  const n = Number(v);
+  if (!isNaN(n) && n > 40000) {
+    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+    return _depYmd(new Date(d.getTime() + d.getTimezoneOffset() * 60000));
+  }
+  const s = String(v).replace(/\./g, '-').replace(/(\d{4})-(\d{1,2})-(\d{1,2}).*/, '$1-$2-$3');
+  const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  return m ? m[1]+'-'+String(m[2]).padStart(2,'0')+'-'+String(m[3]).padStart(2,'0') : s;
+}
+
+function _depAddDedup(rows) {
+  const all = depLoadAll();
+  const seen = new Set(all.map(r => [r.date, r.store, r.vendor, r.kind, r.amount].join('|')));
+  let added = 0;
+  rows.forEach(r => {
+    const sig = [r.date, r.store, r.vendor, r.kind, r.amount].join('|');
+    if (!seen.has(sig)) { all.push({id: depUid(), ...r}); seen.add(sig); added++; }
+  });
+  depSaveAll(all);
+  return added;
+}
+
+function depImportFile() {
+  depOpenModal('📂 파일 가져오기', `
+    <div style="margin-bottom:10px;font-size:12px;color:var(--text3)">엑셀(.xlsx/.xls) 파일을 선택하세요. 컬럼: 날짜, 가게, 거래처, 종류(충전/사용/적립/차감), 금액, 메모</div>
+    <div style="margin-bottom:10px"><label style="font-size:12px">가게 기본값
+      <select id="depIStore" class="inp" style="font-size:12px">
+        <option value="groven">그로븐</option><option value="yb">옐로우브릿지</option>
+      </select></label></div>
+    <input type="file" id="depIFile" accept=".xlsx,.xls" style="font-size:12px">`,
+    [{ label: '📥 가져오기', primary: true, onclick: async () => {
+      const file = document.getElementById('depIFile').files[0];
+      if (!file) { _poShowToast('파일을 선택하세요'); return; }
+      const defStore = document.getElementById('depIStore').value;
+      try {
+        const rows = await _xlsxReadAuto(file);
+        if (!rows.length) { _poShowToast('데이터가 없어요'); return; }
+        const headers = Object.keys(rows[0]).map(h => h.toLowerCase().trim());
+        const fi = k => headers.findIndex(h => h.includes(k));
+        const iDate   = fi('날짜'); const iVendor = fi('거래처');
+        const iKind   = fi('종류'); const iAmt    = fi('금액') !== -1 ? fi('금액') : fi('변동');
+        const iStore  = fi('가게'); const iMemo   = fi('메모');
+        const mapped = rows.map(row => {
+          const vals = Object.values(row);
+          const kind = String(vals[iKind]||'사용').trim();
+          const validKind = ['충전','사용','적립','차감'].includes(kind) ? kind : '사용';
+          return {
+            date:   _depFmtDateTime(iDate>=0?vals[iDate]:''),
+            store:  iStore>=0 ? String(vals[iStore]||defStore) : defStore,
+            vendor: iVendor>=0 ? String(vals[iVendor]||'').trim() : '',
+            kind:   validKind,
+            amount: Math.abs(depNum(iAmt>=0?vals[iAmt]:0)),
+            memo:   iMemo>=0 ? String(vals[iMemo]||'').trim() : '',
+          };
+        }).filter(r => r.date && r.vendor && r.amount);
+        const added = _depAddDedup(mapped);
+        depCloseModal(); depRefresh();
+        _poShowToast(`✅ ${added}건 추가 (${mapped.length - added}건 중복 스킵)`);
+      } catch(e) { _poShowToast('❌ 파일 읽기 실패: ' + e.message); }
+    }},
+    { label: '취소', onclick: depCloseModal }]);
+}
+
+function depImportPaste() {
+  depOpenModal('📋 붙여넣기 가져오기', `
+    <div style="margin-bottom:8px;font-size:12px;color:var(--text3)">
+      탭 구분 텍스트를 붙여넣으세요. 첫 행은 헤더(날짜·가게·거래처·종류·금액·메모)이거나<br>
+      각 행: <code>날짜[탭]거래처[탭]종류[탭]금액</code> 형식도 가능해요.
+    </div>
+    <div><label style="font-size:12px">가게 기본값
+      <select id="depPStore" class="inp" style="font-size:12px">
+        <option value="groven">그로븐</option><option value="yb">옐로우브릿지</option>
+      </select></label></div>
+    <textarea id="depPText" style="width:100%;height:140px;margin-top:8px;font-size:11px;font-family:monospace" class="inp" placeholder="여기에 붙여넣기..."></textarea>`,
+    [{ label: '📥 가져오기', primary: true, onclick: () => {
+      const text = document.getElementById('depPText').value.trim();
+      const defStore = document.getElementById('depPStore').value;
+      if (!text) { _poShowToast('텍스트를 붙여넣으세요'); return; }
+      const lines = text.split('\n').map(l => l.split('\t').map(c => c.trim()));
+      const firstCols = lines[0].map(c => c.toLowerCase());
+      const isHeader = firstCols.some(c => c.includes('날짜') || c.includes('거래처') || c.includes('종류'));
+      const dataLines = isHeader ? lines.slice(1) : lines;
+      const fi = (cols, ...keys) => { for (const k of keys) { const i = cols.findIndex(c=>c.includes(k)); if(i>=0) return i; } return -1; };
+      const iDate = isHeader ? fi(firstCols,'날짜') : 0;
+      const iVendor = isHeader ? fi(firstCols,'거래처') : 1;
+      const iKind = isHeader ? fi(firstCols,'종류') : 2;
+      const iAmt = isHeader ? fi(firstCols,'금액','변동') : 3;
+      const iMemo = isHeader ? fi(firstCols,'메모') : -1;
+      const iStore = isHeader ? fi(firstCols,'가게') : -1;
+      const mapped = dataLines.map(cols => {
+        const kind = String(cols[iKind]||'사용').trim();
+        const validKind = ['충전','사용','적립','차감'].includes(kind) ? kind : '사용';
+        return {
+          date:   _depFmtDateTime(cols[iDate]||''),
+          store:  iStore>=0 ? cols[iStore]||defStore : defStore,
+          vendor: cols[iVendor]||'',
+          kind:   validKind,
+          amount: Math.abs(depNum(cols[iAmt]||0)),
+          memo:   iMemo>=0 ? cols[iMemo]||'' : '',
+        };
+      }).filter(r => r.date && r.vendor && r.amount);
+      const added = _depAddDedup(mapped);
+      depCloseModal(); depRefresh();
+      _poShowToast(`✅ ${added}건 추가 (${mapped.length - added}건 중복 스킵)`);
+    }},
+    { label: '취소', onclick: depCloseModal }]);
+}
+
+function depExportPng() {
+  const all = depLoadAll();
+  const today = _depYmd(new Date());
+  const todayRows = all.filter(r => r.date === today);
+  const byVendor = {};
+  all.forEach(r => {
+    const k = (r.store||'')+'|'+(r.vendor||'');
+    if (!byVendor[k]) byVendor[k] = { store: r.store, vendor: r.vendor, rows: [] };
+    byVendor[k].rows.push(r);
+  });
+  const balRows = Object.values(byVendor).map(g => ({
+    store: depStNm(g.store), vendor: g.vendor || '미지정', bal: depBalance(g.rows)
+  }));
+  const todayByVendor = {};
+  todayRows.forEach(r => {
+    const k = (r.store||'')+'|'+(r.vendor||'');
+    if (!todayByVendor[k]) todayByVendor[k] = { store: r.store, vendor: r.vendor, rows: [] };
+    todayByVendor[k].rows.push(r);
+  });
+  const previewHtml = `<div style="font-family:sans-serif;padding:20px;background:#fff;max-width:600px">
+    <div style="font-size:18px;font-weight:800;margin-bottom:4px">💳 예치금 현황</div>
+    <div style="font-size:12px;color:#666;margin-bottom:16px">${today} 기준</div>
+    ${todayRows.length ? `<div style="font-size:13px;font-weight:700;margin-bottom:6px">📋 금일 사용 현황</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
+      <thead><tr style="background:#f3f4f6"><th style="padding:5px 8px;text-align:left;border:1px solid #e5e7eb">가게</th><th style="padding:5px 8px;text-align:left;border:1px solid #e5e7eb">거래처</th><th style="padding:5px 8px;text-align:center;border:1px solid #e5e7eb">종류</th><th style="padding:5px 8px;text-align:right;border:1px solid #e5e7eb">금액</th><th style="padding:5px 8px;text-align:left;border:1px solid #e5e7eb">메모</th></tr></thead>
+      <tbody>${todayRows.map(r=>`<tr><td style="padding:5px 8px;border:1px solid #e5e7eb">${depStNm(r.store)}</td><td style="padding:5px 8px;border:1px solid #e5e7eb">${r.vendor||''}</td><td style="padding:5px 8px;text-align:center;border:1px solid #e5e7eb">${r.kind||''}</td><td style="padding:5px 8px;text-align:right;border:1px solid #e5e7eb;font-weight:600;color:${r.kind==='충전'||r.kind==='적립'?'#16a34a':'#dc2626'}">${depWon(r.amount)}</td><td style="padding:5px 8px;border:1px solid #e5e7eb;color:#6b7280">${r.memo||''}</td></tr>`).join('')}</tbody>
+    </table>` : '<div style="font-size:12px;color:#999;margin-bottom:16px">오늘 사용 내역 없음</div>'}
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px">💰 잔액 현황</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:#f3f4f6"><th style="padding:5px 8px;text-align:left;border:1px solid #e5e7eb">가게</th><th style="padding:5px 8px;text-align:left;border:1px solid #e5e7eb">거래처</th><th style="padding:5px 8px;text-align:right;border:1px solid #e5e7eb">잔액</th></tr></thead>
+      <tbody>${balRows.map(r=>`<tr><td style="padding:5px 8px;border:1px solid #e5e7eb">${r.store}</td><td style="padding:5px 8px;border:1px solid #e5e7eb">${r.vendor}</td><td style="padding:5px 8px;text-align:right;border:1px solid #e5e7eb;font-weight:700;color:${r.bal>=0?'#16a34a':'#dc2626'}">${depWon(r.bal)}</td></tr>`).join('')}</tbody>
+    </table>
+  </div>`;
+  depOpenModal('📸 예치금 현황 보고서 미리보기', `
+    <div id="depPngPreview" style="border:1px solid var(--border);border-radius:6px;overflow:hidden">${previewHtml}</div>`,
+    [{ label: '📸 PNG 저장', primary: true, onclick: async () => {
+      const el = document.getElementById('depPngPreview');
+      try {
+        const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#fff' });
+        const link = document.createElement('a');
+        link.download = `예치금현황_${today}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        depCloseModal();
+        _poShowToast('✅ PNG 저장됨');
+      } catch(e) { _poShowToast('❌ PNG 저장 실패: ' + e.message); }
+    }},
+    { label: '닫기', onclick: depCloseModal }]);
 }
 
 </script>
