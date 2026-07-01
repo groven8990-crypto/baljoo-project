@@ -594,17 +594,19 @@
 
   <div class="card">
     <div class="card-title">📧 Gmail 받은메일함에서 운송장 가져오기</div>
-    <div id="invGmailSenderChip" style="display:none;margin-bottom:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:20px;font-size:12px;display:inline-flex;align-items:center;gap:6px">
-      <span>📌 발신자 고정:</span>
-      <span id="invGmailSenderLabel" style="font-weight:600;color:var(--primary)"></span>
-      <button onclick="invGmailClearSender()" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:14px;line-height:1;padding:0 2px" title="발신자 고정 해제">✕</button>
-    </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
       <button class="btn btn-sm btn-primary" onclick="invGmailFetch()">📬 받은메일함 검색</button>
       <button class="btn btn-sm" onclick="invGmailPickSaveDir()" style="background:var(--bg2);border:1px solid var(--border)">📁 저장 폴더 지정</button>
+      <button class="btn btn-sm" onclick="invGmailToggleSenderConfig()" style="background:var(--bg2);border:1px solid var(--border)">⚙️ 발신자 설정</button>
       <span id="invGmailStatus" style="font-size:12px;color:var(--text3)"></span>
     </div>
     <div id="invGmailSaveDirChip" style="display:none;margin-bottom:8px;font-size:11px;color:var(--text3)">📂 저장 폴더: <span id="invGmailSaveDirName" style="font-weight:600;color:var(--text2)"></span></div>
+    <!-- 발신자 설정 패널 -->
+    <div id="invGmailSenderConfig" style="display:none;margin-bottom:10px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
+      <div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text2)">📮 발신자 → 거래처 매핑 <span style="font-weight:400;color:var(--text3)">— 발신자 이름/이메일의 일부만 입력해도 됩니다</span></div>
+      <div id="invGmailSenderRows"></div>
+      <button class="btn btn-sm" onclick="invGmailAddSenderRow()" style="margin-top:6px;font-size:11px">+ 거래처 추가</button>
+    </div>
     <div id="invGmailList"></div>
   </div>
 
@@ -4778,27 +4780,53 @@ function _invGmailParseName(fromStr) {
   const m = (fromStr || '').match(/^([^<]+)</);
   return m ? m[1].trim() : _invGmailParseEmail(fromStr);
 }
-function _invGmailGetSender()  { return localStorage.getItem(LS_INV_GMAIL_SENDER) || ''; }
-function _invGmailSaveSender(email, displayName) {
-  localStorage.setItem(LS_INV_GMAIL_SENDER, email);
-  _invGmailRenderSenderChip(displayName || email);
+// ── 발신자→거래처 매핑 설정 ──
+const LS_INV_GMAIL_SENDERS = 'yb_inv_gmail_senders';
+function invGmailLoadSenders() {
+  try { return JSON.parse(localStorage.getItem(LS_INV_GMAIL_SENDERS) || '[]'); } catch { return []; }
 }
-function _invGmailRenderSenderChip(displayName) {
-  const chip  = document.getElementById('invGmailSenderChip');
-  const label = document.getElementById('invGmailSenderLabel');
-  const saved = _invGmailGetSender();
-  if (!chip || !label) return;
-  if (saved) {
-    label.textContent = displayName || saved;
-    chip.style.display = 'inline-flex';
-  } else {
-    chip.style.display = 'none';
-  }
+function invGmailSaveSenders(list) {
+  localStorage.setItem(LS_INV_GMAIL_SENDERS, JSON.stringify(list));
 }
-function invGmailClearSender() {
-  localStorage.removeItem(LS_INV_GMAIL_SENDER);
-  _invGmailRenderSenderChip();
-  document.getElementById('invGmailStatus').textContent = '발신자 고정 해제됨';
+function _invGmailMatchLabel(fromStr) {
+  const haystack = (fromStr || '').toLowerCase();
+  const list = invGmailLoadSenders();
+  const hit = list.find(s => s.match && haystack.includes(s.match.toLowerCase()));
+  return hit ? hit.label : null;
+}
+function invGmailToggleSenderConfig() {
+  const el = document.getElementById('invGmailSenderConfig');
+  const visible = el.style.display !== 'none';
+  el.style.display = visible ? 'none' : '';
+  if (!visible) invGmailRenderSenderRows();
+}
+function invGmailRenderSenderRows() {
+  const list = invGmailLoadSenders();
+  const container = document.getElementById('invGmailSenderRows');
+  container.innerHTML = list.map((s, i) => `
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">
+      <input class="inp" style="font-size:12px" placeholder="발신자 이름/이메일 일부" value="${escHtml(s.match||'')}"
+        oninput="invGmailUpdateSenderRow(${i},'match',this.value)">
+      <input class="inp" style="font-size:12px" placeholder="거래처명 (예: 그로브)" value="${escHtml(s.label||'')}"
+        oninput="invGmailUpdateSenderRow(${i},'label',this.value)">
+      <button class="btn btn-sm" style="color:var(--danger);background:none;border:1px solid var(--border)" onclick="invGmailDeleteSenderRow(${i})">✕</button>
+    </div>`).join('');
+}
+function invGmailAddSenderRow() {
+  const list = invGmailLoadSenders();
+  list.push({match:'', label:''});
+  invGmailSaveSenders(list);
+  invGmailRenderSenderRows();
+}
+function invGmailUpdateSenderRow(i, field, val) {
+  const list = invGmailLoadSenders();
+  if (list[i]) { list[i][field] = val; invGmailSaveSenders(list); }
+}
+function invGmailDeleteSenderRow(i) {
+  const list = invGmailLoadSenders();
+  list.splice(i, 1);
+  invGmailSaveSenders(list);
+  invGmailRenderSenderRows();
 }
 
 async function invGmailFetch() {
@@ -4807,19 +4835,14 @@ async function invGmailFetch() {
   listEl.innerHTML = '';
   window._invGmailItems = [];
 
-  // 저장된 발신자 칩 표시
-  _invGmailRenderSenderChip();
-
   let token;
   try { token = await gmailRequestToken(); }
   catch(e) { statusEl.textContent = '❌ Gmail 연결 실패: ' + e.message; return; }
   window._invGmailToken = token;
 
   try {
-    const savedSender = _invGmailGetSender();
-    const fromPart = savedSender ? ' from:' + savedSender : '';
-    const q = 'in:inbox has:attachment' + fromPart;
-    statusEl.textContent = savedSender ? '"' + savedSender + '" 메일 검색 중...' : '불러오는 중...';
+    const q = 'in:inbox has:attachment';
+    statusEl.textContent = '오늘 첨부파일 메일 검색 중...';
 
     const searchResp = await fetch(
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=' + encodeURIComponent(q),
@@ -4863,22 +4886,35 @@ async function invGmailFetch() {
       }
     }
 
-    if (!items.length) { statusEl.textContent = '엑셀 첨부파일이 있는 메일이 없어요.'; return; }
+    if (!items.length) { statusEl.textContent = '오늘 엑셀 첨부파일이 있는 메일이 없어요.'; return; }
     window._invGmailItems = items;
     statusEl.textContent = items.length + '개 엑셀 파일 발견';
 
-    listEl.innerHTML = items.map((it, i) => `
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
-        <span style="font-size:20px;flex-shrink:0">📎</span>
+    // 거래처별 그룹핑
+    const groups = {};
+    items.forEach((it, i) => {
+      const label = _invGmailMatchLabel(it.from) || '(미분류) ' + (_invGmailParseName(it.from) || it.from);
+      if (!groups[label]) groups[label] = [];
+      groups[label].push({...it, _idx: i});
+    });
+
+    const itemHtml = (it) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--card)">
+        <span style="font-size:18px;flex-shrink:0">📎</span>
         <div style="flex:1;min-width:0;overflow:hidden">
           <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.filename)}</div>
           <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.subject)} · ${_gmailShortDate(it.date)}</div>
-          <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">✉ ${escHtml(_invGmailParseName(it.from) || it.from)}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-          <button class="btn btn-sm btn-primary" onclick="invGmailLoadAttachment(${i})">업로드</button>
-          <button class="btn btn-sm" style="background:var(--bg2);border:1px solid var(--border);font-size:11px" onclick="invGmailDownloadAttachment(${i})">다운로드</button>
+          <button class="btn btn-sm btn-primary" onclick="invGmailLoadAttachment(${it._idx})">업로드</button>
+          <button class="btn btn-sm" style="background:var(--bg2);border:1px solid var(--border);font-size:11px" onclick="invGmailDownloadAttachment(${it._idx})">다운로드</button>
         </div>
+      </div>`;
+
+    listEl.innerHTML = Object.entries(groups).map(([label, group]) => `
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--text2);padding:5px 8px;background:var(--bg2);border-radius:6px;margin-bottom:6px;border-left:3px solid var(--primary)">📦 ${escHtml(label)} <span style="font-weight:400;color:var(--text3)">(${group.length}건)</span></div>
+        ${group.map(itemHtml).join('')}
       </div>`).join('');
   } catch(e) {
     statusEl.textContent = '❌ 오류: ' + e.message;
@@ -4935,14 +4971,6 @@ async function invGmailLoadAttachment(idx) {
     const file = new File([blob], item.filename, { type: ext });
 
     invLoadTracks([file]);
-
-    // 이 발신자를 기억해서 다음 검색에 자동 필터
-    if (item.from) {
-      const email = _invGmailParseEmail(item.from);
-      const name  = _invGmailParseName(item.from);
-      _invGmailSaveSender(email, name);
-    }
-
     statusEl.textContent = '✅ "' + item.filename + '" 업로드 완료';
   } catch(e) {
     statusEl.textContent = '❌ 오류: ' + e.message;
