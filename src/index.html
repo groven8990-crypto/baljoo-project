@@ -8,6 +8,7 @@
 <script src="vendor/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" async></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" crossorigin="anonymous" async></script>
 <style>
   /* Noto Sans KR: 인터넷 연결 시에만 적용, 오프라인에서는 시스템 sans-serif 사용 */
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
@@ -2395,6 +2396,7 @@ function renderStep3(){
         ${dlMark}
         ${dvChip}
         ${v==='동일'?`<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border-color:#86efac" onclick="dlDongilSettlement('${esc(gk)}')" title="발주정산내역서 다운로드">📋 정산내역서</button>`:''}
+        ${(Array.isArray(delivery[v])&&delivery[v].includes('kakao'))?`<button class="btn btn-sm" style="background:#FEF3C7;color:#78350F;border-color:#FDE68A" onclick="kakaoSendOne('${esc(gk)}')" title="카카오톡으로 발주 내용 발송">💬 카카오</button>`:''}
         <button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>
       </div>
     </div>`;
@@ -2693,6 +2695,50 @@ function renderVendorRegistry(){
 // ══════════════════════════════════════════════════════════
 // Gmail API 자동 발송 (OAuth + 첨부 발송)
 // ══════════════════════════════════════════════════════════
+// ── 카카오 SDK ──
+const LS_KAKAO_APP_KEY = 'yb_kakao_app_key';
+function kakaoGetAppKey(){ return (localStorage.getItem(LS_KAKAO_APP_KEY)||'').trim(); }
+function kakaoSetAppKey(k){ const s=String(k||'').trim(); if(s) localStorage.setItem(LS_KAKAO_APP_KEY,s); else localStorage.removeItem(LS_KAKAO_APP_KEY); }
+let _kakaoInited = false;
+function kakaoEnsureInit(){
+  const k = kakaoGetAppKey();
+  if (!k) return false;
+  if (typeof Kakao === 'undefined') { alert('카카오 SDK 로딩 중입니다. 잠시 후 다시 시도해주세요.'); return false; }
+  try { if (!_kakaoInited || !Kakao.isInitialized()) { Kakao.init(k); _kakaoInited = true; } } catch(e) { console.warn('Kakao init:', e); }
+  return Kakao.isInitialized();
+}
+// 발주처 카드의 💬 카카오 발송 버튼
+function kakaoSendOne(gk){
+  const [v, a] = gk.split('|');
+  const orders = groupedOrders[gk] || [];
+  if (!orders.length) { alert('주문이 없어요.'); return; }
+  if (!kakaoEnsureInit()) {
+    alert('Kakao App Key를 먼저 설정해주세요.\n(⚙️ 코드 관리 → 📧 Gmail 자동발송 → 💬 카카오 설정)');
+    return;
+  }
+  const today = _localISO();
+  const brand = _brandLabel(a) || a || v;
+  const lines = [`[발주서] ${today} ${v} (${brand})`, `총 ${orders.length}건`, ''];
+  orders.forEach((o, i) => {
+    const opt = o.select_opt || o.option_name || '';
+    lines.push(`${i+1}. ${o.recv_name}  ${o.recv_phone}`);
+    if (opt) lines.push(`   ${opt}`);
+    lines.push(`   ${o.addr}`);
+  });
+  const text = lines.join('\n');
+  try {
+    Kakao.Share.sendDefault({
+      objectType: 'text',
+      text: text,
+      link: { mobileWebUrl: location.href, webUrl: location.href }
+    });
+  } catch(e) {
+    // SDK 오류 시 클립보드 복사 + 카카오톡 웹 열기로 대체
+    navigator.clipboard?.writeText(text).catch(()=>{});
+    _poShowToast('📋 주문내용 클립보드 복사됨 — 카카오톡에 붙여넣기 해주세요');
+    console.warn('Kakao.Share 실패:', e);
+  }
+}
 const LS_GMAIL_CLIENT_ID   = 'yb_gmail_client_id';
 const LS_GMAIL_TOKEN       = 'yb_gmail_token';
 const LS_GMAIL_TPL         = 'yb_gmail_tpl';
@@ -3240,6 +3286,20 @@ function renderGmailSettingsArea(){
           <button class="btn btn-sm" onclick="gmailSaveTemplate(document.getElementById('gmailTplSubject').value, document.getElementById('gmailTplBody').value);_poShowToast('템플릿 저장됨')">💾 템플릿 저장</button>
           <button class="btn btn-sm" onclick="gmailResetTemplate()" style="color:var(--text3)">↺ 기본값 복원</button>
         </div>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">💬 카카오 설정</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
+          <a href="https://developers.kakao.com/console/app" target="_blank" style="color:var(--primary);text-decoration:underline">Kakao Developers</a>에서 앱 생성 후 <b>JavaScript 앱 키</b>를 입력하세요.<br>
+          발주처 전달방식에서 💬 카톡 선택 시 발주서 카드에 카카오 발송 버튼이 나타납니다.<br>
+          <span style="color:var(--warn)">※ 플랫폼 등록: 카카오 앱 설정 → 플랫폼 → Web → <code>${escHtml(location.origin)}</code> 추가 필요</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="inp" id="kakaoAppKeyInput" value="${escHtml(kakaoGetAppKey())}" placeholder="JavaScript 앱 키 (예: abcdef1234567890)" style="flex:1;font-family:monospace;font-size:12px">
+          <button class="btn btn-sm" onclick="kakaoSetAppKey(document.getElementById('kakaoAppKeyInput').value);_kakaoInited=false;_poShowToast('Kakao 앱 키 저장됨')">💾 저장</button>
+          ${kakaoGetAppKey()?`<button class="btn btn-sm" style="color:var(--text3)" onclick="kakaoSetAppKey('');document.getElementById('kakaoAppKeyInput').value='';_poShowToast('Kakao 앱 키 삭제됨')">삭제</button>`:''}
+        </div>
+        ${kakaoGetAppKey()?`<div style="margin-top:6px;font-size:11px;color:var(--success)">✅ 앱 키 등록됨 — 발주처 전달방식에서 💬 카톡 선택 시 발주서 카드에 카카오 버튼이 표시됩니다.</div>`:''}
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">📨 숨은참조 (BCC)</div>
