@@ -6,6 +6,7 @@
 <title>발주 자동화 v2.2</title>
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="vendor/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   /* Noto Sans KR: 인터넷 연결 시에만 적용, 오프라인에서는 시스템 sans-serif 사용 */
@@ -4927,18 +4928,28 @@ function _invGmailRegroup() {
     if (!groups[label]) groups[label] = [];
     groups[label].push({...it, _idx: i});
   });
-  const itemHtml = (it) => `
+  const itemHtml = (it) => {
+    const isZip = /\.zip$/i.test(it.filename);
+    const pwId = 'gmailZipPw_' + it._idx;
+    return `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--card)">
-      <span style="font-size:18px;flex-shrink:0">📎</span>
+      <span style="font-size:18px;flex-shrink:0">${isZip ? '🔒' : '📎'}</span>
       <div style="flex:1;min-width:0;overflow:hidden">
-        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.filename)}</div>
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${escHtml(it.filename)}${isZip ? ' <span style="font-size:10px;font-weight:400;color:var(--warn);background:var(--warn-bg);padding:1px 5px;border-radius:4px;vertical-align:middle">비밀번호 ZIP</span>' : ''}
+        </div>
         <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.subject)} · ${_gmailShortDate(it.date)}</div>
+        ${isZip ? `<div style="margin-top:6px"><input id="${pwId}" type="password" class="inp" style="font-size:12px;padding:4px 8px;width:160px" placeholder="ZIP 비밀번호 입력" onkeydown="if(event.key==='Enter')invGmailLoadZip(${it._idx},this.value)"></div>` : ''}
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-        <button class="btn btn-sm btn-primary" onclick="invGmailLoadAttachment(${it._idx})">업로드</button>
+        ${isZip
+          ? `<button class="btn btn-sm btn-primary" onclick="invGmailLoadZip(${it._idx},document.getElementById('${pwId}').value)">압축해제+업로드</button>`
+          : `<button class="btn btn-sm btn-primary" onclick="invGmailLoadAttachment(${it._idx})">업로드</button>`
+        }
         <button class="btn btn-sm" style="background:var(--bg2);border:1px solid var(--border);font-size:11px" onclick="invGmailDownloadAttachment(${it._idx})">다운로드</button>
       </div>
     </div>`;
+  };
   listEl.innerHTML = Object.entries(groups).map(([label, group]) => `
     <div style="margin-bottom:12px">
       <div style="font-size:12px;font-weight:700;color:var(--text2);padding:5px 8px;background:var(--bg2);border-radius:6px;margin-bottom:6px;border-left:3px solid var(--primary)">📦 ${escHtml(label)} <span style="font-weight:400;color:var(--text3)">(${group.length}건)</span></div>
@@ -4950,7 +4961,7 @@ function _gmailFindXlsxParts(payload, result) {
   if (!result) result = [];
   if (!payload) return result;
   const fn = payload.filename || '';
-  if (/\.(xlsx|xls)$/i.test(fn) && payload.body && payload.body.attachmentId) {
+  if (/\.(xlsx|xls|zip)$/i.test(fn) && payload.body && payload.body.attachmentId) {
     result.push(payload);
   }
   if (payload.parts) {
@@ -5000,6 +5011,76 @@ async function invGmailLoadAttachment(idx) {
   } catch(e) {
     statusEl.textContent = '❌ 오류: ' + e.message;
     console.error('[invGmailLoadAttachment]', e);
+  }
+}
+
+async function invGmailLoadZip(idx, password) {
+  const item  = (window._invGmailItems || [])[idx];
+  const token = window._invGmailToken;
+  if (!item || !token) { alert('먼저 받은메일함을 검색해 주세요.'); return; }
+  if (!password) { alert('ZIP 파일의 비밀번호를 입력해 주세요.'); return; }
+
+  const statusEl = document.getElementById('invGmailStatus');
+  statusEl.textContent = '"' + item.filename + '" 다운로드 중...';
+
+  try {
+    const attResp = await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + item.msgId + '/attachments/' + item.attachId,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!attResp.ok) throw new Error('첨부파일 다운로드 실패 ' + attResp.status);
+    const attData = await attResp.json();
+
+    const b64 = (attData.data || '').replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    if (!window.JSZip) {
+      statusEl.textContent = '❌ JSZip 라이브러리 미로드 — 인터넷 연결 확인 후 새로고침';
+      return;
+    }
+
+    statusEl.textContent = '압축 해제 중...';
+    let zip;
+    try {
+      zip = await JSZip.loadAsync(bytes.buffer, { password });
+    } catch(ze) {
+      statusEl.textContent = '❌ ZIP 열기 실패: ' + ze.message + ' (비밀번호를 확인해 주세요)';
+      return;
+    }
+
+    const xlsxNames = Object.keys(zip.files).filter(n => /\.(xlsx|xls)$/i.test(n) && !zip.files[n].dir);
+    if (!xlsxNames.length) {
+      statusEl.textContent = '❌ ZIP 안에 엑셀 파일(.xlsx/.xls)이 없습니다.';
+      return;
+    }
+
+    const vendorLabel = _invGmailMatchLabel(item.from);
+    let ok = 0;
+    for (const name of xlsxNames) {
+      try {
+        const buf = await zip.files[name].async('arraybuffer', { password });
+        const baseName = name.split('/').pop();
+        const file = new File([buf], baseName, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        invLoadTracks([file], vendorLabel || undefined);
+        ok++;
+      } catch(fe) {
+        // 비밀번호 오류 or 파일 손상
+        const msg = /bad password|incorrect password|wrong password/i.test(fe.message)
+          ? '비밀번호가 틀렸습니다.' : fe.message;
+        invShowTrackError(name.split('/').pop(), msg);
+      }
+    }
+
+    if (ok > 0) {
+      statusEl.textContent = '✅ "' + item.filename + '" 압축 해제 완료 (엑셀 ' + ok + '개 업로드)';
+    } else {
+      statusEl.textContent = '❌ 엑셀 추출 실패 — 비밀번호를 확인하거나 ZIP 방식을 확인해 주세요 (AES-256은 미지원)';
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ 오류: ' + e.message;
+    console.error('[invGmailLoadZip]', e);
   }
 }
 
