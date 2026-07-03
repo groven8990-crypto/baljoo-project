@@ -9286,6 +9286,15 @@ function toggleIncPaid(i) {
   saveIncHist(hist);
   renderIncHistList();
 }
+function toggleIncProof(i) {
+  const hist = loadIncHist();
+  if (!hist[i]) return;
+  hist[i].proof = !hist[i].proof;
+  if (hist[i].proof) hist[i].proofAt = _localISO();
+  else delete hist[i].proofAt;
+  saveIncHist(hist);
+  renderIncHistList();
+}
 function deleteIncHist(i) {
   if (!confirm('이 항목을 삭제할까요?')) return;
   const hist = loadIncHist();
@@ -9359,17 +9368,24 @@ function renderIncHistList() {
       const paidBtn = isPaid
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap;font-variant-numeric:tabular-nums" title="'+paidTitleI+'" onclick="toggleIncPaid('+realIdx+')">'+paidLabel+'</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="'+paidTitleI+'" onclick="toggleIncPaid('+realIdx+')">'+paidLabel+'</button>';
+      const isProofI = !!d.proof;
+      const proofLabelI = isProofI && d.proofAt ? '✅ '+(d.proofAt.slice(5)||'') : (isProofI?'✅ 발행':'☐ 증빙');
+      const proofTitleI = isProofI ? '계산서 발행완료 · 클릭하면 취소' : '계산서 발행 완료로 표시';
+      const proofBtnI = isProofI
+        ? '<button class="btn btn-sm" style="padding:2px 8px;background:#8b5cf6;color:#fff;border-color:#8b5cf6;white-space:nowrap;font-variant-numeric:tabular-nums" title="'+proofTitleI+'" onclick="toggleIncProof('+realIdx+')">'+proofLabelI+'</button>'
+        : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="'+proofTitleI+'" onclick="toggleIncProof('+realIdx+')">'+proofLabelI+'</button>';
       const descStyle = 'font-size:13px';
       const imgSavedI = !!d.imgSavedAt;
       const imgTitleI = imgSavedI ? ('이미지 저장됨 '+d.imgSavedAt+' · 다시 저장하기') : '이미지 저장';
       const imgBtnI = imgSavedI
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" title="'+imgTitleI+'" onclick="saveIncImgFromHist('+realIdx+')">📷 '+(d.imgSavedAt.slice(5)||'')+'</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px" title="'+imgTitleI+'" onclick="saveIncImgFromHist('+realIdx+')">📷</button>';
-      html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
+      html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
         '<span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.date||'')+'</span>'+
         '<span style="'+descStyle+';cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.desc||'')+'</span>'+
         '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+fmtNum(d.total)+'원</span>'+
         paidBtn+
+        proofBtnI+
         imgBtnI+
         '<button class="btn btn-sm" style="padding:2px 8px;color:var(--accent);border-color:var(--accent)" onclick="editIncHist('+realIdx+')">✏️</button>'+
         '<button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger);padding:2px 8px" onclick="deleteIncHist('+realIdx+')">삭제</button>'+
