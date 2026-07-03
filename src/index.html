@@ -12598,9 +12598,11 @@ function srUpdateProfitIncremental(changedKey){
       const b2bHdr = document.querySelector(`.sr-b2b-header[data-biz="${bizSel}"]`);
       if (b2bHdr) {
         const pc = TB.profit >= 0 ? '#5DE3B3' : '#FECACA';
+        const _s2 = TB.sales || 1;
+        const _pct2 = v => `<span style="opacity:.65;font-size:10px;margin-left:2px">(${(v/_s2*100).toFixed(1)}%)</span>`;
         b2bHdr.innerHTML = `🏭 B2B 매출 (디네트)
           <span style="margin-left:auto;font-size:12px;font-weight:400">
-            매출 <b>${TB.sales.toLocaleString()}</b> · 매입 <b>${TB.purchase.toLocaleString()}</b> · 순이익 <b style="color:${pc}">${TB.profit.toLocaleString()}</b>
+            매출 <b>${TB.sales.toLocaleString()}</b> · 매입 <b>${TB.purchase.toLocaleString()}</b>${_pct2(TB.purchase)} · 순이익 <b style="color:${pc}">${TB.profit.toLocaleString()}</b>${_pct2(TB.profit)}
             <span style="font-size:10px;opacity:.7;margin-left:6px">플랫폼 수수료 없음 (직거래)</span>
           </span>`;
       }
@@ -12917,7 +12919,9 @@ function _srBuildB2BSectionHtml(biz, b2bRows, _theads, _buildFooter){
       style="background:#0D9488;color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       🏭 B2B 매출 (디네트)
       <span style="margin-left:auto;font-size:12px;font-weight:400">
-        매출 <b>${TB.sales.toLocaleString()}</b> · 매입 <b>${TB.purchase.toLocaleString()}</b> · 순이익 <b style="color:${pc}">${TB.profit.toLocaleString()}</b>
+        ${ (()=>{ const _s=TB.sales||1; const _p=v=>`<span style="opacity:.65;font-size:10px;margin-left:2px">(${(v/_s*100).toFixed(1)}%)</span>`;
+          return `매출 <b>${TB.sales.toLocaleString()}</b> · 매입 <b>${TB.purchase.toLocaleString()}</b>${_p(TB.purchase)} · 순이익 <b style="color:${pc}">${TB.profit.toLocaleString()}</b>${_p(TB.profit)}`;
+        })() }
         <span style="font-size:10px;opacity:.7;margin-left:6px">플랫폼 수수료 없음 (직거래)</span>
       </span>
     </div>
