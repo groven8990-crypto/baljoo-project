@@ -2390,10 +2390,11 @@ function renderStep3(){
         ${emailTag}
         <div style="font-size:12px;color:var(--text2);margin-top:3px">${makeFileName(v,a)} · ${cnt}건</div>
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
+      <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap">
         <button class="btn btn-sm" onclick="dlOne('${esc(gk)}')">⬇ 다운로드</button>
         ${dlMark}
         ${dvChip}
+        ${v==='동일'?`<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border-color:#86efac" onclick="dlDongilSettlement('${esc(gk)}')" title="발주정산내역서 다운로드">📋 정산내역서</button>`:''}
         <button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>
       </div>
     </div>`;
@@ -2823,6 +2824,104 @@ function buildVendorWorkbook(gk){
   const b64cached = _wbToBase64(wb);
   return { wb, b64: b64cached, vendor: v, alias: a, fname: makeFileName(v, a), orders };
 }
+// ── 동일(깐마늘) 발주정산내역서 생성 ──
+// orders: groupedOrders[gk], alias: 사업자 별칭, dateStr: 'YYYY-MM-DD'
+function buildDongilSettlementXlsx(orders, alias, dateStr) {
+  const d = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+  const yy = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  const mmdd = mm + '.' + day;
+  const brandLabel = _brandLabel(alias) || '동일';
+  const ws = {};
+  const merges = [];
+  const encC = (r, c) => XLSX.utils.encode_cell({r, c});
+  const DATA_START = 9; // 1-indexed
+  const n = orders.length;
+  const DATA_END = DATA_START + n - 1;
+  const SUM_ROW = DATA_END + 1;
+  // ── 행 1: 제목 (A1:I1 병합) ──
+  ws['A1'] = {t:'s', v:`발주정산내역서 ${brandLabel} (${mmdd})`};
+  merges.push({s:{r:0,c:0}, e:{r:0,c:8}});
+  // ── 행 2: 작성일자 ──
+  ws['I2'] = {t:'s', v:`작성일자: ${yy}.${mm}.${day}`};
+  // ── 행 3: 소계표 헤더 ──
+  ws['B3'] = {t:'s', v:'건수'};
+  ws['C3'] = {t:'s', v:'총 합계'};
+  // ── 행 4: 리뷰 요약 ──
+  ws['A4'] = {t:'s', v:'리뷰'};
+  ws['B4'] = {t:'n', f:`COUNTIF($F$${DATA_START}:$F$${DATA_END},"리뷰")`};
+  ws['C4'] = {t:'n', f:`SUMIF($F$${DATA_START}:$F$${DATA_END},"리뷰",I${DATA_START}:I${DATA_END})`};
+  // ── 행 5: 실주문 요약 ──
+  ws['A5'] = {t:'s', v:'실주문'};
+  ws['B5'] = {t:'n', f:`COUNTA(F${DATA_START}:F${DATA_END})-B4`};
+  ws['C5'] = {t:'n', f:`SUM(I${DATA_START}:I${DATA_END})-C4`};
+  // ── 행 8: 컬럼 헤더 ──
+  ['번호','발주일자','받는분성명','받는분주소','품목명','수량','공급가(원)','배송비(원)','합계(원)']
+    .forEach((h,ci) => { ws[encC(7, ci)] = {t:'s', v:h}; });
+  // ── 데이터 행 (row 9 ~) ──
+  // 브랜드 키 (리뷰세트 확인용)
+  const bKey = String(alias||'').includes('로또상회') ? 'grobn' : 'yb';
+  // 날짜 파싱 헬퍼
+  const _oDate = s => {
+    const m = String(s||'').match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+    if (m) return m[2].padStart(2,'0') + '/' + m[3].padStart(2,'0');
+    return mmdd;
+  };
+  orders.forEach((o, idx) => {
+    const rowNum = DATA_START + idx;
+    const r = rowNum - 1;
+    // kg 추출 (동일 buildRows 와 동일 로직)
+    let kgN = 0;
+    if (o._merged) {
+      kgN = Number(o.code_qty) || 1;
+    } else {
+      const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i); if (m1) kgN = parseInt(m1[1]);
+      if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+      if (!kgN) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+      if (!kgN) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+      if (!kgN) kgN = 1;
+      const baseQty = Number(o.qty)||1;
+      kgN = kgN > 1 ? baseQty * kgN : (o.code_qty||1) * baseQty;
+    }
+    const rname = String(o.recv_name||'').trim();
+    const isReview = rname && srReviewSet && srReviewSet.has(bKey + '||' + rname);
+    ws[encC(r,0)] = {t:'n', v: idx+1};
+    ws[encC(r,1)] = {t:'s', v: _oDate(o.order_date)};
+    ws[encC(r,2)] = {t:'s', v: rname};
+    ws[encC(r,3)] = {t:'s', v: String(o.addr||'').trim()};
+    ws[encC(r,4)] = {t:'s', v: '깐마늘 1kg'};
+    if (isReview) {
+      ws[encC(r,5)] = {t:'s', v:'리뷰'};
+      ws[encC(r,6)] = {t:'n', v:0};
+      ws[encC(r,7)] = {t:'n', v:0};
+      ws[encC(r,8)] = {t:'n', v:0};
+    } else {
+      ws[encC(r,5)] = {t:'n', v: kgN};
+      const supply = 6300 * kgN;
+      const delivery = Math.ceil(kgN/3) * 2500;
+      ws[encC(r,6)] = {t:'n', f:`6300*F${rowNum}`, v: supply};
+      ws[encC(r,7)] = {t:'n', f:`ROUNDUP(F${rowNum}/3,0)*2500`, v: delivery};
+      ws[encC(r,8)] = {t:'n', f:`SUM(G${rowNum}:H${rowNum})`, v: supply + delivery};
+    }
+  });
+  // ── 합계 행 ──
+  const sr = SUM_ROW - 1;
+  ws[encC(sr,0)] = {t:'s', v:'합계'};
+  merges.push({s:{r:sr,c:0}, e:{r:sr,c:5}});
+  ws[encC(sr,6)] = {t:'n', f:`SUM(G${DATA_START}:G${DATA_END})`};
+  ws[encC(sr,7)] = {t:'n', f:`SUM(H${DATA_START}:H${DATA_END})`};
+  ws[encC(sr,8)] = {t:'n', f:`SUM(I${DATA_START}:I${DATA_END})`};
+  ws['!ref'] = `A1:I${SUM_ROW}`;
+  ws['!merges'] = merges;
+  ws['!cols'] = [{wch:8.86},{wch:12.71},{wch:13.43},{wch:50},{wch:14},{wch:8},{wch:12},{wch:12},{wch:12}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '거래명세서');
+  const b64 = _wbToBase64(wb);
+  const safeAlias = String(alias||'').replace(/[\/\\:*?"<>|]/g,'');
+  const fname = `발주정산내역서_동일_${safeAlias}_${dateStr||mmdd}.xlsx`;
+  return {wb, b64, fname};
+}
 // base64 76자 단위 청크 (RFC 2045)
 function _b64chunk(s){ return String(s||'').replace(/(.{76})/g, '$1\r\n'); }
 // HTML 이스케이프
@@ -3203,6 +3302,15 @@ async function autoSendVendor(vendorName){
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     b64: b.b64 || _wbToBase64(b.wb)
   }));
+  // 동일 발주처: 정산내역서도 함께 첨부
+  if (vendorName === '동일') {
+    for (const b of built) {
+      try {
+        const s = buildDongilSettlementXlsx(b.orders, b.alias, today);
+        if (s.b64) attachments.push({name: s.fname, type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', b64: s.b64});
+      } catch(e) { console.warn('정산내역서 생성 실패:', e); }
+    }
+  }
   // 명함은 본문 끝 인라인 이미지(서명)로 — 첨부 아님
   const card = gmailGetCard();
   const inlineImages = (card && card.b64) ? [{ cid: 'card_sig', type: card.type||'image/png', b64: card.b64 }] : [];
@@ -3513,6 +3621,15 @@ function dlOne(gk){
   }).finally(()=>{
     if (dlBtn) { dlBtn.disabled = false; dlBtn.textContent = prevText || '⬇ 다운로드'; }
   });
+}
+// 동일 발주정산내역서 다운로드
+function dlDongilSettlement(gk){
+  const [,a] = gk.split('|');
+  const orders = groupedOrders[gk] || [];
+  if (!orders.length) { alert('주문이 없어요.'); return; }
+  const result = buildDongilSettlementXlsx(orders, a, _localISO());
+  XLSX.writeFile(result.wb, result.fname);
+  _poShowToast('✅ 정산내역서 다운로드: ' + result.fname);
 }
 function _poShowToast(msg){
   const t=document.createElement('div');
