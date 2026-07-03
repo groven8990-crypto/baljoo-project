@@ -5104,8 +5104,13 @@ async function invGmailFetch() {
   window._invGmailToken = token;
 
   try {
-    const q = 'in:inbox has:attachment newer_than:7d';
-    statusEl.textContent = '최근 7일 첨부파일 메일 검색 중...';
+    const _now = new Date();
+    const _yy = _now.getFullYear();
+    const _mm = String(_now.getMonth()+1).padStart(2,'0');
+    const _dd = String(_now.getDate()).padStart(2,'0');
+    const todayFmt = `${_yy}/${_mm}/${_dd}`;
+    const q = `in:inbox has:attachment after:${todayFmt}`;
+    statusEl.textContent = '오늘(' + _mm + '/' + _dd + ') 첨부파일 메일 검색 중...';
 
     const searchResp = await fetch(
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=' + encodeURIComponent(q),
@@ -5114,7 +5119,7 @@ async function invGmailFetch() {
     if (!searchResp.ok) throw new Error('검색 실패 ' + searchResp.status);
     const searchData = await searchResp.json();
     const msgs = searchData.messages || [];
-    if (!msgs.length) { statusEl.textContent = '엑셀 첨부파일이 있는 메일이 없어요.'; return; }
+    if (!msgs.length) { statusEl.textContent = '오늘 받은 엑셀 첨부파일이 있는 메일이 없어요.'; return; }
 
     statusEl.textContent = msgs.length + '개 메일 확인 중...';
 
@@ -5125,13 +5130,13 @@ async function invGmailFetch() {
         .then(r => r.ok ? r.json() : null).catch(() => null)
     ));
 
-    // 7일 이내 메일만 (오늘 포함)
-    const _now = new Date();
-    const _cutoff = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() - 6); // 오늘 포함 7일
-    function _isRecent(dateStr) {
+    // 오늘 날짜 메일만 필터
+    function _isToday(dateStr) {
       if (!dateStr) return false;
-      try { const d = new Date(dateStr); return d >= _cutoff; }
-      catch { return false; }
+      try {
+        const d = new Date(dateStr);
+        return d.getFullYear() === _yy && d.getMonth()+1 === Number(_mm) && d.getDate() === Number(_dd);
+      } catch { return false; }
     }
 
     const items = [];
@@ -5143,13 +5148,13 @@ async function invGmailFetch() {
       const subject = (hds.find(h => h.name === 'Subject') || {}).value || '(제목없음)';
       const date    = (hds.find(h => h.name === 'Date')    || {}).value || '';
       const from    = (hds.find(h => h.name === 'From')    || {}).value || '';
-      if (!_isRecent(date)) continue;  // 7일 이내 메일만
+      if (!_isToday(date)) continue;  // 오늘 메일만
       for (const part of parts) {
         items.push({ msgId: msg.id, attachId: part.body.attachmentId, filename: part.filename, subject, date, from });
       }
     }
 
-    if (!items.length) { statusEl.textContent = '최근 7일 내 엑셀 첨부파일이 있는 메일이 없어요.'; return; }
+    if (!items.length) { statusEl.textContent = '오늘(' + _mm + '/' + _dd + ') 엑셀 첨부파일이 있는 메일이 없어요.'; return; }
     window._invGmailItems = items;
     statusEl.textContent = items.length + '개 엑셀 파일 발견';
     _invGmailRegroup();
