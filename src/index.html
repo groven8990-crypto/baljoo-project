@@ -2696,6 +2696,7 @@ function renderVendorRegistry(){
 const LS_GMAIL_CLIENT_ID   = 'yb_gmail_client_id';
 const LS_GMAIL_TOKEN       = 'yb_gmail_token';
 const LS_GMAIL_TPL         = 'yb_gmail_tpl';
+const LS_GMAIL_BCC         = 'yb_gmail_bcc';
 const LS_SEND_HISTORY      = 'yb_send_history';
 const LS_INV_GMAIL_SENDER  = 'yb_inv_gmail_sender';
 const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly';
@@ -2722,6 +2723,8 @@ function gmailResetTemplate(){
   renderGmailSettingsArea();
 }
 function gmailSaveTemplate(subject, body){ localStorage.setItem(LS_GMAIL_TPL, JSON.stringify({subject,body})); }
+function gmailGetBcc(){ return (localStorage.getItem(LS_GMAIL_BCC)||'').trim(); }
+function gmailSetBcc(v){ const s=String(v||'').trim(); if(s) localStorage.setItem(LS_GMAIL_BCC,s); else localStorage.removeItem(LS_GMAIL_BCC); }
 function loadSendHistory(){ try{ return JSON.parse(localStorage.getItem(LS_SEND_HISTORY)||'[]'); }catch{ return []; } }
 function saveSendHistory(arr){ try{ localStorage.setItem(LS_SEND_HISTORY, JSON.stringify(arr.slice(-500))); }catch{} }
 function logSent(entry){
@@ -2930,7 +2933,7 @@ function _htmlEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&
 //   bodyText: 평문 본문 (\n 자동으로 <br>)
 //   attachments: [{name, type, b64}]  → 첨부
 //   inlineImages: [{cid, type, b64}]   → 본문 끝 인라인 이미지 (서명 명함 등)
-function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}){
+function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages, bcc}){
   const enc2047 = s => '=?UTF-8?B?' + btoa(unescape(encodeURIComponent(s||''))) + '?=';
   // RFC 2231 filename 파라미터 (한글 안전)
   const encFnameParam = n => "filename*=UTF-8''" + encodeURIComponent(n||'');
@@ -2948,6 +2951,7 @@ function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}
   const lines = [];
   lines.push(`To: ${to}`);
   if (from) lines.push(`From: ${from}`);
+  if (bcc) lines.push(`Bcc: ${bcc}`);
   lines.push(`Subject: ${enc2047(subject)}`);
   lines.push('MIME-Version: 1.0');
   lines.push(`Content-Type: multipart/mixed; boundary="${outerB}"`);
@@ -3003,9 +3007,9 @@ function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}
   return btoa(unescape(encodeURIComponent(raw))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 }
 // Gmail API send
-async function gmailSendOne({to, subject, body, attachments, inlineImages}){
+async function gmailSendOne({to, subject, body, attachments, inlineImages, bcc}){
   const token = await gmailRequestToken();
-  const raw = _buildMimeMail({to, subject, bodyText: body, attachments, inlineImages});
+  const raw = _buildMimeMail({to, subject, bodyText: body, attachments, inlineImages, bcc});
   // 디버그용: 디코딩된 MIME 을 콘솔에 출력 (F12 콘솔에서 확인)
   try {
     const decoded = decodeURIComponent(escape(atob(raw.replace(/-/g,'+').replace(/_/g,'/'))));
@@ -3159,8 +3163,9 @@ async function autoSendAll(){
     // 명함은 본문 끝 인라인 이미지(서명)로 — 첨부 아님
     const _card = gmailGetCard();
     const inlineImages = (_card && _card.b64) ? [{ cid: 'card_sig', type: _card.type||'image/png', b64: _card.b64 }] : [];
+    const _bcc = gmailGetBcc() || undefined;
     try {
-      await gmailSendOne({to, subject, body, attachments, inlineImages});
+      await gmailSendOne({to, subject, body, attachments, inlineImages, bcc: _bcc});
       for (const gk of gks) {
         const [vv, aa] = gk.split('|');
         const built = builtMap[gk];
@@ -3234,6 +3239,15 @@ function renderGmailSettingsArea(){
         <div style="display:flex;gap:6px;margin-top:6px">
           <button class="btn btn-sm" onclick="gmailSaveTemplate(document.getElementById('gmailTplSubject').value, document.getElementById('gmailTplBody').value);_poShowToast('템플릿 저장됨')">💾 템플릿 저장</button>
           <button class="btn btn-sm" onclick="gmailResetTemplate()" style="color:var(--text3)">↺ 기본값 복원</button>
+        </div>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">📨 숨은참조 (BCC)</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">모든 발주서 자동발송 시 이 주소로 숨은참조 발송됩니다. (비워두면 미사용)</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="inp" id="gmailBccInput" value="${escHtml(gmailGetBcc())}" placeholder="example@gmail.com" style="flex:1">
+          <button class="btn btn-sm" onclick="gmailSetBcc(document.getElementById('gmailBccInput').value);_poShowToast('BCC 저장됨')">💾 저장</button>
+          <button class="btn btn-sm" style="color:var(--text3)" onclick="gmailSetBcc('');document.getElementById('gmailBccInput').value='';_poShowToast('BCC 삭제됨')">삭제</button>
         </div>
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
@@ -3314,8 +3328,9 @@ async function autoSendVendor(vendorName){
   // 명함은 본문 끝 인라인 이미지(서명)로 — 첨부 아님
   const card = gmailGetCard();
   const inlineImages = (card && card.b64) ? [{ cid: 'card_sig', type: card.type||'image/png', b64: card.b64 }] : [];
+  const bcc = gmailGetBcc() || undefined;
   try {
-    await gmailSendOne({to: emails[vendorName], subject, body, attachments, inlineImages});
+    await gmailSendOne({to: emails[vendorName], subject, body, attachments, inlineImages, bcc});
     for (const b of built) logSent({vendor:b.vendor, alias:b.alias, to: emails[vendorName], fname:b.fname, status:'sent', merged: built.length>1});
     _poShowToast(`✅ ${vendorName} 발송 완료 (첨부 ${attachments.length}개)`);
     if (typeof renderStep3 === 'function') renderStep3();
@@ -3539,29 +3554,31 @@ function buildRows(vk,orders,alias){
         ];
       })];
     }
-    case '동일':
-      // 농업법인회사 동일(깐마늘) — 안전망: 모든 행을 "깐마늘 1kg" + 수량(kg수 × code_qty)로 통일
-      return [['받는사람','전화번호1','전화번호2','우편번호','주소','수량(A타입)','상품명1','보내는사람(지정)','전화번호1(지정)','주소(지정)','배송메시지','주문번호','내품수량1','운임'],
-        ...orders.map(o => {
-          let finalQty;
-          if (o._merged) {
-            // 합배송된 행 — code_qty 는 이미 _effOrderUnits 합산(kg-aware)이라 그대로 사용
-            finalQty = Number(o.code_qty) || 1;
-          } else {
-            // kg 추출 우선순위: select_opt → 노출옵션명(쿠팡) → vendor_code → option_name
-            let kgN = 0;
-            const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kgN = parseInt(m1[1]);
-            if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kgN = parseInt(m[1]); }
-            if (!kgN) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
-            if (!kgN) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
-            if (!kgN) kgN = 1;
-            const baseQty = Number(o.qty)||1;
-            // kg 수가 1보다 크면 코드 내장수량 무시하고 kg수×주문수량으로 (예: 2kg 주문 1건 → 1×2=2개)
-            finalQty = kgN > 1 ? baseQty * kgN : (o.code_qty||1) * baseQty;
-          }
-          // 상품명은 무조건 "깐마늘 1kg"
-          return [o.recv_name, o.recv_phone, '', o.zip, o.addr, finalQty, '깐마늘 1kg', s.name, s.phone, s.addr, o.memo, o.order_no, '', ''];
-        })];
+    case '동일': {
+      // 농업법인회사 동일(깐마늘) — 3kg 초과 시 분할 배송 (한 라벨 max 3kg)
+      const hdr = ['받는사람','전화번호1','전화번호2','우편번호','주소','수량(A타입)','상품명1','보내는사람(지정)','전화번호1(지정)','주소(지정)','배송메시지','주문번호','내품수량1','운임'];
+      const dataRows = [];
+      for (const o of orders) {
+        let totalKg;
+        if (o._merged) {
+          totalKg = Number(o.code_qty) || 1;
+        } else {
+          let kgN = 0;
+          const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kgN = parseInt(m1[1]);
+          if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kgN = parseInt(m[1]); }
+          if (!kgN) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+          if (!kgN) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+          if (!kgN) kgN = 1;
+          const baseQty = Number(o.qty)||1;
+          totalKg = kgN > 1 ? baseQty * kgN : (o.code_qty||1) * baseQty;
+        }
+        // 3kg 초과 시 균등 분할: ceil(total/3)개 박스, 각 박스 최대 3kg
+        for (const chunkKg of _splitDongilKg(totalKg)) {
+          dataRows.push([o.recv_name, o.recv_phone, '', o.zip, o.addr, chunkKg, '깐마늘 1kg', s.name, s.phone, s.addr, o.memo, o.order_no, '', '']);
+        }
+      }
+      return [hdr, ...dataRows];
+    }
     default:
       return [['주문번호','품목명','옵션','수량','수령인','연락처','주소','우편번호','배송메모','원본코드'],
         ...orders.map(o=>[o.order_no,o.item_name,o.option_name,effQty(o),o.recv_name,o.recv_phone,o.addr,o.zip,o.memo,o.vendor_code])];
@@ -3621,6 +3638,15 @@ function dlOne(gk){
   }).finally(()=>{
     if (dlBtn) { dlBtn.disabled = false; dlBtn.textContent = prevText || '⬇ 다운로드'; }
   });
+}
+// 동일 배송 분할: 3kg 초과 시 균등 분할 (한 라벨 max 3kg)
+// 예) 4→[2,2], 5→[3,2], 6→[3,3], 7→[3,2,2], 9→[3,3,3]
+function _splitDongilKg(totalKg) {
+  if (totalKg <= 3) return [totalKg];
+  const numBoxes = Math.ceil(totalKg / 3);
+  const base = Math.floor(totalKg / numBoxes);
+  const extra = totalKg % numBoxes;
+  return Array.from({length: numBoxes}, (_, i) => i < extra ? base + 1 : base);
 }
 // 동일 발주정산내역서 다운로드
 function dlDongilSettlement(gk){
