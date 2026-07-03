@@ -3579,6 +3579,10 @@ function buildRows(vk,orders,alias){
       }
       return [hdr, ...dataRows];
     }
+    case '렉스팜':
+      // 출고일자|받는분성명|받는분전화번호|우편번호|받는분주소|품목명|수량|배송메세지|택배사|송장번호
+      return [['출고일자','받는분성명','받는분전화번호','우편번호','받는분주소','품목명','수량','배송메세지','택배사','송장번호'],
+        ...orders.map(o => [_localISO(), o.recv_name, o.recv_phone, o.zip, o.addr, combined(o), effQty(o), o.memo||'', '', ''])];
     default:
       return [['주문번호','품목명','옵션','수량','수령인','연락처','주소','우편번호','배송메모','원본코드'],
         ...orders.map(o=>[o.order_no,o.item_name,o.option_name,effQty(o),o.recv_name,o.recv_phone,o.addr,o.zip,o.memo,o.vendor_code])];
