@@ -13399,12 +13399,24 @@ function srSaveManualEntry(){
     vat: v('sme_vat'), profit: v('sme_profit'), count: selfCnt,
     adTotal, adByBiz: { '그로븐': adGr, '옐로우브릿지': adYb, '기타': 0 }
   };
-  // 거래처별 입력이 있으면 profitRows 구성, 없으면 총액 하나짜리 row
+  // 거래처별 입력이 있으면 profitRows 구성
   let profitRows = _smeVendorRows
     .filter(r => r.vendor && (Number(r.purchase) || 0) > 0)
     .map(r => ({ vendor: r.vendor, brand: r.vendor, purchase: Number(r.purchase)||0, sales: 0, count: 0, fee: 0, vat: 0, profit: 0 }));
+  // 거래처별 입력이 없고 총매입액만 있으면 → 그로븐/옐로우브릿지 매출 비율로 분할
   if (profitRows.length === 0 && totalPurchase > 0) {
-    profitRows = [{ vendor: '수동입력', brand: '수동입력', purchase: totalPurchase, sales: 0, count: 0, fee: 0, vat: 0, profit: 0 }];
+    const tot = grSales + ybSales;
+    if (tot > 0) {
+      const grPur = Math.round(totalPurchase * grSales / tot);
+      const ybPur = totalPurchase - grPur;
+      profitRows = [
+        ...(grPur > 0 ? [{vendor:'그로븐', brand:'그로븐', purchase:grPur, sales:grSales, count:grCnt, fee:0, vat:0, profit:0}] : []),
+        ...(ybPur > 0 ? [{vendor:'옐로우브릿지', brand:'옐로우브릿지', purchase:ybPur, sales:ybSales, count:ybCnt, fee:0, vat:0, profit:0}] : []),
+      ];
+    }
+    if (profitRows.length === 0) {
+      profitRows = [{ vendor: '수동입력', brand: '수동입력', purchase: totalPurchase, sales: 0, count: 0, fee: 0, vat: 0, profit: 0 }];
+    }
   }
   const snap = {
     date, totalSales, totalCnt, selfSales, selfCnt,
@@ -13763,6 +13775,19 @@ function wrMergePurchase(snaps){
       if (!byDateBrand[s.date][b]) byDateBrand[s.date][b] = {purchase:0, count:0};
       byDateBrand[s.date][b].purchase += r.purchase||0;
       byDateBrand[s.date][b].count    += r.count   ||0;
+    }
+    // 수동 입력 스냅샷: 브랜드별 profitRows 가 없으면 grAgg/ybAgg 매출 비율로 매입 소급 분할
+    const dbb = byDateBrand[s.date];
+    if (ps && (ps.purchase||0) > 0 && !dbb['그로븐'] && !dbb['옐로우브릿지']) {
+      const grS = s.grAgg?.totalSales || 0;
+      const ybS = s.ybAgg?.totalSales || 0;
+      const tot = grS + ybS;
+      if (tot > 0) {
+        const grPur = Math.round((ps.purchase||0) * grS / tot);
+        const ybPur = (ps.purchase||0) - grPur;
+        dbb['그로븐']       = {purchase: grPur, count: s.grAgg?.count||0};
+        dbb['옐로우브릿지'] = {purchase: ybPur, count: s.ybAgg?.count||0};
+      }
     }
   }
   // 광고비 차감한 최종 순이익
