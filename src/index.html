@@ -11406,6 +11406,12 @@ function srLoadDinette(file){
       const rpt = document.getElementById('srReport');
       if (rpt && rpt.innerHTML.trim()) {
         srRender();
+        // 이미 저장된 날짜면 자동 덮어쓰기 — 주간 보고서에도 즉시 반영
+        if (_srLastSnapshot && srLoadHistory().some(s => s.date === _srLastSnapshot.date)) {
+          srSaveSnapshot(_srLastSnapshot);
+          const statusEl = document.getElementById('srStatus');
+          if (statusEl) statusEl.innerHTML += ' <span style="color:var(--text3);font-size:11px">· 디네트 포함 이력 자동 갱신됨</span>';
+        }
       } else {
         srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
       }
