@@ -12202,7 +12202,7 @@ function _srRefreshBizHeaderAndTopCards(biz){
   // 상단 카드도 다시
   const T = rows.reduce((s,x)=>{s.sales+=x.sales;s.purchase+=x.purchase;s.fee+=x.fee;s.vat+=x.vat;s.profit+=x.profit;s.count+=x.count;return s;},{sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
   const topEl = document.getElementById('srProfitTopCards');
-  if (topEl) topEl.innerHTML = _srBuildTopCardsHtml(T, _srTopBreakdown(rows));
+  if (topEl) topEl.innerHTML = _srBuildTopCardsHtml(T);
 }
 function _srBuildAdCostUI(biz){
   const items = srAdItemsFor(biz);
@@ -12483,22 +12483,11 @@ function srOnB2BVendorChange(input){
   }, 0);
 }
 // 상단 5개 카드 inner HTML
-function _srTopBreakdown(rows){
-  const grobn = (rows||[]).filter(r=>r.brand==='그로븐'&&!r.isB2B).reduce((s,r)=>s+r.sales,0);
-  const yb    = (rows||[]).filter(r=>r.brand==='옐로우브릿지'&&!r.isB2B).reduce((s,r)=>s+r.sales,0);
-  const b2b   = (rows||[]).filter(r=>r.isB2B).reduce((s,r)=>s+r.sales,0);
-  return {grobn, yb, b2b};
-}
-function _srBuildTopCardsHtml(T, bd){
+function _srBuildTopCardsHtml(T){
   const adTotal = srAdTotalFor('그로븐') + srAdTotalFor('옐로우브릿지') + srAdTotalFor('기타');
   const adjProfit = T.profit - adTotal;
   const _p = v => T.sales > 0 ? `<div style="font-size:11px;color:#9CA3AF;margin-top:2px">${(v/T.sales*100).toFixed(1)}%</div>` : '';
-  const bdHtml = bd ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:2px">
-    <div style="font-size:10px;color:#6B7684">그로븐&nbsp;<b style="color:#1E3A5F">${bd.grobn.toLocaleString()}원</b></div>
-    <div style="font-size:10px;color:#6B7684">옐로우브릿지&nbsp;<b style="color:#3A1E5F">${bd.yb.toLocaleString()}원</b></div>
-    ${bd.b2b>0?`<div style="font-size:10px;color:#6B7684">B2B(디네트)&nbsp;<b style="color:#7B4B00">${bd.b2b.toLocaleString()}원</b></div>`:''}
-  </div>` : '';
-  return `<div><div style="font-size:11px;color:#6B7684;font-weight:500">총 매출</div><div style="font-size:18px;font-weight:700;color:#3182F6;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${T.count.toLocaleString()}건</div>${bdHtml}</div>
+  return `<div><div style="font-size:11px;color:#6B7684;font-weight:500">총 매출</div><div style="font-size:18px;font-weight:700;color:#3182F6;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.sales.toLocaleString()}원</div><div style="font-size:11px;color:#9CA3AF;margin-top:2px">${T.count.toLocaleString()}건</div></div>
     <div><div style="font-size:11px;color:#6B7684;font-weight:500">총 매입</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.purchase.toLocaleString()}원</div>${_p(T.purchase)}</div>
     <div><div style="font-size:11px;color:#6B7684;font-weight:500">판매수수료</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${T.fee.toLocaleString()}원</div>${_p(T.fee)}</div>
     <div><div style="font-size:11px;color:#6B7684;font-weight:500">광고비</div><div style="font-size:18px;font-weight:700;color:#191F28;margin-top:3px;white-space:nowrap;letter-spacing:-.01em">${adTotal.toLocaleString()}원</div>${_p(adTotal)}</div>
@@ -12620,7 +12609,7 @@ function srUpdateProfitIncremental(changedKey){
   // 3) 상단 5개 카드
   const T = rows.reduce((s,x)=>{s.sales+=x.sales;s.purchase+=x.purchase;s.fee+=x.fee;s.vat+=x.vat;s.profit+=x.profit;s.count+=x.count;return s;}, {sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
   const topEl = document.getElementById('srProfitTopCards');
-  if (topEl) topEl.innerHTML = _srBuildTopCardsHtml(T, _srTopBreakdown(rows));
+  if (topEl) topEl.innerHTML = _srBuildTopCardsHtml(T);
   // 4) 차트는 500ms 디바운스
   clearTimeout(_srChartDebounce);
   _srChartDebounce = setTimeout(() => _srRenderVendorPurchaseChart(rows), 500);
@@ -12689,7 +12678,7 @@ function srRenderProfitPanel(orders){
         style="border:1px solid #3182F6;background:#fff;color:#3182F6;cursor:pointer;font-size:12px;padding:6px 12px;border-radius:5px;font-weight:600">📋 상세내역만 PNG 저장</button>
     </div>
     <div class="sr-profit-helper" style="font-size:11px;color:#888;margin-top:2px">발주서 기준 자동 집계 · 매입단가/배송비/한도는 한 번 입력하면 자동 저장</div>
-    <div id="srProfitTopCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;background:#F8F9FA;padding:18px;margin-top:14px;border-radius:10px;border:1px solid #ECEEF1">${_srBuildTopCardsHtml(T, _srTopBreakdown(rows))}</div>
+    <div id="srProfitTopCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px 18px;background:#F8F9FA;padding:18px;margin-top:14px;border-radius:10px;border:1px solid #ECEEF1">${_srBuildTopCardsHtml(T)}</div>
     <div class="sr-profit-helper" style="font-size:11px;color:var(--text3);margin-top:10px">매입단가는 <b>옵션 1개당 가격</b>만 넣으면 됩니다. 배송비/합배송 한도까지 같이 입력 → 박스수 자동 계산. ▶ 누르면 사람별로 확인·수정 가능.${noPriceCnt>0?` <b style="color:var(--warn)">${noPriceCnt}건 매입단가 미입력</b>`:''}</div>
     <div class="sr-profit-helper">${_srBuildB2BMappingUI()}</div>
     <!-- 거래처 매입 비중 차트 (전체) -->
@@ -12891,6 +12880,39 @@ function _srBuildB2BSectionHtml(biz, b2bRows, _theads, _buildFooter){
     return _srBuildDetailRowHtml(r, i, first);
   }).join('');
   const pc = TB.profit >= 0 ? '#5DE3B3' : '#FECACA';
+  // 발주처별 요약 테이블 (그로븐 섹션과 동일한 형식)
+  const byGroup = {};
+  for (const r of b2bRows) {
+    const k = String(r.detailVendor||r.vendor||'');
+    if (!byGroup[k]) byGroup[k] = {vendor:k, count:0, sales:0, purchase:0, profit:0};
+    const m = byGroup[k];
+    m.count+=r.count; m.sales+=r.sales; m.purchase+=r.purchase; m.profit+=r.profit;
+  }
+  const HBG='#F1F5F9', HFG='#334155';
+  const sumTrs = Object.values(byGroup).map(m=>`<tr>
+    <td style="padding:9px 14px;font-size:12px;font-weight:600;border-bottom:1px solid #F2F4F6;color:#191F28">${escHtml(m.vendor)}</td>
+    <td style="padding:9px 14px;text-align:right;font-size:12px;border-bottom:1px solid #F2F4F6;color:#191F28">${m.count}건</td>
+    <td style="padding:9px 14px;text-align:right;font-size:12px;color:#3182F6;font-weight:600;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.sales.toLocaleString()}원</td>
+    <td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.purchase.toLocaleString()}원</td>
+    <td style="padding:9px 14px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#06B981':'#F04452'};border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.profit.toLocaleString()}원</td>
+  </tr>`).join('');
+  const summaryTable = `<table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #ECEEF1;border-radius:0 0 0 0;overflow:hidden">
+    <thead><tr style="background:${HBG}">
+      <th style="padding:10px 14px;text-align:left;font-size:11px;color:${HFG};border-bottom:1px solid #ECEEF1;font-weight:600">발주처</th>
+      <th style="padding:10px 14px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #ECEEF1;font-weight:600">주문건수</th>
+      <th style="padding:10px 14px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #ECEEF1;font-weight:600">매출</th>
+      <th style="padding:10px 14px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #ECEEF1;font-weight:600">매입</th>
+      <th style="padding:10px 14px;text-align:right;font-size:11px;color:#06B981;border-bottom:1px solid #ECEEF1;font-weight:600">순이익</th>
+    </tr></thead>
+    <tbody>${sumTrs}</tbody>
+    <tfoot><tr style="background:#F8F9FA;font-weight:700">
+      <td style="padding:10px 14px;font-size:12px;color:#191F28;white-space:nowrap">B2B 합계</td>
+      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28">${TB.count}건</td>
+      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#3182F6;font-variant-numeric:tabular-nums;white-space:nowrap">${TB.sales.toLocaleString()}원</td>
+      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;white-space:nowrap">${TB.purchase.toLocaleString()}원</td>
+      <td style="padding:10px 14px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;color:${TB.profit>=0?'#06B981':'#F04452'}">${TB.profit.toLocaleString()}원</td>
+    </tr></tfoot>
+  </table>`;
   return `<div style="margin-top:14px" data-b2b-biz="${escHtml(biz)}">
     <div class="sr-b2b-header" data-biz="${escHtml(biz)}"
       style="background:#0D9488;color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -12900,8 +12922,9 @@ function _srBuildB2BSectionHtml(biz, b2bRows, _theads, _buildFooter){
         <span style="font-size:10px;opacity:.7;margin-left:6px">플랫폼 수수료 없음 (직거래)</span>
       </span>
     </div>
+    ${summaryTable}
     <div class="sr-biz-detail-section">
-    <div style="margin-top:6px;font-size:11px;color:var(--text3)">📋 디네트 B2B 상세 — 매입단가/배송비 입력. ▶ 누르면 건별 확인.</div>
+    <div style="margin-top:8px;font-size:11px;color:var(--text3)">📋 디네트 B2B 상세 — 매입단가/배송비 입력. ▶ 누르면 건별 확인.</div>
     <div style="overflow-x:auto;margin-top:4px">
       <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #99f6e4;word-break:keep-all">
         ${_theads}<tbody>${b2bTrs}</tbody>${_buildFooter(TB, b2bRows)}
