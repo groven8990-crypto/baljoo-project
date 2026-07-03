@@ -12610,7 +12610,7 @@ function srUpdateProfitIncremental(changedKey){
     const bizRows    = rows.filter(x => x.brand === r.brand);
     const normalRows = bizRows.filter(x => !x.isB2B);
     const b2bRows    = bizRows.filter(x =>  x.isB2B);
-    const bizT = bizRows.reduce((s,x)=>{s.sales+=x.sales;s.purchase+=x.purchase;s.fee+=x.fee;s.vat+=x.vat;s.profit+=x.profit;s.count+=x.count;return s;}, {sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
+    const bizT = normalRows.reduce((s,x)=>{s.sales+=x.sales;s.purchase+=x.purchase;s.fee+=(x.fee||0);s.vat+=(x.vat||0);s.profit+=x.profit;s.count+=x.count;return s;}, {sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
     const bizSel = CSS && CSS.escape ? CSS.escape(r.brand) : r.brand;
     const headerEl = document.querySelector(`.sr-biz-header[data-biz="${bizSel}"]`);
     if (headerEl) headerEl.innerHTML = _srBuildBizHeaderInner(r.brand, bizT);
@@ -12882,7 +12882,7 @@ function _srBuildBizSectionHtml(biz, bizRows){
     </tr></tfoot>`;
   };
   return `<div style="margin-top:22px" data-biz="${escHtml(biz)}">
-    <div class="sr-biz-header" data-biz="${escHtml(biz)}" style="background:${color};color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">${_srBuildBizHeaderInner(biz, T)}</div>
+    <div class="sr-biz-header" data-biz="${escHtml(biz)}" style="background:${color};color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">${_srBuildBizHeaderInner(biz, TN)}</div>
     <div class="sr-biz-vendor-table" data-biz="${escHtml(biz)}">${_srBuildBizVendorTableInner(biz, normalRows)}</div>
     ${_srBuildAdCostUI(biz)}
     <div class="sr-biz-detail-section">
