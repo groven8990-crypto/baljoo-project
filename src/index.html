@@ -11402,6 +11402,8 @@ function srLoadDinette(file){
       const info = document.getElementById('srDinetteInfo');
       const valid = srDinetteRows.length;
       info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(file.name)} — ${valid}건 인식</span> <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearDinette()">제거</button>`;
+      // 매입/순이익 패널 즉시 갱신 (B2B 디네트 섹션 반영)
+      srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
     } catch(err) {
       document.getElementById('srDinetteInfo').innerHTML = '<span style="color:var(--danger)">❌ '+escHtml(err.message)+'</span>';
     }
@@ -11411,6 +11413,8 @@ function srLoadDinette(file){
 function srClearDinette(){
   srDinetteRows = null; srDinetteFileName = '';
   document.getElementById('srDinetteInfo').innerHTML = '';
+  // 제거 시에도 패널 갱신
+  srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
 }
 // ─ 깐마늘 리뷰주문 (발주서의 노란색 채움 = 리뷰) ─
 const srReviewSet = new Set();        // 'grobn||홍길동' / 'yb||홍길동'
