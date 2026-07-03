@@ -12838,7 +12838,6 @@ function _srBuildBizSectionHtml(biz, bizRows){
           <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap" title="박스 1개당 최대 단위수량">합배송<br>한도</th>
           <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap">총배송비</th>
           <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap">총매입</th>
-          <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap">판매수수료</th>
           ${biz === '그로븐' ? '' : '<th style="padding:6px 8px;text-align:center;border-bottom:1px solid #D1D5DB;white-space:nowrap" title="체크 시 부가세 차감">과세</th><th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;white-space:nowrap" title="매출부가세 − 매입부가세">납부<br>부가세</th>'}
           <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #D1D5DB;color:#16A34A;white-space:nowrap">순이익</th>
         </tr></thead>`;
@@ -12851,7 +12850,7 @@ function _srBuildBizSectionHtml(biz, bizRows){
       <td colspan="4" style="padding:8px 8px;text-align:right;font-weight:700;white-space:nowrap;border-top:2px solid #94A3B8;color:#191F28">합계</td>
       ${cellR(num(TF.count))}${cellR(num(F.qtySum))}${cellR(num(TF.sales))}
       ${cellEmpty}${cellR(num(F.itemCost))}${cellEmpty}${cellEmpty}${cellR(num(F.shipTotal))}
-      ${cellR(num(TF.purchase))}${cellR(num(TF.fee))}
+      ${cellR(num(TF.purchase))}
       ${biz==='그로븐'?'':cellEmpty+`<td style="padding:8px 8px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap;border-top:2px solid #94A3B8;color:#6B21A8">${num(TF.vat)}</td>`}
       <td style="padding:8px 8px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap;border-top:2px solid #94A3B8;color:${TF.profit>=0?'#16A34A':'#DC2626'}">${num(TF.profit)}</td>
     </tr></tfoot>`;
@@ -12986,7 +12985,6 @@ function _srBuildDetailRowHtml(r, i, firstOfGroup){
     </td>
     <td data-cell="shipTotal" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00">${r.shipTotal.toLocaleString()}</td>
     <td data-cell="purchase" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#7B4B00;font-weight:600">${r.purchase.toLocaleString()}</td>
-    <td data-cell="fee" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#92400E">${r.fee.toLocaleString()}</td>
     ${r.brand === '그로븐' ? '' : `<td style="padding:3px 4px;border-bottom:1px solid #eee;text-align:center"><input type="checkbox" ${r.taxable?'checked':''} data-key="${_srEsc(r.key)}" data-role="taxable" onchange="srOnPurchaseInputChange(this)" style="cursor:pointer"></td><td data-cell="vat" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;color:#6B21A8">${r.vat.toLocaleString()}</td>`}
     <td data-cell="profit" data-sales="${r.sales}" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${r.profit>=0?'#16A34A':'#DC2626'}">${r.profit.toLocaleString()}${r.sales>0?`<span style="font-size:9px;font-weight:400;opacity:.7;margin-left:3px">(${(r.profit/r.sales*100).toFixed(1)}%)</span>`:''}</td>
   </tr>`;
