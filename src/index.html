@@ -4906,16 +4906,26 @@ function invGetCarrierMap() {
 function invSaveCarrierMapData(arr) {
   localStorage.setItem('invCarrierMap', JSON.stringify(arr));
 }
-function invLookupCourier(fname) {
-  // 사용자 커스텀 매핑 우선
+function invLookupCourier(fname, vendorHint) {
+  // 사용자 커스텀 매핑 — 파일명 먼저, 없으면 발신자명(vendorHint)으로도 검색
   const custom = invGetCarrierMap();
   for (const entry of custom) {
     if (entry.keyword && entry.courier && fname.includes(entry.keyword)) return {courier: entry.courier, matchedKey: entry.keyword};
   }
-  // 하드코딩 기본 매핑
+  if (vendorHint) {
+    for (const entry of custom) {
+      if (entry.keyword && entry.courier && vendorHint.includes(entry.keyword)) return {courier: entry.courier, matchedKey: entry.keyword};
+    }
+  }
+  // 하드코딩 기본 매핑 — 파일명 먼저, 없으면 vendorHint
   const known = ['푸드앤','푸드엔','일비','거풍푸드','거풍','남부파머스','최고집','공덕농협','공덕','현해랑','도매꾹','늘푸른'];
   for (const v of known) {
     if (fname.includes(v)) return {courier: VENDOR_COURIER_DEFAULT[v] || '롯데택배', matchedKey: v};
+  }
+  if (vendorHint) {
+    for (const v of known) {
+      if (vendorHint.includes(v)) return {courier: VENDOR_COURIER_DEFAULT[v] || '롯데택배', matchedKey: v};
+    }
   }
   return {courier: '롯데택배', matchedKey: null};
 }
@@ -5621,9 +5631,10 @@ function invLoadTracks(files, vendorHint) {
           }
         });
         const hasCourier   = courierIdx >= 0;
-        const lookup       = invLookupCourier(file.name);
+        const lookup       = invLookupCourier(file.name, vendorHint);
         const _rawGuess    = lookup.matchedKey || invGuessVendor(file.name);
-        const vendorGuess  = (_rawGuess !== '미확인') ? _rawGuess : (vendorHint || '미확인');
+        // vendorHint(Gmail 발신자명)가 있으면 파일명 추측보다 우선 사용
+        const vendorGuess  = vendorHint || ((_rawGuess !== '미확인') ? _rawGuess : '미확인');
         const courierGuess = lookup.courier;
         invTrackFiles.push({fileName: file.name, vendorName: vendorGuess, courierName: courierGuess, hasCourier, map});
         invRenderTrackList();
