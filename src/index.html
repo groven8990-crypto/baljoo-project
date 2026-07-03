@@ -12883,7 +12883,7 @@ function _srBuildB2BSectionHtml(biz, b2bRows, _theads, _buildFooter){
   // 발주처별 요약 테이블 (그로븐 섹션과 동일한 형식)
   const byGroup = {};
   for (const r of b2bRows) {
-    const k = String(r.detailVendor||r.vendor||'');
+    const k = String(r.vendor||'');
     if (!byGroup[k]) byGroup[k] = {vendor:k, count:0, sales:0, purchase:0, profit:0};
     const m = byGroup[k];
     m.count+=r.count; m.sales+=r.sales; m.purchase+=r.purchase; m.profit+=r.profit;
