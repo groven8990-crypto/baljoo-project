@@ -6,7 +6,9 @@
 <title>발주 자동화 v2.2</title>
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="vendor/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" async></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" crossorigin="anonymous" async></script>
 <style>
   /* Noto Sans KR: 인터넷 연결 시에만 적용, 오프라인에서는 시스템 sans-serif 사용 */
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
@@ -166,7 +168,7 @@
         <tr style="background:#FAFBFC"><td style="padding:11px 14px;color:var(--text2)">그 외 (기본)</td><td style="padding:11px 6px;text-align:center;color:#0369a1;font-variant-numeric:tabular-nums">10:00</td><td style="padding:11px 14px;text-align:center;font-variant-numeric:tabular-nums">10:00</td></tr>
         <tr><td style="padding:11px 14px;border-top:1px solid #f1f5f9">농업법인회사 동일 <span style="font-size:11px;color:var(--text3)">(마늘)</span></td><td style="padding:11px 6px;text-align:center;border-top:1px solid #f1f5f9;color:#0369a1;font-variant-numeric:tabular-nums">11:00</td><td style="padding:11px 14px;text-align:center;border-top:1px solid #f1f5f9;font-variant-numeric:tabular-nums">10:30</td></tr>
         <tr style="background:#FAFBFC"><td style="padding:11px 14px">푸드엔드베스트 <span style="font-size:11px;color:var(--text3)">(간고등어)</span></td><td style="padding:11px 6px;text-align:center;color:#0369a1;font-variant-numeric:tabular-nums">12:00</td><td style="padding:11px 14px;text-align:center;font-variant-numeric:tabular-nums">11:00</td></tr>
-        <tr><td style="padding:11px 14px;border-top:1px solid #f1f5f9">일비</td><td style="padding:11px 6px;text-align:center;border-top:1px solid #f1f5f9;color:#0369a1;font-variant-numeric:tabular-nums">13:00</td><td style="padding:11px 14px;text-align:center;border-top:1px solid #f1f5f9;font-variant-numeric:tabular-nums">14:00</td></tr>
+        <tr><td style="padding:11px 14px;border-top:1px solid #f1f5f9">일비</td><td style="padding:11px 6px;text-align:center;border-top:1px solid #f1f5f9;color:#0369a1;font-variant-numeric:tabular-nums">13:30</td><td style="padding:11px 14px;text-align:center;border-top:1px solid #f1f5f9;font-variant-numeric:tabular-nums">14:00</td></tr>
       </tbody>
     </table>
   </div>
@@ -2389,10 +2391,12 @@ function renderStep3(){
         ${emailTag}
         <div style="font-size:12px;color:var(--text2);margin-top:3px">${makeFileName(v,a)} · ${cnt}건</div>
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
+      <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap">
         <button class="btn btn-sm" onclick="dlOne('${esc(gk)}')">⬇ 다운로드</button>
         ${dlMark}
         ${dvChip}
+        ${v==='동일'?`<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border-color:#86efac" onclick="dlDongilSettlement('${esc(gk)}')" title="발주정산내역서 다운로드">📋 정산내역서</button>`:''}
+        ${(Array.isArray(delivery[v])&&delivery[v].includes('kakao'))?`<button class="btn btn-sm" style="background:#FEF3C7;color:#78350F;border-color:#FDE68A" onclick="kakaoSendOne('${esc(gk)}')" title="카카오톡으로 발주 내용 발송">💬 카카오</button>`:''}
         <button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>
       </div>
     </div>`;
@@ -2691,9 +2695,54 @@ function renderVendorRegistry(){
 // ══════════════════════════════════════════════════════════
 // Gmail API 자동 발송 (OAuth + 첨부 발송)
 // ══════════════════════════════════════════════════════════
+// ── 카카오 SDK ──
+const LS_KAKAO_APP_KEY = 'yb_kakao_app_key';
+function kakaoGetAppKey(){ return (localStorage.getItem(LS_KAKAO_APP_KEY)||'').trim(); }
+function kakaoSetAppKey(k){ const s=String(k||'').trim(); if(s) localStorage.setItem(LS_KAKAO_APP_KEY,s); else localStorage.removeItem(LS_KAKAO_APP_KEY); }
+let _kakaoInited = false;
+function kakaoEnsureInit(){
+  const k = kakaoGetAppKey();
+  if (!k) return false;
+  if (typeof Kakao === 'undefined') { alert('카카오 SDK 로딩 중입니다. 잠시 후 다시 시도해주세요.'); return false; }
+  try { if (!_kakaoInited || !Kakao.isInitialized()) { Kakao.init(k); _kakaoInited = true; } } catch(e) { console.warn('Kakao init:', e); }
+  return Kakao.isInitialized();
+}
+// 발주처 카드의 💬 카카오 발송 버튼
+function kakaoSendOne(gk){
+  const [v, a] = gk.split('|');
+  const orders = groupedOrders[gk] || [];
+  if (!orders.length) { alert('주문이 없어요.'); return; }
+  if (!kakaoEnsureInit()) {
+    alert('Kakao App Key를 먼저 설정해주세요.\n(⚙️ 코드 관리 → 📧 Gmail 자동발송 → 💬 카카오 설정)');
+    return;
+  }
+  const today = _localISO();
+  const brand = _brandLabel(a) || a || v;
+  const lines = [`[발주서] ${today} ${v} (${brand})`, `총 ${orders.length}건`, ''];
+  orders.forEach((o, i) => {
+    const opt = o.select_opt || o.option_name || '';
+    lines.push(`${i+1}. ${o.recv_name}  ${o.recv_phone}`);
+    if (opt) lines.push(`   ${opt}`);
+    lines.push(`   ${o.addr}`);
+  });
+  const text = lines.join('\n');
+  try {
+    Kakao.Share.sendDefault({
+      objectType: 'text',
+      text: text,
+      link: { mobileWebUrl: location.href, webUrl: location.href }
+    });
+  } catch(e) {
+    // SDK 오류 시 클립보드 복사 + 카카오톡 웹 열기로 대체
+    navigator.clipboard?.writeText(text).catch(()=>{});
+    _poShowToast('📋 주문내용 클립보드 복사됨 — 카카오톡에 붙여넣기 해주세요');
+    console.warn('Kakao.Share 실패:', e);
+  }
+}
 const LS_GMAIL_CLIENT_ID   = 'yb_gmail_client_id';
 const LS_GMAIL_TOKEN       = 'yb_gmail_token';
 const LS_GMAIL_TPL         = 'yb_gmail_tpl';
+const LS_GMAIL_BCC         = 'yb_gmail_bcc';
 const LS_SEND_HISTORY      = 'yb_send_history';
 const LS_INV_GMAIL_SENDER  = 'yb_inv_gmail_sender';
 const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly';
@@ -2720,6 +2769,8 @@ function gmailResetTemplate(){
   renderGmailSettingsArea();
 }
 function gmailSaveTemplate(subject, body){ localStorage.setItem(LS_GMAIL_TPL, JSON.stringify({subject,body})); }
+function gmailGetBcc(){ return (localStorage.getItem(LS_GMAIL_BCC)||'').trim(); }
+function gmailSetBcc(v){ const s=String(v||'').trim(); if(s) localStorage.setItem(LS_GMAIL_BCC,s); else localStorage.removeItem(LS_GMAIL_BCC); }
 function loadSendHistory(){ try{ return JSON.parse(localStorage.getItem(LS_SEND_HISTORY)||'[]'); }catch{ return []; } }
 function saveSendHistory(arr){ try{ localStorage.setItem(LS_SEND_HISTORY, JSON.stringify(arr.slice(-500))); }catch{} }
 function logSent(entry){
@@ -2822,6 +2873,104 @@ function buildVendorWorkbook(gk){
   const b64cached = _wbToBase64(wb);
   return { wb, b64: b64cached, vendor: v, alias: a, fname: makeFileName(v, a), orders };
 }
+// ── 동일(깐마늘) 발주정산내역서 생성 ──
+// orders: groupedOrders[gk], alias: 사업자 별칭, dateStr: 'YYYY-MM-DD'
+function buildDongilSettlementXlsx(orders, alias, dateStr) {
+  const d = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+  const yy = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  const mmdd = mm + '.' + day;
+  const brandLabel = _brandLabel(alias) || '동일';
+  const ws = {};
+  const merges = [];
+  const encC = (r, c) => XLSX.utils.encode_cell({r, c});
+  const DATA_START = 9; // 1-indexed
+  const n = orders.length;
+  const DATA_END = DATA_START + n - 1;
+  const SUM_ROW = DATA_END + 1;
+  // ── 행 1: 제목 (A1:I1 병합) ──
+  ws['A1'] = {t:'s', v:`발주정산내역서 ${brandLabel} (${mmdd})`};
+  merges.push({s:{r:0,c:0}, e:{r:0,c:8}});
+  // ── 행 2: 작성일자 ──
+  ws['I2'] = {t:'s', v:`작성일자: ${yy}.${mm}.${day}`};
+  // ── 행 3: 소계표 헤더 ──
+  ws['B3'] = {t:'s', v:'건수'};
+  ws['C3'] = {t:'s', v:'총 합계'};
+  // ── 행 4: 리뷰 요약 ──
+  ws['A4'] = {t:'s', v:'리뷰'};
+  ws['B4'] = {t:'n', f:`COUNTIF($F$${DATA_START}:$F$${DATA_END},"리뷰")`};
+  ws['C4'] = {t:'n', f:`SUMIF($F$${DATA_START}:$F$${DATA_END},"리뷰",I${DATA_START}:I${DATA_END})`};
+  // ── 행 5: 실주문 요약 ──
+  ws['A5'] = {t:'s', v:'실주문'};
+  ws['B5'] = {t:'n', f:`COUNTA(F${DATA_START}:F${DATA_END})-B4`};
+  ws['C5'] = {t:'n', f:`SUM(I${DATA_START}:I${DATA_END})-C4`};
+  // ── 행 8: 컬럼 헤더 ──
+  ['번호','발주일자','받는분성명','받는분주소','품목명','수량','공급가(원)','배송비(원)','합계(원)']
+    .forEach((h,ci) => { ws[encC(7, ci)] = {t:'s', v:h}; });
+  // ── 데이터 행 (row 9 ~) ──
+  // 브랜드 키 (리뷰세트 확인용)
+  const bKey = String(alias||'').includes('로또상회') ? 'grobn' : 'yb';
+  // 날짜 파싱 헬퍼
+  const _oDate = s => {
+    const m = String(s||'').match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+    if (m) return m[2].padStart(2,'0') + '/' + m[3].padStart(2,'0');
+    return mmdd;
+  };
+  orders.forEach((o, idx) => {
+    const rowNum = DATA_START + idx;
+    const r = rowNum - 1;
+    // kg 추출 (동일 buildRows 와 동일 로직)
+    let kgN = 0;
+    if (o._merged) {
+      kgN = Number(o.code_qty) || 1;
+    } else {
+      const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i); if (m1) kgN = parseInt(m1[1]);
+      if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+      if (!kgN) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+      if (!kgN) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+      if (!kgN) kgN = 1;
+      const baseQty = Number(o.qty)||1;
+      kgN = kgN > 1 ? baseQty * kgN : (o.code_qty||1) * baseQty;
+    }
+    const rname = String(o.recv_name||'').trim();
+    const isReview = rname && srReviewSet && srReviewSet.has(bKey + '||' + rname);
+    ws[encC(r,0)] = {t:'n', v: idx+1};
+    ws[encC(r,1)] = {t:'s', v: _oDate(o.order_date)};
+    ws[encC(r,2)] = {t:'s', v: rname};
+    ws[encC(r,3)] = {t:'s', v: String(o.addr||'').trim()};
+    ws[encC(r,4)] = {t:'s', v: '깐마늘 1kg'};
+    if (isReview) {
+      ws[encC(r,5)] = {t:'s', v:'리뷰'};
+      ws[encC(r,6)] = {t:'n', v:0};
+      ws[encC(r,7)] = {t:'n', v:0};
+      ws[encC(r,8)] = {t:'n', v:0};
+    } else {
+      ws[encC(r,5)] = {t:'n', v: kgN};
+      const supply = 6300 * kgN;
+      const delivery = Math.ceil(kgN/3) * 2500;
+      ws[encC(r,6)] = {t:'n', f:`6300*F${rowNum}`, v: supply};
+      ws[encC(r,7)] = {t:'n', f:`ROUNDUP(F${rowNum}/3,0)*2500`, v: delivery};
+      ws[encC(r,8)] = {t:'n', f:`SUM(G${rowNum}:H${rowNum})`, v: supply + delivery};
+    }
+  });
+  // ── 합계 행 ──
+  const sr = SUM_ROW - 1;
+  ws[encC(sr,0)] = {t:'s', v:'합계'};
+  merges.push({s:{r:sr,c:0}, e:{r:sr,c:5}});
+  ws[encC(sr,6)] = {t:'n', f:`SUM(G${DATA_START}:G${DATA_END})`};
+  ws[encC(sr,7)] = {t:'n', f:`SUM(H${DATA_START}:H${DATA_END})`};
+  ws[encC(sr,8)] = {t:'n', f:`SUM(I${DATA_START}:I${DATA_END})`};
+  ws['!ref'] = `A1:I${SUM_ROW}`;
+  ws['!merges'] = merges;
+  ws['!cols'] = [{wch:8.86},{wch:12.71},{wch:13.43},{wch:50},{wch:14},{wch:8},{wch:12},{wch:12},{wch:12}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '거래명세서');
+  const b64 = _wbToBase64(wb);
+  const safeAlias = String(alias||'').replace(/[\/\\:*?"<>|]/g,'');
+  const fname = `발주정산내역서_동일_${safeAlias}_${dateStr||mmdd}.xlsx`;
+  return {wb, b64, fname};
+}
 // base64 76자 단위 청크 (RFC 2045)
 function _b64chunk(s){ return String(s||'').replace(/(.{76})/g, '$1\r\n'); }
 // HTML 이스케이프
@@ -2830,7 +2979,7 @@ function _htmlEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&
 //   bodyText: 평문 본문 (\n 자동으로 <br>)
 //   attachments: [{name, type, b64}]  → 첨부
 //   inlineImages: [{cid, type, b64}]   → 본문 끝 인라인 이미지 (서명 명함 등)
-function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}){
+function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages, bcc}){
   const enc2047 = s => '=?UTF-8?B?' + btoa(unescape(encodeURIComponent(s||''))) + '?=';
   // RFC 2231 filename 파라미터 (한글 안전)
   const encFnameParam = n => "filename*=UTF-8''" + encodeURIComponent(n||'');
@@ -2848,6 +2997,7 @@ function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}
   const lines = [];
   lines.push(`To: ${to}`);
   if (from) lines.push(`From: ${from}`);
+  if (bcc) lines.push(`Bcc: ${bcc}`);
   lines.push(`Subject: ${enc2047(subject)}`);
   lines.push('MIME-Version: 1.0');
   lines.push(`Content-Type: multipart/mixed; boundary="${outerB}"`);
@@ -2903,9 +3053,9 @@ function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages}
   return btoa(unescape(encodeURIComponent(raw))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 }
 // Gmail API send
-async function gmailSendOne({to, subject, body, attachments, inlineImages}){
+async function gmailSendOne({to, subject, body, attachments, inlineImages, bcc}){
   const token = await gmailRequestToken();
-  const raw = _buildMimeMail({to, subject, bodyText: body, attachments, inlineImages});
+  const raw = _buildMimeMail({to, subject, bodyText: body, attachments, inlineImages, bcc});
   // 디버그용: 디코딩된 MIME 을 콘솔에 출력 (F12 콘솔에서 확인)
   try {
     const decoded = decodeURIComponent(escape(atob(raw.replace(/-/g,'+').replace(/_/g,'/'))));
@@ -3059,8 +3209,9 @@ async function autoSendAll(){
     // 명함은 본문 끝 인라인 이미지(서명)로 — 첨부 아님
     const _card = gmailGetCard();
     const inlineImages = (_card && _card.b64) ? [{ cid: 'card_sig', type: _card.type||'image/png', b64: _card.b64 }] : [];
+    const _bcc = gmailGetBcc() || undefined;
     try {
-      await gmailSendOne({to, subject, body, attachments, inlineImages});
+      await gmailSendOne({to, subject, body, attachments, inlineImages, bcc: _bcc});
       for (const gk of gks) {
         const [vv, aa] = gk.split('|');
         const built = builtMap[gk];
@@ -3137,6 +3288,29 @@ function renderGmailSettingsArea(){
         </div>
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">💬 카카오 설정</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
+          <a href="https://developers.kakao.com/console/app" target="_blank" style="color:var(--primary);text-decoration:underline">Kakao Developers</a>에서 앱 생성 후 <b>JavaScript 앱 키</b>를 입력하세요.<br>
+          발주처 전달방식에서 💬 카톡 선택 시 발주서 카드에 카카오 발송 버튼이 나타납니다.<br>
+          <span style="color:var(--warn)">※ 플랫폼 등록: 카카오 앱 설정 → 플랫폼 → Web → <code>${escHtml(location.origin)}</code> 추가 필요</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="inp" id="kakaoAppKeyInput" value="${escHtml(kakaoGetAppKey())}" placeholder="JavaScript 앱 키 (예: abcdef1234567890)" style="flex:1;font-family:monospace;font-size:12px">
+          <button class="btn btn-sm" onclick="kakaoSetAppKey(document.getElementById('kakaoAppKeyInput').value);_kakaoInited=false;_poShowToast('Kakao 앱 키 저장됨')">💾 저장</button>
+          ${kakaoGetAppKey()?`<button class="btn btn-sm" style="color:var(--text3)" onclick="kakaoSetAppKey('');document.getElementById('kakaoAppKeyInput').value='';_poShowToast('Kakao 앱 키 삭제됨')">삭제</button>`:''}
+        </div>
+        ${kakaoGetAppKey()?`<div style="margin-top:6px;font-size:11px;color:var(--success)">✅ 앱 키 등록됨 — 발주처 전달방식에서 💬 카톡 선택 시 발주서 카드에 카카오 버튼이 표시됩니다.</div>`:''}
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">📨 숨은참조 (BCC)</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">모든 발주서 자동발송 시 이 주소로 숨은참조 발송됩니다. (비워두면 미사용)</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="inp" id="gmailBccInput" value="${escHtml(gmailGetBcc())}" placeholder="example@gmail.com" style="flex:1">
+          <button class="btn btn-sm" onclick="gmailSetBcc(document.getElementById('gmailBccInput').value);_poShowToast('BCC 저장됨')">💾 저장</button>
+          <button class="btn btn-sm" style="color:var(--text3)" onclick="gmailSetBcc('');document.getElementById('gmailBccInput').value='';_poShowToast('BCC 삭제됨')">삭제</button>
+        </div>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">🪪 명함 (이메일 자동 첨부)</div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px">이미지 파일 (PNG/JPG, 2MB 이하). 모든 발주처에 동일하게 자동 첨부됩니다.</div>
         ${(() => {
@@ -3202,11 +3376,21 @@ async function autoSendVendor(vendorName){
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     b64: b.b64 || _wbToBase64(b.wb)
   }));
+  // 동일 발주처: 정산내역서도 함께 첨부
+  if (vendorName === '동일') {
+    for (const b of built) {
+      try {
+        const s = buildDongilSettlementXlsx(b.orders, b.alias, today);
+        if (s.b64) attachments.push({name: s.fname, type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', b64: s.b64});
+      } catch(e) { console.warn('정산내역서 생성 실패:', e); }
+    }
+  }
   // 명함은 본문 끝 인라인 이미지(서명)로 — 첨부 아님
   const card = gmailGetCard();
   const inlineImages = (card && card.b64) ? [{ cid: 'card_sig', type: card.type||'image/png', b64: card.b64 }] : [];
+  const bcc = gmailGetBcc() || undefined;
   try {
-    await gmailSendOne({to: emails[vendorName], subject, body, attachments, inlineImages});
+    await gmailSendOne({to: emails[vendorName], subject, body, attachments, inlineImages, bcc});
     for (const b of built) logSent({vendor:b.vendor, alias:b.alias, to: emails[vendorName], fname:b.fname, status:'sent', merged: built.length>1});
     _poShowToast(`✅ ${vendorName} 발송 완료 (첨부 ${attachments.length}개)`);
     if (typeof renderStep3 === 'function') renderStep3();
@@ -3430,29 +3614,35 @@ function buildRows(vk,orders,alias){
         ];
       })];
     }
-    case '동일':
-      // 농업법인회사 동일(깐마늘) — 안전망: 모든 행을 "깐마늘 1kg" + 수량(kg수 × code_qty)로 통일
-      return [['받는사람','전화번호1','전화번호2','우편번호','주소','수량(A타입)','상품명1','보내는사람(지정)','전화번호1(지정)','주소(지정)','배송메시지','주문번호','내품수량1','운임'],
-        ...orders.map(o => {
-          let finalQty;
-          if (o._merged) {
-            // 합배송된 행 — code_qty 는 이미 _effOrderUnits 합산(kg-aware)이라 그대로 사용
-            finalQty = Number(o.code_qty) || 1;
-          } else {
-            // kg 추출 우선순위: select_opt → 노출옵션명(쿠팡) → vendor_code → option_name
-            let kgN = 0;
-            const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kgN = parseInt(m1[1]);
-            if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kgN = parseInt(m[1]); }
-            if (!kgN) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
-            if (!kgN) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
-            if (!kgN) kgN = 1;
-            const baseQty = Number(o.qty)||1;
-            // kg 수가 1보다 크면 코드 내장수량 무시하고 kg수×주문수량으로 (예: 2kg 주문 1건 → 1×2=2개)
-            finalQty = kgN > 1 ? baseQty * kgN : (o.code_qty||1) * baseQty;
-          }
-          // 상품명은 무조건 "깐마늘 1kg"
-          return [o.recv_name, o.recv_phone, '', o.zip, o.addr, finalQty, '깐마늘 1kg', s.name, s.phone, s.addr, o.memo, o.order_no, '', ''];
-        })];
+    case '동일': {
+      // 농업법인회사 동일(깐마늘) — 3kg 초과 시 분할 배송 (한 라벨 max 3kg)
+      const hdr = ['받는사람','전화번호1','전화번호2','우편번호','주소','수량(A타입)','상품명1','보내는사람(지정)','전화번호1(지정)','주소(지정)','배송메시지','주문번호','내품수량1','운임'];
+      const dataRows = [];
+      for (const o of orders) {
+        let totalKg;
+        if (o._merged) {
+          totalKg = Number(o.code_qty) || 1;
+        } else {
+          let kgN = 0;
+          const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kgN = parseInt(m1[1]);
+          if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kgN = parseInt(m[1]); }
+          if (!kgN) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+          if (!kgN) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+          if (!kgN) kgN = 1;
+          const baseQty = Number(o.qty)||1;
+          totalKg = kgN > 1 ? baseQty * kgN : (o.code_qty||1) * baseQty;
+        }
+        // 3kg 초과 시 균등 분할: ceil(total/3)개 박스, 각 박스 최대 3kg
+        for (const chunkKg of _splitDongilKg(totalKg)) {
+          dataRows.push([o.recv_name, o.recv_phone, '', o.zip, o.addr, chunkKg, '깐마늘 1kg', s.name, s.phone, s.addr, o.memo, o.order_no, '', '']);
+        }
+      }
+      return [hdr, ...dataRows];
+    }
+    case '렉스팜':
+      // 출고일자|받는분성명|받는분전화번호|우편번호|받는분주소|품목명|수량|배송메세지|택배사|송장번호
+      return [['출고일자','받는분성명','받는분전화번호','우편번호','받는분주소','품목명','수량','배송메세지','택배사','송장번호'],
+        ...orders.map(o => [_localISO(), o.recv_name, o.recv_phone, o.zip, o.addr, combined(o), effQty(o), o.memo||'', '', ''])];
     default:
       return [['주문번호','품목명','옵션','수량','수령인','연락처','주소','우편번호','배송메모','원본코드'],
         ...orders.map(o=>[o.order_no,o.item_name,o.option_name,effQty(o),o.recv_name,o.recv_phone,o.addr,o.zip,o.memo,o.vendor_code])];
@@ -3512,6 +3702,24 @@ function dlOne(gk){
   }).finally(()=>{
     if (dlBtn) { dlBtn.disabled = false; dlBtn.textContent = prevText || '⬇ 다운로드'; }
   });
+}
+// 동일 배송 분할: 3kg 초과 시 균등 분할 (한 라벨 max 3kg)
+// 예) 4→[2,2], 5→[3,2], 6→[3,3], 7→[3,2,2], 9→[3,3,3]
+function _splitDongilKg(totalKg) {
+  if (totalKg <= 3) return [totalKg];
+  const numBoxes = Math.ceil(totalKg / 3);
+  const base = Math.floor(totalKg / numBoxes);
+  const extra = totalKg % numBoxes;
+  return Array.from({length: numBoxes}, (_, i) => i < extra ? base + 1 : base);
+}
+// 동일 발주정산내역서 다운로드
+function dlDongilSettlement(gk){
+  const [,a] = gk.split('|');
+  const orders = groupedOrders[gk] || [];
+  if (!orders.length) { alert('주문이 없어요.'); return; }
+  const result = buildDongilSettlementXlsx(orders, a, _localISO());
+  XLSX.writeFile(result.wb, result.fname);
+  _poShowToast('✅ 정산내역서 다운로드: ' + result.fname);
 }
 function _poShowToast(msg){
   const t=document.createElement('div');
@@ -4698,16 +4906,26 @@ function invGetCarrierMap() {
 function invSaveCarrierMapData(arr) {
   localStorage.setItem('invCarrierMap', JSON.stringify(arr));
 }
-function invLookupCourier(fname) {
-  // 사용자 커스텀 매핑 우선
+function invLookupCourier(fname, vendorHint) {
+  // 사용자 커스텀 매핑 — 파일명 먼저, 없으면 발신자명(vendorHint)으로도 검색
   const custom = invGetCarrierMap();
   for (const entry of custom) {
     if (entry.keyword && entry.courier && fname.includes(entry.keyword)) return {courier: entry.courier, matchedKey: entry.keyword};
   }
-  // 하드코딩 기본 매핑
+  if (vendorHint) {
+    for (const entry of custom) {
+      if (entry.keyword && entry.courier && vendorHint.includes(entry.keyword)) return {courier: entry.courier, matchedKey: entry.keyword};
+    }
+  }
+  // 하드코딩 기본 매핑 — 파일명 먼저, 없으면 vendorHint
   const known = ['푸드앤','푸드엔','일비','거풍푸드','거풍','남부파머스','최고집','공덕농협','공덕','현해랑','도매꾹','늘푸른'];
   for (const v of known) {
     if (fname.includes(v)) return {courier: VENDOR_COURIER_DEFAULT[v] || '롯데택배', matchedKey: v};
+  }
+  if (vendorHint) {
+    for (const v of known) {
+      if (vendorHint.includes(v)) return {courier: VENDOR_COURIER_DEFAULT[v] || '롯데택배', matchedKey: v};
+    }
   }
   return {courier: '롯데택배', matchedKey: null};
 }
@@ -4862,8 +5080,8 @@ async function invGmailFetch() {
   window._invGmailToken = token;
 
   try {
-    const q = 'in:inbox has:attachment';
-    statusEl.textContent = '오늘 첨부파일 메일 검색 중...';
+    const q = 'in:inbox has:attachment newer_than:7d';
+    statusEl.textContent = '최근 7일 첨부파일 메일 검색 중...';
 
     const searchResp = await fetch(
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=' + encodeURIComponent(q),
@@ -4883,12 +5101,12 @@ async function invGmailFetch() {
         .then(r => r.ok ? r.json() : null).catch(() => null)
     ));
 
-    // 오늘 날짜 기준 (로컬 시간)
+    // 7일 이내 메일만 (오늘 포함)
     const _now = new Date();
-    const _todayStr = _now.getFullYear() + '/' + String(_now.getMonth()+1).padStart(2,'0') + '/' + String(_now.getDate()).padStart(2,'0');
-    function _isToday(dateStr) {
+    const _cutoff = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() - 6); // 오늘 포함 7일
+    function _isRecent(dateStr) {
       if (!dateStr) return false;
-      try { const d = new Date(dateStr); return d.getFullYear() === _now.getFullYear() && d.getMonth() === _now.getMonth() && d.getDate() === _now.getDate(); }
+      try { const d = new Date(dateStr); return d >= _cutoff; }
       catch { return false; }
     }
 
@@ -4901,13 +5119,13 @@ async function invGmailFetch() {
       const subject = (hds.find(h => h.name === 'Subject') || {}).value || '(제목없음)';
       const date    = (hds.find(h => h.name === 'Date')    || {}).value || '';
       const from    = (hds.find(h => h.name === 'From')    || {}).value || '';
-      if (!_isToday(date)) continue;  // 오늘 메일만
+      if (!_isRecent(date)) continue;  // 7일 이내 메일만
       for (const part of parts) {
         items.push({ msgId: msg.id, attachId: part.body.attachmentId, filename: part.filename, subject, date, from });
       }
     }
 
-    if (!items.length) { statusEl.textContent = '오늘 엑셀 첨부파일이 있는 메일이 없어요.'; return; }
+    if (!items.length) { statusEl.textContent = '최근 7일 내 엑셀 첨부파일이 있는 메일이 없어요.'; return; }
     window._invGmailItems = items;
     statusEl.textContent = items.length + '개 엑셀 파일 발견';
     _invGmailRegroup();
@@ -4927,18 +5145,28 @@ function _invGmailRegroup() {
     if (!groups[label]) groups[label] = [];
     groups[label].push({...it, _idx: i});
   });
-  const itemHtml = (it) => `
+  const itemHtml = (it) => {
+    const isZip = /\.zip$/i.test(it.filename);
+    const pwId = 'gmailZipPw_' + it._idx;
+    return `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--card)">
-      <span style="font-size:18px;flex-shrink:0">📎</span>
+      <span style="font-size:18px;flex-shrink:0">${isZip ? '🔒' : '📎'}</span>
       <div style="flex:1;min-width:0;overflow:hidden">
-        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.filename)}</div>
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${escHtml(it.filename)}${isZip ? ' <span style="font-size:10px;font-weight:400;color:var(--warn);background:var(--warn-bg);padding:1px 5px;border-radius:4px;vertical-align:middle">비밀번호 ZIP</span>' : ''}
+        </div>
         <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.subject)} · ${_gmailShortDate(it.date)}</div>
+        ${isZip ? `<div style="margin-top:6px"><input id="${pwId}" type="password" class="inp" style="font-size:12px;padding:4px 8px;width:160px" placeholder="ZIP 비밀번호 입력" onkeydown="if(event.key==='Enter')invGmailLoadZip(${it._idx},this.value)"></div>` : ''}
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-        <button class="btn btn-sm btn-primary" onclick="invGmailLoadAttachment(${it._idx})">업로드</button>
+        ${isZip
+          ? `<button class="btn btn-sm btn-primary" onclick="invGmailLoadZip(${it._idx},document.getElementById('${pwId}').value)">압축해제+업로드</button>`
+          : `<button class="btn btn-sm btn-primary" onclick="invGmailLoadAttachment(${it._idx})">업로드</button>`
+        }
         <button class="btn btn-sm" style="background:var(--bg2);border:1px solid var(--border);font-size:11px" onclick="invGmailDownloadAttachment(${it._idx})">다운로드</button>
       </div>
     </div>`;
+  };
   listEl.innerHTML = Object.entries(groups).map(([label, group]) => `
     <div style="margin-bottom:12px">
       <div style="font-size:12px;font-weight:700;color:var(--text2);padding:5px 8px;background:var(--bg2);border-radius:6px;margin-bottom:6px;border-left:3px solid var(--primary)">📦 ${escHtml(label)} <span style="font-weight:400;color:var(--text3)">(${group.length}건)</span></div>
@@ -4950,7 +5178,7 @@ function _gmailFindXlsxParts(payload, result) {
   if (!result) result = [];
   if (!payload) return result;
   const fn = payload.filename || '';
-  if (/\.(xlsx|xls)$/i.test(fn) && payload.body && payload.body.attachmentId) {
+  if (/\.(xlsx|xls|zip)$/i.test(fn) && payload.body && payload.body.attachmentId) {
     result.push(payload);
   }
   if (payload.parts) {
@@ -4995,11 +5223,102 @@ async function invGmailLoadAttachment(idx) {
     const file = new File([blob], item.filename, { type: ext });
 
     const vendorLabel = _invGmailMatchLabel(item.from);
+
+    // Shopmine 발송정보 직접업로드 형식 감지 (주문고유코드/주문번호 + 운송장번호 동시 존재)
+    const _isShopmineDirect = (fileObj) => {
+      try {
+        const wb2 = _xlsxReadAuto(bytes.buffer.slice(0));
+        const ws2 = wb2.Sheets[wb2.SheetNames[0]];
+        const norm2 = c => String(c).replace(/\s/g,'').toLowerCase();
+        const hdrRow2 = XLSX.utils.sheet_to_json(ws2, {header:1, defval:''})[0] || [];
+        const hasOrderCode = hdrRow2.some(c => /주문고유코드|주문번호/.test(norm2(c)));
+        const hasTrack     = hdrRow2.some(c => /운송장|송장/.test(norm2(c)));
+        return hasOrderCode && hasTrack;
+      } catch { return false; }
+    };
+
+    if (_isShopmineDirect(file)) {
+      statusEl.innerHTML = '⚠️ <b>"' + escHtml(item.filename) + '"</b>은 샵마인 발송정보 직접업로드 형식입니다.<br>' +
+        '↓ <b>다운로드</b> 버튼으로 파일 저장 후 샵마인 → 발송정보일괄등록에 직접 올려주세요.<br>' +
+        '<span style="color:var(--text3);font-size:11px">(이 형식은 거래처 운송장 매칭이 아닌 샵마인 직접 업로드용 파일입니다)</span>';
+      return;
+    }
+
     invLoadTracks([file], vendorLabel || undefined);
     statusEl.textContent = '✅ "' + item.filename + '" 업로드 완료';
   } catch(e) {
     statusEl.textContent = '❌ 오류: ' + e.message;
     console.error('[invGmailLoadAttachment]', e);
+  }
+}
+
+async function invGmailLoadZip(idx, password) {
+  const item  = (window._invGmailItems || [])[idx];
+  const token = window._invGmailToken;
+  if (!item || !token) { alert('먼저 받은메일함을 검색해 주세요.'); return; }
+  if (!password) { alert('ZIP 파일의 비밀번호를 입력해 주세요.'); return; }
+
+  const statusEl = document.getElementById('invGmailStatus');
+  statusEl.textContent = '"' + item.filename + '" 다운로드 중...';
+
+  try {
+    const attResp = await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + item.msgId + '/attachments/' + item.attachId,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!attResp.ok) throw new Error('첨부파일 다운로드 실패 ' + attResp.status);
+    const attData = await attResp.json();
+
+    const b64 = (attData.data || '').replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    if (!window.JSZip) {
+      statusEl.textContent = '❌ JSZip 라이브러리 미로드 — 인터넷 연결 확인 후 새로고침';
+      return;
+    }
+
+    statusEl.textContent = '압축 해제 중...';
+    let zip;
+    try {
+      zip = await JSZip.loadAsync(bytes.buffer, { password });
+    } catch(ze) {
+      statusEl.textContent = '❌ ZIP 열기 실패: ' + ze.message + ' (비밀번호를 확인해 주세요)';
+      return;
+    }
+
+    const xlsxNames = Object.keys(zip.files).filter(n => /\.(xlsx|xls)$/i.test(n) && !zip.files[n].dir);
+    if (!xlsxNames.length) {
+      statusEl.textContent = '❌ ZIP 안에 엑셀 파일(.xlsx/.xls)이 없습니다.';
+      return;
+    }
+
+    const vendorLabel = _invGmailMatchLabel(item.from);
+    let ok = 0;
+    for (const name of xlsxNames) {
+      try {
+        const buf = await zip.files[name].async('arraybuffer', { password });
+        const baseName = name.split('/').pop();
+        const file = new File([buf], baseName, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        invLoadTracks([file], vendorLabel || undefined);
+        ok++;
+      } catch(fe) {
+        // 비밀번호 오류 or 파일 손상
+        const msg = /bad password|incorrect password|wrong password/i.test(fe.message)
+          ? '비밀번호가 틀렸습니다.' : fe.message;
+        invShowTrackError(name.split('/').pop(), msg);
+      }
+    }
+
+    if (ok > 0) {
+      statusEl.textContent = '✅ "' + item.filename + '" 압축 해제 완료 (엑셀 ' + ok + '개 업로드)';
+    } else {
+      statusEl.textContent = '❌ 엑셀 추출 실패 — 비밀번호를 확인하거나 ZIP 방식을 확인해 주세요 (AES-256은 미지원)';
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ 오류: ' + e.message;
+    console.error('[invGmailLoadZip]', e);
   }
 }
 
@@ -5299,10 +5618,12 @@ function invLoadTracks(files, vendorHint) {
           return;
         }
         // map: 수령인 → [{no, courier, addr}] (동명이인 대응: 같은 이름도 모두 배열로 보관)
+        // 이름 정규화: 공백 제거 (ex: "김 민수" → "김민수")
+        const _normName = s => String(s||'').replace(/\s+/g,'');
         const map = {};
         rawRows.slice(hdrRow + 1).forEach(row => {
-          const name = String(row[nameIdx]||'').trim();
-          const no   = String(row[trackIdx]||'').trim();
+          const name = _normName(row[nameIdx]).trim();
+          const no   = String(row[trackIdx]||'').replace(/\s+/g,'').trim();
           if (name && no) {
             const courier = courierIdx >= 0 ? normalizeCourier(row[courierIdx]) : '';
             const addr    = addrIdx    >= 0 ? String(row[addrIdx]||'').trim()    : '';
@@ -5310,9 +5631,10 @@ function invLoadTracks(files, vendorHint) {
           }
         });
         const hasCourier   = courierIdx >= 0;
-        const lookup       = invLookupCourier(file.name);
+        const lookup       = invLookupCourier(file.name, vendorHint);
         const _rawGuess    = lookup.matchedKey || invGuessVendor(file.name);
-        const vendorGuess  = (_rawGuess !== '미확인') ? _rawGuess : (vendorHint || '미확인');
+        // vendorHint(Gmail 발신자명)가 있으면 파일명 추측보다 우선 사용
+        const vendorGuess  = vendorHint || ((_rawGuess !== '미확인') ? _rawGuess : '미확인');
         const courierGuess = lookup.courier;
         invTrackFiles.push({fileName: file.name, vendorName: vendorGuess, courierName: courierGuess, hasCourier, map});
         invRenderTrackList();
@@ -5415,17 +5737,28 @@ function invProcess() {
   try {
     if (!invOrderData || !invTrackFiles.length) return;
     const sample = invOrderData[0] || {};
-    const nameCol    = ['수령자','받는분성명','수취인명','수령인','수화인','수하인'].find(c => c in sample) || '수령자';
+    // 공백 무시하여 컬럼 탐색
+    const _findCol = (candidates, fallback) => {
+      const keys = Object.keys(sample);
+      const normKey = k => k.replace(/\s+/g,'');
+      for (const c of candidates) {
+        if (c in sample) return c;
+        const hit = keys.find(k => normKey(k) === normKey(c));
+        if (hit) return hit;
+      }
+      return fallback;
+    };
+    const nameCol    = _findCol(['수령자','받는분성명','수취인명','수령인','수화인','수하인'], '수령자');
     const addrCol    = Object.keys(sample).find(k => { const n = k.replace(/\s/g,''); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); }) || '';
-    const codeCol    = ['판매자상품코드','상품코드'].find(c => c in sample) || '판매자상품코드';
-    const courierCol = ['택배사'].find(c => c in sample) || '택배사';
-    const trackCol   = ['송장번호','운송장번호'].find(c => c in sample) || '송장번호';
-    const prodCol    = ['상품명'].find(c => c in sample) || '상품명';
+    const codeCol    = _findCol(['판매자상품코드','상품코드'], '판매자상품코드');
+    const courierCol = _findCol(['택배사'], '택배사');
+    const trackCol   = _findCol(['송장번호','운송장번호'], '송장번호');
+    const prodCol    = _findCol(['상품명'], '상품명');
     const dupReg = {};
     invPreviewRows = [];
     invResultData = invOrderData.map((row, rowIdx) => {
       const newRow = {...row};
-      const name = String(row[nameCol]||'').trim();
+      const name = String(row[nameCol]||'').replace(/\s+/g,'').trim();
       const code = String(row[codeCol]||'');
       // 판매자코드에서 거래처명 추출: "푸드앤]간고등어/100g-10" → "푸드앤"
       let vendor = '';
@@ -5587,35 +5920,90 @@ function invDownload() {
     const unresolved = invPreviewRows.filter(r => r.status==='dup' && !r.track).length;
     if (unresolved > 0 &&
         !confirm('동명이인 의심 ' + unresolved + '건의 송장번호가 아직 선택되지 않았습니다.\n해당 칸은 빈 채로 다운로드됩니다. 계속할까요?\n(취소 후 위 표에서 송장번호를 선택할 수 있어요)')) return;
-    const wsOrig = invOrderWb.Sheets[invOrderWb.SheetNames[0]];
-    const header = XLSX.utils.sheet_to_json(wsOrig, {header:1})[0] || [];
+
+    const trackCol   = invResolveCtx?.trackCol   || '송장번호';
+    const courierCol = invResolveCtx?.courierCol || '택배사';
+
+    // ── 원본 워크시트 복사 (json_to_sheet 금지: 주문고유코드 등 긴 숫자 정밀도 손상 방지) ──
     const wbCopy = JSON.parse(JSON.stringify(invOrderWb));
-    // 매칭된 행만 (운송장번호 채워진 것) 추출
-    const trackCol = invResolveCtx?.trackCol;
-    const matchedRows = trackCol
-      ? invResultData.filter(row => {
-          const v = row[trackCol];
-          return v !== undefined && v !== null && String(v).trim() !== '';
-        })
-      : invResultData;
-    const unmatchedCnt = invResultData.length - matchedRows.length;
-    if (matchedRows.length === 0) {
-      alert('매칭된 주문이 없어 다운로드할 내용이 없습니다.');
-      return;
+    const ws     = wbCopy.Sheets[wbCopy.SheetNames[0]];
+    const range  = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    const hdrR   = range.s.r;
+    const hdrC   = range.s.c;
+
+    // 헤더 행에서 운송장·택배사 컬럼 위치 탐색
+    let tcIdx = -1, ccIdx = -1;
+    for (let c = hdrC; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({r: hdrR, c})];
+      if (!cell) continue;
+      const v = String(cell.v || '');
+      if (v === trackCol)   tcIdx = c;
+      if (v === courierCol) ccIdx = c;
     }
-    const newWs = XLSX.utils.json_to_sheet(matchedRows, {header: header.length ? header : undefined});
-    wbCopy.Sheets[wbCopy.SheetNames[0]] = newWs;
-    // 파일명: 운송장(거래처) 이름 기준 — '{거래처1_거래처2..}_송장입력.xlsx'
+    if (tcIdx < 0) { tcIdx = range.e.c + 1; ws[XLSX.utils.encode_cell({r: hdrR, c: tcIdx})] = {v: trackCol,   t: 's'}; range.e.c = tcIdx; }
+    if (ccIdx < 0) { ccIdx = range.e.c + 1; ws[XLSX.utils.encode_cell({r: hdrR, c: ccIdx})] = {v: courierCol, t: 's'}; range.e.c = ccIdx; }
+
+    // 원본 sheet의 데이터 행 수
+    const origRowCount = range.e.r - hdrR;
+
+    // 각 행 직접 수정 — 원본 셀 값(주문번호·주문고유코드 등) 그대로 보존
+    const deleteRows = [];
+    for (let i = 0; i < Math.min(origRowCount, invResultData.length); i++) {
+      const sheetR  = hdrR + 1 + i;
+      const updated = invResultData[i];
+      const trackVal = updated[trackCol];
+      const matched  = trackVal !== undefined && trackVal !== null && String(trackVal).trim() !== '';
+      if (matched) {
+        ws[XLSX.utils.encode_cell({r: sheetR, c: tcIdx})] = {v: String(trackVal), t: 's'};
+        if (updated[courierCol]) ws[XLSX.utils.encode_cell({r: sheetR, c: ccIdx})] = {v: String(updated[courierCol]), t: 's'};
+      } else {
+        deleteRows.push(sheetR);
+      }
+    }
+
+    // 미매칭 행 삭제 (아래→위 순서로 처리)
+    deleteRows.sort((a, b) => b - a).forEach(delR => {
+      for (let r = delR; r < range.e.r; r++) {
+        for (let c = hdrC; c <= range.e.c; c++) {
+          const src = XLSX.utils.encode_cell({r: r + 1, c});
+          const dst = XLSX.utils.encode_cell({r, c});
+          if (ws[src]) ws[dst] = ws[src]; else delete ws[dst];
+        }
+      }
+      for (let c = hdrC; c <= range.e.c; c++) delete ws[XLSX.utils.encode_cell({r: range.e.r, c})];
+      range.e.r--;
+    });
+
+    // 추가 업로드 파일에서 온 행(원본 sheet 밖) — json 방식으로 append
+    if (invResultData.length > origRowCount) {
+      const hdrs = [];
+      for (let c = hdrC; c <= range.e.c; c++) {
+        const cell = ws[XLSX.utils.encode_cell({r: hdrR, c})]; hdrs.push(cell ? String(cell.v || '') : '');
+      }
+      const extra = invResultData.slice(origRowCount).filter(row => {
+        const v = row[trackCol]; return v !== undefined && v !== null && String(v).trim() !== '';
+      });
+      if (extra.length) {
+        XLSX.utils.sheet_add_json(ws, extra, {skipHeader: true, header: hdrs, origin: {r: range.e.r + 1, c: hdrC}});
+        range.e.r += extra.length;
+      }
+    }
+
+    ws['!ref'] = XLSX.utils.encode_range(range);
+
+    const matchedCnt   = invResultData.filter(row => { const v = row[trackCol]; return v !== undefined && v !== null && String(v).trim() !== ''; }).length;
+    const unmatchedCnt = invResultData.length - matchedCnt;
+    if (matchedCnt === 0) { alert('매칭된 주문이 없어 다운로드할 내용이 없습니다.'); return; }
+
     const vendorNames = [...new Set((invTrackFiles||[]).map(t => (t.vendorName||'').trim()).filter(Boolean))];
     const base = vendorNames.length > 0
       ? vendorNames.join('_')
       : (((invOrderFileName||'').split(' + ')[0] || '송장입력').replace(/\.(xls|xlsx)$/i, ''));
-    // 파일명에 쓸 수 없는 문자 정리
-    const safe = base.replace(/[\\/:*?"<>|]/g, '_');
-    const fname = safe + '_송장입력.xlsx';
+    const fname = base.replace(/[\\/:*?"<>|]/g, '_') + '_송장입력.xlsx';
     XLSX.writeFile(wbCopy, fname);
+
     const statusEl = document.getElementById('invStatus');
-    if (statusEl) statusEl.textContent = '✅ 다운로드 완료: ' + fname + ' (매칭 ' + matchedRows.length + '건' + (unmatchedCnt>0 ? ', 미매칭 ' + unmatchedCnt + '건 제외' : '') + ')';
+    if (statusEl) statusEl.textContent = '✅ 다운로드 완료: ' + fname + ' (매칭 ' + matchedCnt + '건' + (unmatchedCnt > 0 ? ', 미매칭 ' + unmatchedCnt + '건 제외' : '') + ')';
   } catch(e) {
     console.error('invDownload 오류:', e);
     const statusEl = document.getElementById('invStatus');
@@ -11232,6 +11620,19 @@ function srLoadDinette(file){
       const info = document.getElementById('srDinetteInfo');
       const valid = srDinetteRows.length;
       info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(file.name)} — ${valid}건 인식</span> <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearDinette()">제거</button>`;
+      // 보고서가 이미 생성된 상태면 전체 재렌더 (디네트 건수·섹션·상태메시지 모두 갱신)
+      const rpt = document.getElementById('srReport');
+      if (rpt && rpt.innerHTML.trim()) {
+        srRender();
+        // 이미 저장된 날짜면 자동 덮어쓰기 — 주간 보고서에도 즉시 반영
+        if (_srLastSnapshot && srLoadHistory().some(s => s.date === _srLastSnapshot.date)) {
+          srSaveSnapshot(_srLastSnapshot);
+          const statusEl = document.getElementById('srStatus');
+          if (statusEl) statusEl.innerHTML += ' <span style="color:var(--text3);font-size:11px">· 디네트 포함 이력 자동 갱신됨</span>';
+        }
+      } else {
+        srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+      }
     } catch(err) {
       document.getElementById('srDinetteInfo').innerHTML = '<span style="color:var(--danger)">❌ '+escHtml(err.message)+'</span>';
     }
@@ -11241,6 +11642,13 @@ function srLoadDinette(file){
 function srClearDinette(){
   srDinetteRows = null; srDinetteFileName = '';
   document.getElementById('srDinetteInfo').innerHTML = '';
+  // 제거 시에도 전체 재렌더
+  const rpt = document.getElementById('srReport');
+  if (rpt && rpt.innerHTML.trim()) {
+    srRender();
+  } else {
+    srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+  }
 }
 // ─ 깐마늘 리뷰주문 (발주서의 노란색 채움 = 리뷰) ─
 const srReviewSet = new Set();        // 'grobn||홍길동' / 'yb||홍길동'
