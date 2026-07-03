@@ -12873,7 +12873,7 @@ function _srBuildBizSectionHtml(biz, bizRows){
   </div>`;
 }
 function _srBuildB2BSectionHtml(biz, b2bRows, _theads, _buildFooter){
-  const TB = b2bRows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.profit+=r.profit;s.count+=r.count;return s;},{sales:0,purchase:0,profit:0,count:0});
+  const TB = b2bRows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=(r.fee||0);s.vat+=(r.vat||0);s.profit+=r.profit;s.count+=r.count;return s;},{sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
   let _prev = null;
   const b2bTrs = b2bRows.map((r,i)=>{
     const gk = String(r.detailVendor||r.vendor||'');
