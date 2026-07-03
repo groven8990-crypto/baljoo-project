@@ -2833,14 +2833,15 @@ function gmailDisconnect(){
 //   SheetJS XLSX.write({type:'array'}) 가 일부 환경에서 빈 결과를 반환하는 케이스가 있어서
 //   더 안정적인 type:'base64' 직접 출력 → 실패 시 type:'binary' → 마지막으로 'array' 폴백
 function _wbToBase64(wb){
+  const WO = {bookType:'xlsx', cellStyles:true};
   // 1순위: type:'base64' 직접 (SheetJS 권장)
   try {
-    const b64 = XLSX.write(wb, {type:'base64', bookType:'xlsx'});
+    const b64 = XLSX.write(wb, {type:'base64', ...WO});
     if (b64 && b64.length > 100) { console.log('[_wbToBase64] base64 직접 출력 OK, len:', b64.length); return b64; }
   } catch(e) { console.warn('[_wbToBase64] base64 출력 실패:', e); }
   // 2순위: type:'binary' (string) → btoa
   try {
-    const bin = XLSX.write(wb, {type:'binary', bookType:'xlsx'});
+    const bin = XLSX.write(wb, {type:'binary', ...WO});
     if (bin && bin.length > 100) {
       const b64 = btoa(bin);
       console.log('[_wbToBase64] binary→btoa OK, len:', b64.length);
@@ -2849,7 +2850,7 @@ function _wbToBase64(wb){
   } catch(e) { console.warn('[_wbToBase64] binary 출력 실패:', e); }
   // 3순위: type:'array' (Uint8Array) → btoa
   try {
-    const u8 = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+    const u8 = XLSX.write(wb, {type:'array', ...WO});
     if (u8 && u8.length) {
       let bin2 = '';
       for (let i = 0; i < u8.length; i++) bin2 += String.fromCharCode(u8[i]);
@@ -2889,29 +2890,49 @@ function buildDongilSettlementXlsx(orders, alias, dateStr) {
   const n = orders.length;
   const DATA_END = DATA_START + n - 1;
   const SUM_ROW = DATA_END + 1;
+
+  // ── 스타일 상수 ──
+  const ACCT = '_-* #,##0_-;\\-* #,##0_-;_-* \\-_-;_-@';
+  const GRAY = {fgColor:{rgb:'FFD3D3D3'}, patternType:'solid'};
+  const ctr  = {horizontal:'center', vertical:'center'};
+  const lft  = {horizontal:'left',   vertical:'center'};
+  const rgt  = {horizontal:'right',  vertical:'center'};
+  const fN   = (bold, sz) => ({name:'맑은 고딕', sz: sz||10, bold: !!bold});
+  const mkS  = (bold, sz, fill, align) => ({font:fN(bold,sz), fill:fill||{patternType:'none'}, alignment:align||ctr});
+  const sTitle    = mkS(true, 14, null, ctr);
+  const sDate     = mkS(false, 10, null, rgt);
+  const sGrayHdr  = mkS(true,  10, GRAY, ctr);
+  const sBoldCtr  = mkS(true,  10, null, ctr);
+  const sDataCtr  = mkS(false, 10, null, ctr);
+  const sDataLft  = mkS(false, 10, null, lft);
+
   // ── 행 1: 제목 (A1:I1 병합) ──
-  ws['A1'] = {t:'s', v:`발주정산내역서 ${brandLabel} (${mmdd})`};
+  ws['A1'] = {t:'s', v:`발주정산내역서 ${brandLabel} (${mmdd})`, s:sTitle};
   merges.push({s:{r:0,c:0}, e:{r:0,c:8}});
+
   // ── 행 2: 작성일자 ──
-  ws['I2'] = {t:'s', v:`작성일자: ${yy}.${mm}.${day}`};
+  ws['I2'] = {t:'s', v:`작성일자: ${yy}.${mm}.${day}`, s:sDate};
+
   // ── 행 3: 소계표 헤더 ──
-  ws['B3'] = {t:'s', v:'건수'};
-  ws['C3'] = {t:'s', v:'총 합계'};
+  ws['B3'] = {t:'s', v:'건수',    s:sGrayHdr};
+  ws['C3'] = {t:'s', v:'총 합계', s:sGrayHdr};
+
   // ── 행 4: 리뷰 요약 ──
-  ws['A4'] = {t:'s', v:'리뷰'};
-  ws['B4'] = {t:'n', f:`COUNTIF($F$${DATA_START}:$F$${DATA_END},"리뷰")`};
-  ws['C4'] = {t:'n', f:`SUMIF($F$${DATA_START}:$F$${DATA_END},"리뷰",I${DATA_START}:I${DATA_END})`};
+  ws['A4'] = {t:'s', v:'리뷰',   s:sBoldCtr};
+  ws['B4'] = {t:'n', f:`COUNTIF($F$${DATA_START}:$F$${DATA_END},"리뷰")`,                         s:sBoldCtr};
+  ws['C4'] = {t:'n', f:`SUMIF($F$${DATA_START}:$F$${DATA_END},"리뷰",I${DATA_START}:I${DATA_END})`, s:sBoldCtr, z:ACCT};
+
   // ── 행 5: 실주문 요약 ──
-  ws['A5'] = {t:'s', v:'실주문'};
-  ws['B5'] = {t:'n', f:`COUNTA(F${DATA_START}:F${DATA_END})-B4`};
-  ws['C5'] = {t:'n', f:`SUM(I${DATA_START}:I${DATA_END})-C4`};
+  ws['A5'] = {t:'s', v:'실주문', s:sBoldCtr};
+  ws['B5'] = {t:'n', f:`COUNTA(F${DATA_START}:F${DATA_END})-B4`,  s:sBoldCtr};
+  ws['C5'] = {t:'n', f:`SUM(I${DATA_START}:I${DATA_END})-C4`,     s:sBoldCtr, z:ACCT};
+
   // ── 행 8: 컬럼 헤더 ──
   ['번호','발주일자','받는분성명','받는분주소','품목명','수량','공급가(원)','배송비(원)','합계(원)']
-    .forEach((h,ci) => { ws[encC(7, ci)] = {t:'s', v:h}; });
+    .forEach((h, ci) => { ws[encC(7, ci)] = {t:'s', v:h, s: ci < 6 ? sGrayHdr : sBoldCtr}; });
+
   // ── 데이터 행 (row 9 ~) ──
-  // 브랜드 키 (리뷰세트 확인용)
   const bKey = String(alias||'').includes('로또상회') ? 'grobn' : 'yb';
-  // 날짜 파싱 헬퍼
   const _oDate = s => {
     const m = String(s||'').match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
     if (m) return m[2].padStart(2,'0') + '/' + m[3].padStart(2,'0');
@@ -2920,7 +2941,6 @@ function buildDongilSettlementXlsx(orders, alias, dateStr) {
   orders.forEach((o, idx) => {
     const rowNum = DATA_START + idx;
     const r = rowNum - 1;
-    // kg 추출 (동일 buildRows 와 동일 로직)
     let kgN = 0;
     if (o._merged) {
       kgN = Number(o.code_qty) || 1;
@@ -2935,35 +2955,39 @@ function buildDongilSettlementXlsx(orders, alias, dateStr) {
     }
     const rname = String(o.recv_name||'').trim();
     const isReview = rname && srReviewSet && srReviewSet.has(bKey + '||' + rname);
-    ws[encC(r,0)] = {t:'n', v: idx+1};
-    ws[encC(r,1)] = {t:'s', v: _oDate(o.order_date)};
-    ws[encC(r,2)] = {t:'s', v: rname};
-    ws[encC(r,3)] = {t:'s', v: String(o.addr||'').trim()};
-    ws[encC(r,4)] = {t:'s', v: '깐마늘 1kg'};
+    ws[encC(r,0)] = {t:'n', v: idx+1,                              s:sDataCtr};
+    ws[encC(r,1)] = {t:'s', v: _oDate(o.order_date),               s:sDataCtr};
+    ws[encC(r,2)] = {t:'s', v: rname,                              s:sDataCtr};
+    ws[encC(r,3)] = {t:'s', v: String(o.addr||'').trim(),          s:sDataLft};
+    ws[encC(r,4)] = {t:'s', v: '깐마늘 1kg',                       s:sDataCtr};
     if (isReview) {
-      ws[encC(r,5)] = {t:'s', v:'리뷰'};
-      ws[encC(r,6)] = {t:'n', v:0};
-      ws[encC(r,7)] = {t:'n', v:0};
-      ws[encC(r,8)] = {t:'n', v:0};
+      ws[encC(r,5)] = {t:'s', v:'리뷰',                            s:sDataCtr};
+      ws[encC(r,6)] = {t:'n', v:0,                                 s:sDataCtr, z:ACCT};
+      ws[encC(r,7)] = {t:'n', v:0,                                 s:sDataCtr, z:ACCT};
+      ws[encC(r,8)] = {t:'n', v:0,                                 s:sDataCtr, z:ACCT};
     } else {
-      ws[encC(r,5)] = {t:'n', v: kgN};
-      const supply = 6300 * kgN;
+      ws[encC(r,5)] = {t:'n', v: kgN,                              s:sDataCtr};
+      const supply   = 6300 * kgN;
       const delivery = Math.ceil(kgN/3) * 2500;
-      ws[encC(r,6)] = {t:'n', f:`6300*F${rowNum}`, v: supply};
-      ws[encC(r,7)] = {t:'n', f:`ROUNDUP(F${rowNum}/3,0)*2500`, v: delivery};
-      ws[encC(r,8)] = {t:'n', f:`SUM(G${rowNum}:H${rowNum})`, v: supply + delivery};
+      ws[encC(r,6)] = {t:'n', f:`6300*F${rowNum}`,                 v:supply,            s:sDataCtr, z:ACCT};
+      ws[encC(r,7)] = {t:'n', f:`ROUNDUP(F${rowNum}/3,0)*2500`,    v:delivery,          s:sDataCtr, z:ACCT};
+      ws[encC(r,8)] = {t:'n', f:`SUM(G${rowNum}:H${rowNum})`,      v:supply+delivery,   s:sDataCtr, z:ACCT};
     }
   });
+
   // ── 합계 행 ──
   const sr = SUM_ROW - 1;
-  ws[encC(sr,0)] = {t:'s', v:'합계'};
+  ws[encC(sr,0)] = {t:'s', v:'합계', s:sBoldCtr};
   merges.push({s:{r:sr,c:0}, e:{r:sr,c:5}});
-  ws[encC(sr,6)] = {t:'n', f:`SUM(G${DATA_START}:G${DATA_END})`};
-  ws[encC(sr,7)] = {t:'n', f:`SUM(H${DATA_START}:H${DATA_END})`};
-  ws[encC(sr,8)] = {t:'n', f:`SUM(I${DATA_START}:I${DATA_END})`};
-  ws['!ref'] = `A1:I${SUM_ROW}`;
+  ws[encC(sr,6)] = {t:'n', f:`SUM(G${DATA_START}:G${DATA_END})`, s:sBoldCtr, z:ACCT};
+  ws[encC(sr,7)] = {t:'n', f:`SUM(H${DATA_START}:H${DATA_END})`, s:sBoldCtr, z:ACCT};
+  ws[encC(sr,8)] = {t:'n', f:`SUM(I${DATA_START}:I${DATA_END})`, s:sBoldCtr, z:ACCT};
+
+  ws['!ref']    = `A1:I${SUM_ROW}`;
   ws['!merges'] = merges;
-  ws['!cols'] = [{wch:8.86},{wch:12.71},{wch:13.43},{wch:50},{wch:14},{wch:8},{wch:12},{wch:12},{wch:12}];
+  ws['!cols']   = [{wch:8.86},{wch:12.71},{wch:13.43},{wch:50},{wch:14},{wch:8},{wch:12},{wch:12},{wch:12}];
+  ws['!rows']   = [{hpt:21}];
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '거래명세서');
   const b64 = _wbToBase64(wb);
@@ -3718,7 +3742,7 @@ function dlDongilSettlement(gk){
   const orders = groupedOrders[gk] || [];
   if (!orders.length) { alert('주문이 없어요.'); return; }
   const result = buildDongilSettlementXlsx(orders, a, _localISO());
-  XLSX.writeFile(result.wb, result.fname);
+  XLSX.writeFile(result.wb, result.fname, {cellStyles:true});
   _poShowToast('✅ 정산내역서 다운로드: ' + result.fname);
 }
 function _poShowToast(msg){
@@ -9262,6 +9286,15 @@ function toggleIncPaid(i) {
   saveIncHist(hist);
   renderIncHistList();
 }
+function toggleIncProof(i) {
+  const hist = loadIncHist();
+  if (!hist[i]) return;
+  hist[i].proof = !hist[i].proof;
+  if (hist[i].proof) hist[i].proofAt = _localISO();
+  else delete hist[i].proofAt;
+  saveIncHist(hist);
+  renderIncHistList();
+}
 function deleteIncHist(i) {
   if (!confirm('이 항목을 삭제할까요?')) return;
   const hist = loadIncHist();
@@ -9335,17 +9368,24 @@ function renderIncHistList() {
       const paidBtn = isPaid
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap;font-variant-numeric:tabular-nums" title="'+paidTitleI+'" onclick="toggleIncPaid('+realIdx+')">'+paidLabel+'</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="'+paidTitleI+'" onclick="toggleIncPaid('+realIdx+')">'+paidLabel+'</button>';
+      const isProofI = !!d.proof;
+      const proofLabelI = isProofI && d.proofAt ? '✅ '+(d.proofAt.slice(5)||'') : (isProofI?'✅ 발행':'☐ 증빙');
+      const proofTitleI = isProofI ? '계산서 발행완료 · 클릭하면 취소' : '계산서 발행 완료로 표시';
+      const proofBtnI = isProofI
+        ? '<button class="btn btn-sm" style="padding:2px 8px;background:#8b5cf6;color:#fff;border-color:#8b5cf6;white-space:nowrap;font-variant-numeric:tabular-nums" title="'+proofTitleI+'" onclick="toggleIncProof('+realIdx+')">'+proofLabelI+'</button>'
+        : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="'+proofTitleI+'" onclick="toggleIncProof('+realIdx+')">'+proofLabelI+'</button>';
       const descStyle = 'font-size:13px';
       const imgSavedI = !!d.imgSavedAt;
       const imgTitleI = imgSavedI ? ('이미지 저장됨 '+d.imgSavedAt+' · 다시 저장하기') : '이미지 저장';
       const imgBtnI = imgSavedI
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" title="'+imgTitleI+'" onclick="saveIncImgFromHist('+realIdx+')">📷 '+(d.imgSavedAt.slice(5)||'')+'</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px" title="'+imgTitleI+'" onclick="saveIncImgFromHist('+realIdx+')">📷</button>';
-      html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
+      html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
         '<span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.date||'')+'</span>'+
         '<span style="'+descStyle+';cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.desc||'')+'</span>'+
         '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+fmtNum(d.total)+'원</span>'+
         paidBtn+
+        proofBtnI+
         imgBtnI+
         '<button class="btn btn-sm" style="padding:2px 8px;color:var(--accent);border-color:var(--accent)" onclick="editIncHist('+realIdx+')">✏️</button>'+
         '<button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger);padding:2px 8px" onclick="deleteIncHist('+realIdx+')">삭제</button>'+
@@ -12586,7 +12626,7 @@ function srUpdateProfitIncremental(changedKey){
     const bizRows    = rows.filter(x => x.brand === r.brand);
     const normalRows = bizRows.filter(x => !x.isB2B);
     const b2bRows    = bizRows.filter(x =>  x.isB2B);
-    const bizT = bizRows.reduce((s,x)=>{s.sales+=x.sales;s.purchase+=x.purchase;s.fee+=x.fee;s.vat+=x.vat;s.profit+=x.profit;s.count+=x.count;return s;}, {sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
+    const bizT = normalRows.reduce((s,x)=>{s.sales+=x.sales;s.purchase+=x.purchase;s.fee+=(x.fee||0);s.vat+=(x.vat||0);s.profit+=x.profit;s.count+=x.count;return s;}, {sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
     const bizSel = CSS && CSS.escape ? CSS.escape(r.brand) : r.brand;
     const headerEl = document.querySelector(`.sr-biz-header[data-biz="${bizSel}"]`);
     if (headerEl) headerEl.innerHTML = _srBuildBizHeaderInner(r.brand, bizT);
@@ -12858,7 +12898,7 @@ function _srBuildBizSectionHtml(biz, bizRows){
     </tr></tfoot>`;
   };
   return `<div style="margin-top:22px" data-biz="${escHtml(biz)}">
-    <div class="sr-biz-header" data-biz="${escHtml(biz)}" style="background:${color};color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">${_srBuildBizHeaderInner(biz, T)}</div>
+    <div class="sr-biz-header" data-biz="${escHtml(biz)}" style="background:${color};color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">${_srBuildBizHeaderInner(biz, TN)}</div>
     <div class="sr-biz-vendor-table" data-biz="${escHtml(biz)}">${_srBuildBizVendorTableInner(biz, normalRows)}</div>
     ${_srBuildAdCostUI(biz)}
     <div class="sr-biz-detail-section">
@@ -13375,12 +13415,24 @@ function srSaveManualEntry(){
     vat: v('sme_vat'), profit: v('sme_profit'), count: selfCnt,
     adTotal, adByBiz: { '그로븐': adGr, '옐로우브릿지': adYb, '기타': 0 }
   };
-  // 거래처별 입력이 있으면 profitRows 구성, 없으면 총액 하나짜리 row
+  // 거래처별 입력이 있으면 profitRows 구성
   let profitRows = _smeVendorRows
     .filter(r => r.vendor && (Number(r.purchase) || 0) > 0)
     .map(r => ({ vendor: r.vendor, brand: r.vendor, purchase: Number(r.purchase)||0, sales: 0, count: 0, fee: 0, vat: 0, profit: 0 }));
+  // 거래처별 입력이 없고 총매입액만 있으면 → 그로븐/옐로우브릿지 매출 비율로 분할
   if (profitRows.length === 0 && totalPurchase > 0) {
-    profitRows = [{ vendor: '수동입력', brand: '수동입력', purchase: totalPurchase, sales: 0, count: 0, fee: 0, vat: 0, profit: 0 }];
+    const tot = grSales + ybSales;
+    if (tot > 0) {
+      const grPur = Math.round(totalPurchase * grSales / tot);
+      const ybPur = totalPurchase - grPur;
+      profitRows = [
+        ...(grPur > 0 ? [{vendor:'그로븐', brand:'그로븐', purchase:grPur, sales:grSales, count:grCnt, fee:0, vat:0, profit:0}] : []),
+        ...(ybPur > 0 ? [{vendor:'옐로우브릿지', brand:'옐로우브릿지', purchase:ybPur, sales:ybSales, count:ybCnt, fee:0, vat:0, profit:0}] : []),
+      ];
+    }
+    if (profitRows.length === 0) {
+      profitRows = [{ vendor: '수동입력', brand: '수동입력', purchase: totalPurchase, sales: 0, count: 0, fee: 0, vat: 0, profit: 0 }];
+    }
   }
   const snap = {
     date, totalSales, totalCnt, selfSales, selfCnt,
@@ -13739,6 +13791,19 @@ function wrMergePurchase(snaps){
       if (!byDateBrand[s.date][b]) byDateBrand[s.date][b] = {purchase:0, count:0};
       byDateBrand[s.date][b].purchase += r.purchase||0;
       byDateBrand[s.date][b].count    += r.count   ||0;
+    }
+    // 수동 입력 스냅샷: 브랜드별 profitRows 가 없으면 grAgg/ybAgg 매출 비율로 매입 소급 분할
+    const dbb = byDateBrand[s.date];
+    if (ps && (ps.purchase||0) > 0 && !dbb['그로븐'] && !dbb['옐로우브릿지']) {
+      const grS = s.grAgg?.totalSales || 0;
+      const ybS = s.ybAgg?.totalSales || 0;
+      const tot = grS + ybS;
+      if (tot > 0) {
+        const grPur = Math.round((ps.purchase||0) * grS / tot);
+        const ybPur = (ps.purchase||0) - grPur;
+        dbb['그로븐']       = {purchase: grPur, count: s.grAgg?.count||0};
+        dbb['옐로우브릿지'] = {purchase: ybPur, count: s.ybAgg?.count||0};
+      }
     }
   }
   // 광고비 차감한 최종 순이익
