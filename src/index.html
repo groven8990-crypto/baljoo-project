@@ -5006,6 +5006,27 @@ async function invGmailLoadAttachment(idx) {
     const file = new File([blob], item.filename, { type: ext });
 
     const vendorLabel = _invGmailMatchLabel(item.from);
+
+    // Shopmine 발송정보 직접업로드 형식 감지 (주문고유코드/주문번호 + 운송장번호 동시 존재)
+    const _isShopmineDirect = (fileObj) => {
+      try {
+        const wb2 = _xlsxReadAuto(bytes.buffer.slice(0));
+        const ws2 = wb2.Sheets[wb2.SheetNames[0]];
+        const norm2 = c => String(c).replace(/\s/g,'').toLowerCase();
+        const hdrRow2 = XLSX.utils.sheet_to_json(ws2, {header:1, defval:''})[0] || [];
+        const hasOrderCode = hdrRow2.some(c => /주문고유코드|주문번호/.test(norm2(c)));
+        const hasTrack     = hdrRow2.some(c => /운송장|송장/.test(norm2(c)));
+        return hasOrderCode && hasTrack;
+      } catch { return false; }
+    };
+
+    if (_isShopmineDirect(file)) {
+      statusEl.innerHTML = '⚠️ <b>"' + escHtml(item.filename) + '"</b>은 샵마인 발송정보 직접업로드 형식입니다.<br>' +
+        '↓ <b>다운로드</b> 버튼으로 파일 저장 후 샵마인 → 발송정보일괄등록에 직접 올려주세요.<br>' +
+        '<span style="color:var(--text3);font-size:11px">(이 형식은 거래처 운송장 매칭이 아닌 샵마인 직접 업로드용 파일입니다)</span>';
+      return;
+    }
+
     invLoadTracks([file], vendorLabel || undefined);
     statusEl.textContent = '✅ "' + item.filename + '" 업로드 완료';
   } catch(e) {
@@ -5681,35 +5702,90 @@ function invDownload() {
     const unresolved = invPreviewRows.filter(r => r.status==='dup' && !r.track).length;
     if (unresolved > 0 &&
         !confirm('동명이인 의심 ' + unresolved + '건의 송장번호가 아직 선택되지 않았습니다.\n해당 칸은 빈 채로 다운로드됩니다. 계속할까요?\n(취소 후 위 표에서 송장번호를 선택할 수 있어요)')) return;
-    const wsOrig = invOrderWb.Sheets[invOrderWb.SheetNames[0]];
-    const header = XLSX.utils.sheet_to_json(wsOrig, {header:1})[0] || [];
+
+    const trackCol   = invResolveCtx?.trackCol   || '송장번호';
+    const courierCol = invResolveCtx?.courierCol || '택배사';
+
+    // ── 원본 워크시트 복사 (json_to_sheet 금지: 주문고유코드 등 긴 숫자 정밀도 손상 방지) ──
     const wbCopy = JSON.parse(JSON.stringify(invOrderWb));
-    // 매칭된 행만 (운송장번호 채워진 것) 추출
-    const trackCol = invResolveCtx?.trackCol;
-    const matchedRows = trackCol
-      ? invResultData.filter(row => {
-          const v = row[trackCol];
-          return v !== undefined && v !== null && String(v).trim() !== '';
-        })
-      : invResultData;
-    const unmatchedCnt = invResultData.length - matchedRows.length;
-    if (matchedRows.length === 0) {
-      alert('매칭된 주문이 없어 다운로드할 내용이 없습니다.');
-      return;
+    const ws     = wbCopy.Sheets[wbCopy.SheetNames[0]];
+    const range  = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    const hdrR   = range.s.r;
+    const hdrC   = range.s.c;
+
+    // 헤더 행에서 운송장·택배사 컬럼 위치 탐색
+    let tcIdx = -1, ccIdx = -1;
+    for (let c = hdrC; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({r: hdrR, c})];
+      if (!cell) continue;
+      const v = String(cell.v || '');
+      if (v === trackCol)   tcIdx = c;
+      if (v === courierCol) ccIdx = c;
     }
-    const newWs = XLSX.utils.json_to_sheet(matchedRows, {header: header.length ? header : undefined});
-    wbCopy.Sheets[wbCopy.SheetNames[0]] = newWs;
-    // 파일명: 운송장(거래처) 이름 기준 — '{거래처1_거래처2..}_송장입력.xlsx'
+    if (tcIdx < 0) { tcIdx = range.e.c + 1; ws[XLSX.utils.encode_cell({r: hdrR, c: tcIdx})] = {v: trackCol,   t: 's'}; range.e.c = tcIdx; }
+    if (ccIdx < 0) { ccIdx = range.e.c + 1; ws[XLSX.utils.encode_cell({r: hdrR, c: ccIdx})] = {v: courierCol, t: 's'}; range.e.c = ccIdx; }
+
+    // 원본 sheet의 데이터 행 수
+    const origRowCount = range.e.r - hdrR;
+
+    // 각 행 직접 수정 — 원본 셀 값(주문번호·주문고유코드 등) 그대로 보존
+    const deleteRows = [];
+    for (let i = 0; i < Math.min(origRowCount, invResultData.length); i++) {
+      const sheetR  = hdrR + 1 + i;
+      const updated = invResultData[i];
+      const trackVal = updated[trackCol];
+      const matched  = trackVal !== undefined && trackVal !== null && String(trackVal).trim() !== '';
+      if (matched) {
+        ws[XLSX.utils.encode_cell({r: sheetR, c: tcIdx})] = {v: String(trackVal), t: 's'};
+        if (updated[courierCol]) ws[XLSX.utils.encode_cell({r: sheetR, c: ccIdx})] = {v: String(updated[courierCol]), t: 's'};
+      } else {
+        deleteRows.push(sheetR);
+      }
+    }
+
+    // 미매칭 행 삭제 (아래→위 순서로 처리)
+    deleteRows.sort((a, b) => b - a).forEach(delR => {
+      for (let r = delR; r < range.e.r; r++) {
+        for (let c = hdrC; c <= range.e.c; c++) {
+          const src = XLSX.utils.encode_cell({r: r + 1, c});
+          const dst = XLSX.utils.encode_cell({r, c});
+          if (ws[src]) ws[dst] = ws[src]; else delete ws[dst];
+        }
+      }
+      for (let c = hdrC; c <= range.e.c; c++) delete ws[XLSX.utils.encode_cell({r: range.e.r, c})];
+      range.e.r--;
+    });
+
+    // 추가 업로드 파일에서 온 행(원본 sheet 밖) — json 방식으로 append
+    if (invResultData.length > origRowCount) {
+      const hdrs = [];
+      for (let c = hdrC; c <= range.e.c; c++) {
+        const cell = ws[XLSX.utils.encode_cell({r: hdrR, c})]; hdrs.push(cell ? String(cell.v || '') : '');
+      }
+      const extra = invResultData.slice(origRowCount).filter(row => {
+        const v = row[trackCol]; return v !== undefined && v !== null && String(v).trim() !== '';
+      });
+      if (extra.length) {
+        XLSX.utils.sheet_add_json(ws, extra, {skipHeader: true, header: hdrs, origin: {r: range.e.r + 1, c: hdrC}});
+        range.e.r += extra.length;
+      }
+    }
+
+    ws['!ref'] = XLSX.utils.encode_range(range);
+
+    const matchedCnt   = invResultData.filter(row => { const v = row[trackCol]; return v !== undefined && v !== null && String(v).trim() !== ''; }).length;
+    const unmatchedCnt = invResultData.length - matchedCnt;
+    if (matchedCnt === 0) { alert('매칭된 주문이 없어 다운로드할 내용이 없습니다.'); return; }
+
     const vendorNames = [...new Set((invTrackFiles||[]).map(t => (t.vendorName||'').trim()).filter(Boolean))];
     const base = vendorNames.length > 0
       ? vendorNames.join('_')
       : (((invOrderFileName||'').split(' + ')[0] || '송장입력').replace(/\.(xls|xlsx)$/i, ''));
-    // 파일명에 쓸 수 없는 문자 정리
-    const safe = base.replace(/[\\/:*?"<>|]/g, '_');
-    const fname = safe + '_송장입력.xlsx';
+    const fname = base.replace(/[\\/:*?"<>|]/g, '_') + '_송장입력.xlsx';
     XLSX.writeFile(wbCopy, fname);
+
     const statusEl = document.getElementById('invStatus');
-    if (statusEl) statusEl.textContent = '✅ 다운로드 완료: ' + fname + ' (매칭 ' + matchedRows.length + '건' + (unmatchedCnt>0 ? ', 미매칭 ' + unmatchedCnt + '건 제외' : '') + ')';
+    if (statusEl) statusEl.textContent = '✅ 다운로드 완료: ' + fname + ' (매칭 ' + matchedCnt + '건' + (unmatchedCnt > 0 ? ', 미매칭 ' + unmatchedCnt + '건 제외' : '') + ')';
   } catch(e) {
     console.error('invDownload 오류:', e);
     const statusEl = document.getElementById('invStatus');
