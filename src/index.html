@@ -4862,8 +4862,8 @@ async function invGmailFetch() {
   window._invGmailToken = token;
 
   try {
-    const q = 'in:inbox has:attachment';
-    statusEl.textContent = '오늘 첨부파일 메일 검색 중...';
+    const q = 'in:inbox has:attachment newer_than:7d';
+    statusEl.textContent = '최근 7일 첨부파일 메일 검색 중...';
 
     const searchResp = await fetch(
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=' + encodeURIComponent(q),
@@ -4883,12 +4883,12 @@ async function invGmailFetch() {
         .then(r => r.ok ? r.json() : null).catch(() => null)
     ));
 
-    // 오늘 날짜 기준 (로컬 시간)
+    // 7일 이내 메일만 (오늘 포함)
     const _now = new Date();
-    const _todayStr = _now.getFullYear() + '/' + String(_now.getMonth()+1).padStart(2,'0') + '/' + String(_now.getDate()).padStart(2,'0');
-    function _isToday(dateStr) {
+    const _cutoff = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() - 6); // 오늘 포함 7일
+    function _isRecent(dateStr) {
       if (!dateStr) return false;
-      try { const d = new Date(dateStr); return d.getFullYear() === _now.getFullYear() && d.getMonth() === _now.getMonth() && d.getDate() === _now.getDate(); }
+      try { const d = new Date(dateStr); return d >= _cutoff; }
       catch { return false; }
     }
 
@@ -4901,13 +4901,13 @@ async function invGmailFetch() {
       const subject = (hds.find(h => h.name === 'Subject') || {}).value || '(제목없음)';
       const date    = (hds.find(h => h.name === 'Date')    || {}).value || '';
       const from    = (hds.find(h => h.name === 'From')    || {}).value || '';
-      if (!_isToday(date)) continue;  // 오늘 메일만
+      if (!_isRecent(date)) continue;  // 7일 이내 메일만
       for (const part of parts) {
         items.push({ msgId: msg.id, attachId: part.body.attachmentId, filename: part.filename, subject, date, from });
       }
     }
 
-    if (!items.length) { statusEl.textContent = '오늘 엑셀 첨부파일이 있는 메일이 없어요.'; return; }
+    if (!items.length) { statusEl.textContent = '최근 7일 내 엑셀 첨부파일이 있는 메일이 없어요.'; return; }
     window._invGmailItems = items;
     statusEl.textContent = items.length + '개 엑셀 파일 발견';
     _invGmailRegroup();
@@ -5299,10 +5299,12 @@ function invLoadTracks(files, vendorHint) {
           return;
         }
         // map: 수령인 → [{no, courier, addr}] (동명이인 대응: 같은 이름도 모두 배열로 보관)
+        // 이름 정규화: 공백 제거 (ex: "김 민수" → "김민수")
+        const _normName = s => String(s||'').replace(/\s+/g,'');
         const map = {};
         rawRows.slice(hdrRow + 1).forEach(row => {
-          const name = String(row[nameIdx]||'').trim();
-          const no   = String(row[trackIdx]||'').trim();
+          const name = _normName(row[nameIdx]).trim();
+          const no   = String(row[trackIdx]||'').replace(/\s+/g,'').trim();
           if (name && no) {
             const courier = courierIdx >= 0 ? normalizeCourier(row[courierIdx]) : '';
             const addr    = addrIdx    >= 0 ? String(row[addrIdx]||'').trim()    : '';
@@ -5415,17 +5417,28 @@ function invProcess() {
   try {
     if (!invOrderData || !invTrackFiles.length) return;
     const sample = invOrderData[0] || {};
-    const nameCol    = ['수령자','받는분성명','수취인명','수령인','수화인','수하인'].find(c => c in sample) || '수령자';
+    // 공백 무시하여 컬럼 탐색
+    const _findCol = (candidates, fallback) => {
+      const keys = Object.keys(sample);
+      const normKey = k => k.replace(/\s+/g,'');
+      for (const c of candidates) {
+        if (c in sample) return c;
+        const hit = keys.find(k => normKey(k) === normKey(c));
+        if (hit) return hit;
+      }
+      return fallback;
+    };
+    const nameCol    = _findCol(['수령자','받는분성명','수취인명','수령인','수화인','수하인'], '수령자');
     const addrCol    = Object.keys(sample).find(k => { const n = k.replace(/\s/g,''); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); }) || '';
-    const codeCol    = ['판매자상품코드','상품코드'].find(c => c in sample) || '판매자상품코드';
-    const courierCol = ['택배사'].find(c => c in sample) || '택배사';
-    const trackCol   = ['송장번호','운송장번호'].find(c => c in sample) || '송장번호';
-    const prodCol    = ['상품명'].find(c => c in sample) || '상품명';
+    const codeCol    = _findCol(['판매자상품코드','상품코드'], '판매자상품코드');
+    const courierCol = _findCol(['택배사'], '택배사');
+    const trackCol   = _findCol(['송장번호','운송장번호'], '송장번호');
+    const prodCol    = _findCol(['상품명'], '상품명');
     const dupReg = {};
     invPreviewRows = [];
     invResultData = invOrderData.map((row, rowIdx) => {
       const newRow = {...row};
-      const name = String(row[nameCol]||'').trim();
+      const name = String(row[nameCol]||'').replace(/\s+/g,'').trim();
       const code = String(row[codeCol]||'');
       // 판매자코드에서 거래처명 추출: "푸드앤]간고등어/100g-10" → "푸드앤"
       let vendor = '';
