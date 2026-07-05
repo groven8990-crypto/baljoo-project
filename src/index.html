@@ -740,6 +740,18 @@
 
   <!-- 작성 서브탭 -->
   <div class="sub-content active" id="expsubtab-write">
+    <!-- 구글 시트 연동 설정 -->
+    <div class="card" style="background:#F0FDF4;border:1px solid #86EFAC;padding:12px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:700;color:#15803D">📊 구글 시트 자동 연동</span>
+        <input id="expSheetUrl" class="inp" placeholder="구글 스프레드시트 URL 붙여넣기" style="flex:1;min-width:200px;font-size:12px;padding:5px 8px"
+          oninput="expSheetUrlInput(this.value)">
+        <button class="btn btn-sm" onclick="expSheetSave()" style="background:#16A34A;color:#fff;border:none;white-space:nowrap">저장</button>
+        <button class="btn btn-sm" onclick="expSheetClear()" style="color:#DC2626;border-color:#DC2626;white-space:nowrap">해제</button>
+        <span id="expSheetStatus" style="font-size:11px;color:#15803D"></span>
+      </div>
+      <div style="font-size:11px;color:#166534;margin-top:6px">💾 이력 저장 시 스프레드시트에 자동으로 행이 추가됩니다. 시트가 없으면 빈 구글 시트를 만들어서 URL을 붙여넣으세요.</div>
+    </div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
         <div style="font-size:18px;font-weight:700">지출결의서</div>
@@ -2745,7 +2757,8 @@ const LS_GMAIL_TPL         = 'yb_gmail_tpl';
 const LS_GMAIL_BCC         = 'yb_gmail_bcc';
 const LS_SEND_HISTORY      = 'yb_send_history';
 const LS_INV_GMAIL_SENDER  = 'yb_inv_gmail_sender';
-const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly';
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/spreadsheets';
+const LS_EXP_SHEET_ID = 'yb_exp_sheet_id';
 let _gmailTokenClient = null;
 function gmailGetClientId(){ return (localStorage.getItem(LS_GMAIL_CLIENT_ID)||'').trim(); }
 function gmailSetClientId(id){ localStorage.setItem(LS_GMAIL_CLIENT_ID, String(id||'').trim()); }
@@ -6113,8 +6126,9 @@ function switchExpSubTab(name) {
   const btn = document.getElementById('stab-exp' + name);
   if (content) { content.classList.add('active'); content.style.display = ''; }
   if (btn) btn.classList.add('active');
-  if (name === 'list') renderExpHistList();
-  if (name === 'bank') renderBankList();
+  if (name === 'list')  renderExpHistList();
+  if (name === 'bank')  renderBankList();
+  if (name === 'write') expSheetInitUi();
 }
 
 function setExpCoFilter(co) {
@@ -8174,6 +8188,7 @@ function initExpenseTab() {
   renderBankList();
   renderExpHistList();
   updateVendorSelect();
+  expSheetInitUi();
 }
 
 // 작성자 기본값 저장
@@ -8719,6 +8734,68 @@ function cancelExpEdit() {
   resetExpForm();
 }
 
+// ── 구글 시트 연동 ──
+function expSheetUrlInput(v){
+  // 미리 유효성만 체크
+  const id = _parseSheetId(v);
+  const st = document.getElementById('expSheetStatus');
+  if (st) st.textContent = id ? '✅ ID 인식됨: ' + id.slice(0,12) + '...' : (v ? '❌ URL 형식 오류' : '');
+}
+function expSheetSave(){
+  const v = (document.getElementById('expSheetUrl')||{}).value || '';
+  const id = _parseSheetId(v);
+  if (!id) { alert('구글 스프레드시트 URL을 확인해주세요.\n예: https://docs.google.com/spreadsheets/d/...'); return; }
+  localStorage.setItem(LS_EXP_SHEET_ID, id);
+  const st = document.getElementById('expSheetStatus');
+  if (st) st.textContent = '✅ 저장됨 — 이제부터 자동 기록돼요';
+  _poShowToast('✅ 구글 시트 연동 설정됨');
+}
+function expSheetClear(){
+  localStorage.removeItem(LS_EXP_SHEET_ID);
+  const inp = document.getElementById('expSheetUrl'); if (inp) inp.value = '';
+  const st  = document.getElementById('expSheetStatus'); if (st) st.textContent = '';
+  _poShowToast('구글 시트 연동 해제됨');
+}
+function _parseSheetId(url){
+  const m = String(url||'').match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]{20,})/);
+  return m ? m[1] : null;
+}
+async function expSheetsAppend(d){
+  const sheetId = localStorage.getItem(LS_EXP_SHEET_ID);
+  if (!sheetId) return;
+  let token;
+  try { token = await gmailRequestToken(); } catch(e) { console.warn('[Sheets] 토큰 실패:', e); return; }
+  const evList = [d.ev1&&'세금계산서', d.ev2&&'계산서', d.ev3&&'현금영수증', d.ev4&&'고지서', d.ev5&&'기타', d.ev6&&'사후첨부'].filter(Boolean).join(', ');
+  const now = new Date();
+  const row = [
+    now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')+' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),
+    d.date||'', d.co||'', d.vendor||'', d.desc||'',
+    Number(d.supply)||0, Number(d.vat)||0, Number(d.total)||0,
+    d.payType||'', evList, d.memo||'', d.note||''
+  ];
+  try {
+    const resp = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      { method:'POST', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
+        body: JSON.stringify({values:[row]}) }
+    );
+    if (!resp.ok) {
+      const err = await resp.json().catch(()=>({}));
+      _poShowToast('⚠️ 시트 기록 실패: ' + (err.error?.message||resp.status));
+    } else {
+      _poShowToast('📊 구글 시트에 기록됐어요');
+    }
+  } catch(e) { console.warn('[Sheets] append 오류:', e); }
+}
+// 시트 연동 설정 로드 (페이지 로드 시)
+function expSheetInitUi(){
+  const id = localStorage.getItem(LS_EXP_SHEET_ID);
+  const inp = document.getElementById('expSheetUrl');
+  const st  = document.getElementById('expSheetStatus');
+  if (id && inp) { inp.value = 'https://docs.google.com/spreadsheets/d/'+id; }
+  if (id && st)  { st.textContent = '✅ 연동 중'; }
+}
+
 function saveExpense() {
   const d = getExpFormData();
   if (!d.vendor || !d.total) { alert('송금처와 송금금액을 입력해주세요.'); return; }
@@ -8775,6 +8852,7 @@ function saveExpense() {
   }
   alert('저장됐어요!');
   renderExpHistList();
+  expSheetsAppend(record).catch(e => console.warn('[Sheets]', e));
 }
 
 function insertFirstTradeMemo() {
