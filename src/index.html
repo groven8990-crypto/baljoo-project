@@ -2921,15 +2921,15 @@ function buildDongilSettlementXlsx(orders, alias, dateStr) {
   // ── 스타일 상수 ──
   const ACCT = '_-* #,##0_-;\\-* #,##0_-;_-* \\-_-;_-@';
   const GRAY  = {fgColor:{rgb:'FFD3D3D3'}, patternType:'solid'};
-  const noFill = {patternType:'none'};
   const ctr = {horizontal:'center', vertical:'center'};
   const lft = {horizontal:'left',   vertical:'center'};
   const rgt = {horizontal:'right',  vertical:'center'};
   // 레퍼런스 파일 기준: 텍스트=Noto Sans, 수식/숫자=맑은 고딕
   const fNoto   = (bold, sz) => ({name:'Noto Sans',  sz:sz||10, bold:!!bold});
   const fMalgun = (bold, sz) => ({name:'맑은 고딕',  sz:sz||10, bold:!!bold});
-  const mkN = (bold, sz, fill, align) => ({font:fNoto(bold,sz),   fill:fill||noFill, alignment:align||ctr});
-  const mkM = (bold, sz, fill, align) => ({font:fMalgun(bold,sz), fill:fill||noFill, alignment:align||ctr});
+  // fill이 없는 셀은 fill 속성 자체를 제외 (patternType:'none' 쓰면 SheetJS가 스타일 무시)
+  const mkN = (bold, sz, fill, align) => { const s = {font:fNoto(bold,sz), alignment:align||ctr}; if(fill) s.fill=fill; return s; };
+  const mkM = (bold, sz, fill, align) => { const s = {font:fMalgun(bold,sz), alignment:align||ctr}; if(fill) s.fill=fill; return s; };
 
   const sTitle    = mkN(true,  14, null, ctr);  // A1 제목 — Noto 14 bold
   const sDateR    = mkM(false, 10, null, rgt);  // I2 작성일자 — Malgun right
@@ -2972,7 +2972,7 @@ function buildDongilSettlementXlsx(orders, alias, dateStr) {
     const r = rowNum - 1;
     let kgN = 0;
     if (o._merged) {
-      kgN = Number(o.code_qty) || 1;
+      kgN = (Number(o.qty)||1) * (Number(o.code_qty)||1);
     } else {
       const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i); if (m1) kgN = parseInt(m1[1]);
       if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
@@ -3020,8 +3020,7 @@ function buildDongilSettlementXlsx(orders, alias, dateStr) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '거래명세서');
   const b64 = _wbToBase64(wb);
-  const safeAlias = String(alias||'').replace(/[\/\\:*?"<>|]/g,'');
-  const fname = `${yy}${mm}${day}-발주정산내역서_${safeAlias}.xlsx`;
+  const fname = `${yy}${mm}${day}-발주정산내역서_${brandLabel}.xlsx`;
   return {wb, b64, fname};
 }
 // base64 76자 단위 청크 (RFC 2045)
@@ -3536,8 +3535,10 @@ function _effOrderUnits(o, vendor){
   return baseQty * (Number(o.code_qty)||1);
 }
 function applyMergeForVendor(orders, vendor){
-  // 같은 (이름+주소) 키가 _mergeDecisions에 있고 같은 발주처 안에서 2건 이상이면
-  // 한 줄로 합치지 않고 각각 행 유지 + 색상 태그만 부여 (dlOne에서 셀 배경색 적용)
+  // 같은 (이름+주소)가 _mergeDecisions에 있으면 합배송 처리:
+  // - 같은 품목끼리는 수량 합산해 1행으로 (발주서에서 하나로 묶음)
+  // - 다른 품목끼리는 각각 별도 행 유지
+  // - 모든 합배송 행에 색상 태그 부여 (dlOne에서 셀 배경색 적용)
   _lastBundledRows = [];
   const cntByKey = new Map();
   orders.forEach(o => {
@@ -3546,17 +3547,37 @@ function applyMergeForVendor(orders, vendor){
   });
   const bundleColorIdx = {}; let nextColor = 0;
   const result = [];
+  const processedKeys = new Set();
   orders.forEach(o => {
     const k = _mergeKey(o);
-    if (_mergeDecisions.has(k) && (cntByKey.get(k)||0) > 1) {
-      if (!(k in bundleColorIdx)) bundleColorIdx[k] = nextColor++ % _BUNDLE_COLORS.length;
-      _lastBundledRows.push({dataIdx: result.length, rgb: _BUNDLE_COLORS[bundleColorIdx[k]]});
-      const bundleCnt = cntByKey.get(k);
-      const memoSuffix = `합배송 ${bundleCnt}건`;
-      const newMemo = o.memo ? (o.memo.includes(memoSuffix) ? o.memo : o.memo + ' / ' + memoSuffix) : memoSuffix;
-      result.push({...o, memo: newMemo, _bundleGroup: k});
-    } else {
-      result.push(o);
+    const isBundled = _mergeDecisions.has(k) && (cntByKey.get(k)||0) > 1;
+    if (!isBundled) { result.push(o); return; }
+    if (processedKeys.has(k)) return; // 이미 처리한 묶음은 건너뜀
+    processedKeys.add(k);
+    if (!(k in bundleColorIdx)) bundleColorIdx[k] = nextColor++ % _BUNDLE_COLORS.length;
+    const rgb = _BUNDLE_COLORS[bundleColorIdx[k]];
+    const groupOrders = orders.filter(oo => _mergeKey(oo) === k);
+    const bundleCnt = groupOrders.length;
+    const memoSuffix = `합배송 ${bundleCnt}건`;
+    const addMemo = oo => oo.memo ? (oo.memo.includes(memoSuffix) ? oo.memo : oo.memo + ' / ' + memoSuffix) : memoSuffix;
+    // 품목별 서브그룹: 같은 품목은 수량 합산, 다른 품목은 별도 행
+    const productGroups = new Map();
+    const productKeyOrder = [];
+    for (const oo of groupOrders) {
+      const pk = String(oo.item_name||'').trim() + '||' + String(oo.option_name||'').trim();
+      if (!productGroups.has(pk)) { productGroups.set(pk, []); productKeyOrder.push(pk); }
+      productGroups.get(pk).push(oo);
+    }
+    for (const pk of productKeyOrder) {
+      const pOrders = productGroups.get(pk);
+      _lastBundledRows.push({dataIdx: result.length, rgb});
+      if (pOrders.length === 1) {
+        result.push({...pOrders[0], memo: addMemo(pOrders[0]), _bundleGroup: k});
+      } else {
+        // 같은 품목 여러 건: effQty 합산 후 1행으로
+        const totalEffQty = pOrders.reduce((s, oo) => s + (Number(oo.qty)||1)*(Number(oo.code_qty)||1), 0);
+        result.push({...pOrders[0], qty: totalEffQty, code_qty: 1, memo: addMemo(pOrders[0]), _bundleGroup: k, _merged: true});
+      }
     }
   });
   return result;
@@ -3667,7 +3688,7 @@ function buildRows(vk,orders,alias){
       for (const o of orders) {
         let totalKg;
         if (o._merged) {
-          totalKg = Number(o.code_qty) || 1;
+          totalKg = (Number(o.qty)||1) * (Number(o.code_qty)||1); // qty = 합산 effQty, code_qty = 1
         } else {
           let kgN = 0;
           const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kgN = parseInt(m1[1]);
