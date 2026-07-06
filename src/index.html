@@ -3918,15 +3918,24 @@ async function _getPoSubDirHandle(alias){
   }
 }
 async function _poWriteWorkbook(wb, fname, alias, wopts){
-  // 파일명에서 OS가 거부할 문자 제거
   const safeName = String(fname||'').replace(/[\\/:*?"<>|]/g, '_');
-  const writeOpts = Object.assign({type:'array', bookType:'xlsx'}, wopts||{});
-  // XLSX.write는 한 번만 호출 (두 번 호출 시 SheetJS 내부 스타일 인덱스 재처리로 스타일 소실)
-  const u8 = XLSX.write(wb, writeOpts);
-  const blob = new Blob([u8], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const useCellStyles = !!(wopts && wopts.cellStyles);
+  // cellStyles 필요 시 type:'base64' 사용 (_wbToBase64와 동일 경로 — 확실히 동작)
+  // 그 외엔 type:'array' 사용
+  const b64 = useCellStyles ? _wbToBase64(wb) : null;
+  const _toBlob = () => {
+    if (b64) {
+      const bin = atob(b64), u8 = new Uint8Array(bin.length);
+      for (let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+      return new Blob([u8], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    }
+    const u8 = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+    return new Blob([u8], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  };
   const subDir = await _getPoSubDirHandle(alias);
   if (subDir) {
     try {
+      const blob = _toBlob();
       const fh = await subDir.getFileHandle(safeName, {create:true});
       const w = await fh.createWritable();
       await w.write(blob); await w.close();
@@ -3934,17 +3943,24 @@ async function _poWriteWorkbook(wb, fname, alias, wopts){
       return {ok:true, path: (_poSaveDirHandle?.name||'?') + '/' + safeName, mode:'folder'};
     } catch(e) {
       console.warn('폴더 저장 실패, 다운로드로 폴백:', e);
-      // 폴백으로 진행
     }
   }
-  // 폴더 미지정 or 실패 → Blob + anchor 다운로드 (cellStyles 유지)
-  console.log('[발주서] 브라우저 다운로드:', safeName, '(_poSaveDirHandle=', !!_poSaveDirHandle, ')');
-  const urlDl = URL.createObjectURL(blob);
-  const linkDl = document.createElement('a');
-  linkDl.href = urlDl; linkDl.download = safeName;
-  document.body.appendChild(linkDl); linkDl.click();
-  document.body.removeChild(linkDl);
-  URL.revokeObjectURL(urlDl);
+  // 폴더 미지정 or 실패 → 다운로드
+  console.log('[발주서] 브라우저 다운로드:', safeName);
+  if (b64) {
+    // base64 → data URL (buildDongilSettlementXlsx와 동일 방식)
+    const linkDl = document.createElement('a');
+    linkDl.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + b64;
+    linkDl.download = safeName;
+    document.body.appendChild(linkDl); linkDl.click(); document.body.removeChild(linkDl);
+  } else {
+    const urlDl = URL.createObjectURL(_toBlob());
+    const linkDl = document.createElement('a');
+    linkDl.href = urlDl; linkDl.download = safeName;
+    document.body.appendChild(linkDl); linkDl.click();
+    document.body.removeChild(linkDl);
+    URL.revokeObjectURL(urlDl);
+  }
   return {ok:true, path: 'Downloads/' + safeName, mode:'download'};
 }
 
