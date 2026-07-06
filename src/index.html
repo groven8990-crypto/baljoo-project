@@ -2455,6 +2455,8 @@ function verifyVendorBuild(vendor, alias, orders){
   catch(e){ res.ok=false; res.issues.push('발주서 생성 중 오류: '+e.message); return res; }
   if (!rows || rows.length < 2) { res.ok=false; res.issues.push('발주서 빈 결과 (행 0개)'); return res; }
   res.dstCnt = rows.length - 1;
+  // 합배송 묶음 색상 맵 (buildRows → applyMergeForVendor가 _lastBundledRows를 채움)
+  const _bundleColorMap = new Map((_lastBundledRows||[]).map(({dataIdx,rgb})=>[dataIdx,rgb]));
   const header = rows[0].map(h => String(h||''));
   // 컬럼 인덱스 (있으면 -1)
   const findIdx = (...patterns) => {
@@ -2513,7 +2515,8 @@ function verifyVendorBuild(vendor, alias, orders){
       dst_item: dstItem,
       dst_opt:  dstOpt,
       dst_qty:  dstQty,
-      issues
+      issues,
+      bundleRgb: _bundleColorMap.get(i)||null
     });
     if (issues.length) res.badCnt++;
   }
@@ -2560,7 +2563,7 @@ function renderVerifyArea(){
           <th style="padding:6px 8px;text-align:left;font-weight:600">이상</th>
         </tr></thead>
         <tbody>${list.map(rd => `
-          <tr style="background:${rd.issues.length?'#FEF2F2':'#fff'}">
+          <tr style="background:${rd.bundleRgb?'#'+rd.bundleRgb.slice(2):(rd.issues.length?'#FEF2F2':'#fff')}">
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${escHtml(rd.recv_name)}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#374151;max-width:180px;word-break:break-word">${escHtml(rd.src_product||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#6B7280;max-width:180px;word-break:break-word">${escHtml(rd.src_select||'-')}</td>
@@ -3731,7 +3734,7 @@ function dlOne(gk){
       for (let ci = range.s.c; ci <= range.e.c; ci++) {
         const addr = XLSX.utils.encode_cell({r: sheetRow, c: ci});
         if (!ws[addr]) ws[addr] = {t:'s', v:''};
-        ws[addr].s = {fill:{fgColor:{rgb}, patternType:'solid'}};
+        ws[addr].s = {fill:{fgColor:{rgb}, bgColor:{indexed:64}, patternType:'solid'}};
       }
     });
   }
