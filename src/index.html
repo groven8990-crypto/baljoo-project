@@ -3915,11 +3915,12 @@ async function _poWriteWorkbook(wb, fname, alias, wopts){
   // 파일명에서 OS가 거부할 문자 제거
   const safeName = String(fname||'').replace(/[\\/:*?"<>|]/g, '_');
   const writeOpts = Object.assign({type:'array', bookType:'xlsx'}, wopts||{});
+  // XLSX.write는 한 번만 호출 (두 번 호출 시 SheetJS 내부 스타일 인덱스 재처리로 스타일 소실)
+  const u8 = XLSX.write(wb, writeOpts);
+  const blob = new Blob([u8], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const subDir = await _getPoSubDirHandle(alias);
   if (subDir) {
     try {
-      const u8 = XLSX.write(wb, writeOpts);
-      const blob = new Blob([u8], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       const fh = await subDir.getFileHandle(safeName, {create:true});
       const w = await fh.createWritable();
       await w.write(blob); await w.close();
@@ -3932,9 +3933,7 @@ async function _poWriteWorkbook(wb, fname, alias, wopts){
   }
   // 폴더 미지정 or 실패 → Blob + anchor 다운로드 (cellStyles 유지)
   console.log('[발주서] 브라우저 다운로드:', safeName, '(_poSaveDirHandle=', !!_poSaveDirHandle, ')');
-  const u8dl = XLSX.write(wb, writeOpts);
-  const blobDl = new Blob([u8dl], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const urlDl = URL.createObjectURL(blobDl);
+  const urlDl = URL.createObjectURL(blob);
   const linkDl = document.createElement('a');
   linkDl.href = urlDl; linkDl.download = safeName;
   document.body.appendChild(linkDl); linkDl.click();
