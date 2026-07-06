@@ -2207,16 +2207,20 @@ function handleFile(file) {
       const H=rows[hr],ci=n=>H.indexOf(n);
       // 플랫폼/쇼핑몰 컬럼은 헤더가 다양해서 후보 중 첫 번째로 찾는 걸 사용
       const findCol = (...names) => { for (const n of names) { const i = ci(n); if (i >= 0) return i; } return -1; };
-      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명')};
+      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명'),si:ci('정산추가정보')};
       groupedOrders={};unmatchedList=[];allOrders=[];totalCount=0;loadedFileNames=[];_mergeDecisions=new Set();
       for(let i=hr+1;i<rows.length;i++){
         const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn),alias=extractAlias(r[C.al]);
         const parsed=parseParts(vc,vo,pn,so,dop);
-        // 주문금액 = AB(27) - AI(34) + AH(33)  (샵마인 정산열 기준)
+        // 주문금액 = AB - AI + AH + 구매쿠폰적용금액/2 (지마켓/옥션만)
         const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
-        const order_amt=Math.round(_ab - _ai + _ah);
+        const _smRaw=C.sm>=0?String(r[C.sm]||'').trim():'';
+        const _siRaw=C.si>=0?String(r[C.si]||''):'';
+        const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
+        const _bcHalf=_bcM?Math.round(parseInt(_bcM[1].replace(/,/g,''))/2):0;
+        const order_amt=Math.round(_ab - _ai + _ah + _bcHalf);
         const order_date_raw = (C.od>=0?r[C.od]:'') || '';
         const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
         allOrders.push(order);
@@ -7661,7 +7665,7 @@ function handleFileAdd(file){
       const H=rows[hr],ci=n=>H.indexOf(n);
       // 플랫폼/쇼핑몰 컬럼은 헤더가 다양해서 후보 중 첫 번째로 찾는 걸 사용
       const findCol = (...names) => { for (const n of names) { const i = ci(n); if (i >= 0) return i; } return -1; };
-      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명')};
+      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명'),si:ci('정산추가정보')};
       // 기존 주문번호 집합(중복 제외용)
       const existingOrderNos = new Set(allOrders.map(o => String(o.order_no||'').trim()).filter(Boolean));
       let added=0, dupSkipped=0;
@@ -7674,9 +7678,13 @@ function handleFileAdd(file){
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn),alias=extractAlias(r[C.al]);
         const parsed=parseParts(vc,vo,pn,so,dop);
-        // 주문금액 = AB(27) - AI(34) + AH(33)  (샵마인 정산열 기준)
+        // 주문금액 = AB - AI + AH + 구매쿠폰적용금액/2 (지마켓/옥션만)
         const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
-        const order_amt=Math.round(_ab - _ai + _ah);
+        const _smRaw=C.sm>=0?String(r[C.sm]||'').trim():'';
+        const _siRaw=C.si>=0?String(r[C.si]||''):'';
+        const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
+        const _bcHalf=_bcM?Math.round(parseInt(_bcM[1].replace(/,/g,''))/2):0;
+        const order_amt=Math.round(_ab - _ai + _ah + _bcHalf);
         const order_date_raw = (C.od>=0?r[C.od]:'') || '';
         const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
         allOrders.push(order);
