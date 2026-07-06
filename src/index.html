@@ -8864,6 +8864,7 @@ function saveExpense() {
   alert('저장됐어요!');
   renderExpHistList();
   expSheetsAppend(record).catch(e => console.warn('[Sheets]', e));
+  resetExpForm(); // 이력 저장 후 폼 초기화 → 새 결의서 바로 작성 가능
 }
 
 function insertFirstTradeMemo() {
