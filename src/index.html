@@ -2920,13 +2920,13 @@ function buildDongilSettlementXlsx(orders, alias, dateStr) {
 
   // ── 스타일 상수 ──
   const ACCT = '_-* #,##0_-;\\-* #,##0_-;_-* \\-_-;_-@';
-  const GRAY  = {fgColor:{rgb:'FFD3D3D3'}, patternType:'solid'};
+  const GRAY  = {fgColor:{rgb:'FFD3D3D3'}, bgColor:{indexed:64}, patternType:'solid'};
   const ctr = {horizontal:'center', vertical:'center'};
   const lft = {horizontal:'left',   vertical:'center'};
   const rgt = {horizontal:'right',  vertical:'center'};
   // 레퍼런스 파일 기준: 텍스트=Noto Sans, 수식/숫자=맑은 고딕
-  const fNoto   = (bold, sz) => ({name:'Noto Sans',  sz:sz||10, bold:!!bold});
-  const fMalgun = (bold, sz) => ({name:'맑은 고딕',  sz:sz||10, bold:!!bold});
+  const fNoto   = (bold, sz) => ({name:'Noto Sans',  sz:sz||10, bold:!!bold, color:{rgb:'FF000000'}});
+  const fMalgun = (bold, sz) => ({name:'맑은 고딕',  sz:sz||10, bold:!!bold, color:{rgb:'FF000000'}});
   // fill이 없는 셀은 fill 속성 자체를 제외 (patternType:'none' 쓰면 SheetJS가 스타일 무시)
   const mkN = (bold, sz, fill, align) => { const s = {font:fNoto(bold,sz), alignment:align||ctr}; if(fill) s.fill=fill; return s; };
   const mkM = (bold, sz, fill, align) => { const s = {font:fMalgun(bold,sz), alignment:align||ctr}; if(fill) s.fill=fill; return s; };
@@ -3799,7 +3799,12 @@ function dlDongilSettlement(gk){
   const orders = groupedOrders[gk] || [];
   if (!orders.length) { alert('주문이 없어요.'); return; }
   const result = buildDongilSettlementXlsx(orders, a, _localISO());
-  XLSX.writeFile(result.wb, result.fname, {cellStyles:true});
+  // wb를 두 번 write하면 SheetJS 내부 스타일 인덱스가 초기화되어 스타일 소실 가능
+  // → _wbToBase64로 이미 생성된 b64를 직접 다운로드
+  const link = document.createElement('a');
+  link.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + result.b64;
+  link.download = result.fname;
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
   _poShowToast('✅ 정산내역서 다운로드: ' + result.fname);
 }
 function _poShowToast(msg){
