@@ -3508,6 +3508,9 @@ function getSender(alias){
 }
 // ── 합배송 결정 저장 + 적용 ──
 let _mergeDecisions = new Set();
+// 합배송 묶음 행 정보 (applyMergeForVendor 실행 후 dlOne에서 색상 적용)
+let _lastBundledRows = []; // [{dataIdx, rgb}]  dataIdx = 헤더 제외 0-based
+const _BUNDLE_COLORS = ['FFFFF2CC','FFE0F2FE','FFD1FAE5','FFFCE7F3'];
 function _mergeKey(o){
   return String(o.recv_name||'').trim()+'||'+_addrNorm(o.addr);
 }
@@ -3531,37 +3534,28 @@ function _effOrderUnits(o, vendor){
   return baseQty * (Number(o.code_qty)||1);
 }
 function applyMergeForVendor(orders, vendor){
-  // 같은 (이름+주소) 키가 _mergeDecisions에 있고 같은 발주처 안에서 2건 이상이면 한 줄로 합침
+  // 같은 (이름+주소) 키가 _mergeDecisions에 있고 같은 발주처 안에서 2건 이상이면
+  // 한 줄로 합치지 않고 각각 행 유지 + 색상 태그만 부여 (dlOne에서 셀 배경색 적용)
+  _lastBundledRows = [];
   const cntByKey = new Map();
   orders.forEach(o => {
     const k = _mergeKey(o);
     if (_mergeDecisions.has(k)) cntByKey.set(k, (cntByKey.get(k)||0)+1);
   });
-  const result = [], seen = new Set(), groupArr = new Map();
+  const bundleColorIdx = {}; let nextColor = 0;
+  const result = [];
   orders.forEach(o => {
     const k = _mergeKey(o);
     if (_mergeDecisions.has(k) && (cntByKey.get(k)||0) > 1) {
-      if (!groupArr.has(k)) groupArr.set(k, []);
-      groupArr.get(k).push(o);
+      if (!(k in bundleColorIdx)) bundleColorIdx[k] = nextColor++ % _BUNDLE_COLORS.length;
+      _lastBundledRows.push({dataIdx: result.length, rgb: _BUNDLE_COLORS[bundleColorIdx[k]]});
+      const bundleCnt = cntByKey.get(k);
+      const memoSuffix = `합배송 ${bundleCnt}건`;
+      const newMemo = o.memo ? (o.memo.includes(memoSuffix) ? o.memo : o.memo + ' / ' + memoSuffix) : memoSuffix;
+      result.push({...o, memo: newMemo, _bundleGroup: k});
     } else {
       result.push(o);
     }
-  });
-  groupArr.forEach((arr, k) => {
-    const m = {...arr[0]};
-    const lines = arr.map(it => {
-      const eff = _effOrderUnits(it, vendor);
-      const part = `${it.item_name||''}${it.option_name?' '+it.option_name:''}${eff>1?' × '+eff:''}`;
-      return part.trim();
-    });
-    m.item_name = lines.join(' + ');
-    m.option_name = '';
-    m.qty = 1;
-    // 발주 수량 = 합배송된 주문들의 kg-aware 실제 단위 수량 합
-    m.code_qty = arr.reduce((s,x)=>s + _effOrderUnits(x, vendor), 0);
-    m.memo = (m.memo ? m.memo + ' / ' : '') + `합배송 ${arr.length}건`;
-    m._merged = true;
-    result.push(m);
   });
   return result;
 }
@@ -3726,6 +3720,19 @@ function dlOne(gk){
   const rows=buildRows(v,orders,a);
   const ws=XLSX.utils.aoa_to_sheet(rows);
   autoColWidth(ws, rows);
+  // 합배송 묶음 행에 배경색 적용
+  const hasBundles = _lastBundledRows.length > 0;
+  if (hasBundles) {
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    _lastBundledRows.forEach(({dataIdx, rgb}) => {
+      const sheetRow = dataIdx + 1; // +1 for header row
+      for (let ci = range.s.c; ci <= range.e.c; ci++) {
+        const addr = XLSX.utils.encode_cell({r: sheetRow, c: ci});
+        if (!ws[addr]) ws[addr] = {t:'s', v:''};
+        ws[addr].s = {fill:{fgColor:{rgb}, patternType:'solid'}};
+      }
+    });
+  }
   XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
   const fname = makeFileName(v, a);
   // 버튼 시각적 피드백 (저장 중 → 완료)
@@ -3733,7 +3740,8 @@ function dlOne(gk){
   const dlBtn = card?.querySelector('button.btn-sm');
   const prevText = dlBtn?.textContent;
   if (dlBtn) { dlBtn.disabled = true; dlBtn.textContent = '⏳ 저장 중...'; }
-  _poWriteWorkbook(wb, fname, a).then((info)=>{
+  const wopts = hasBundles ? {cellStyles:true} : {};
+  _poWriteWorkbook(wb, fname, a, wopts).then((info)=>{
     if (card) card.classList.add('done');
     const mk=document.getElementById('dlm_'+ekey(gk));
     if(mk){
@@ -3884,13 +3892,14 @@ async function _getPoSubDirHandle(alias){
     return null;
   }
 }
-async function _poWriteWorkbook(wb, fname, alias){
+async function _poWriteWorkbook(wb, fname, alias, wopts){
   // 파일명에서 OS가 거부할 문자 제거
   const safeName = String(fname||'').replace(/[\\/:*?"<>|]/g, '_');
+  const writeOpts = Object.assign({type:'array', bookType:'xlsx'}, wopts||{});
   const subDir = await _getPoSubDirHandle(alias);
   if (subDir) {
     try {
-      const u8 = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+      const u8 = XLSX.write(wb, writeOpts);
       const blob = new Blob([u8], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       const fh = await subDir.getFileHandle(safeName, {create:true});
       const w = await fh.createWritable();
@@ -3904,7 +3913,7 @@ async function _poWriteWorkbook(wb, fname, alias){
   }
   // 폴더 미지정 or 실패 → 기존 다운로드
   console.log('[발주서] 브라우저 다운로드:', safeName, '(_poSaveDirHandle=', !!_poSaveDirHandle, ')');
-  XLSX.writeFile(wb, safeName);
+  XLSX.writeFile(wb, safeName, wopts||{});
   return {ok:true, path: 'Downloads/' + safeName, mode:'download'};
 }
 
@@ -5279,26 +5288,6 @@ async function invGmailLoadAttachment(idx) {
 
     const vendorLabel = _invGmailMatchLabel(item.from);
 
-    // Shopmine 발송정보 직접업로드 형식 감지 (주문고유코드/주문번호 + 운송장번호 동시 존재)
-    const _isShopmineDirect = (fileObj) => {
-      try {
-        const wb2 = _xlsxReadAuto(bytes.buffer.slice(0));
-        const ws2 = wb2.Sheets[wb2.SheetNames[0]];
-        const norm2 = c => String(c).replace(/\s/g,'').toLowerCase();
-        const hdrRow2 = XLSX.utils.sheet_to_json(ws2, {header:1, defval:''})[0] || [];
-        const hasOrderCode = hdrRow2.some(c => /주문고유코드|주문번호/.test(norm2(c)));
-        const hasTrack     = hdrRow2.some(c => /운송장|송장/.test(norm2(c)));
-        return hasOrderCode && hasTrack;
-      } catch { return false; }
-    };
-
-    if (_isShopmineDirect(file)) {
-      statusEl.innerHTML = '⚠️ <b>"' + escHtml(item.filename) + '"</b>은 샵마인 발송정보 직접업로드 형식입니다.<br>' +
-        '↓ <b>다운로드</b> 버튼으로 파일 저장 후 샵마인 → 발송정보일괄등록에 직접 올려주세요.<br>' +
-        '<span style="color:var(--text3);font-size:11px">(이 형식은 거래처 운송장 매칭이 아닌 샵마인 직접 업로드용 파일입니다)</span>';
-      return;
-    }
-
     invLoadTracks([file], vendorLabel || undefined);
     statusEl.textContent = '✅ "' + item.filename + '" 업로드 완료';
   } catch(e) {
@@ -5645,25 +5634,27 @@ function invLoadTracks(files, vendorHint) {
         // rawRows 방식: 20행 스캔하여 헤더 행 자동 탐지
         const rawRows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
         const norm = c => String(c).replace(/\s/g,'').toLowerCase();
-        const isTrackCol   = c => /운송장|송장|배송번호|발송번호|등기번호|추적번호|대한통운|한진|롯데|우체국|로젠|경동|cj/.test(norm(c));
-        const isNameCol    = c => { const n = norm(c); return /받는분|수취인명|수령자|수취인|받는사람|수신자|수령인|수화인|수하인/.test(n) && !/주소|전화|전번|연락처|우편|코드|번호/.test(n); };
-        const isCourierCol = c => /택배사|배송사|운송사|courier/.test(norm(c));
-        const isAddrCol     = c => { const n = norm(c); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); };
-        const isRecvAddrCol = c => { const n = norm(c); return /주소/.test(n) && /받는분|수취인|수령인|배송지|도착|수화인|수하인/.test(n); };
-        let trackIdx = -1, nameIdx = -1, courierIdx = -1, addrIdx = -1, hdrRow = -1;
+        const isTrackCol    = c => /운송장|송장|배송번호|발송번호|등기번호|추적번호|대한통운|한진|롯데|우체국|로젠|경동|cj/.test(norm(c));
+        const isNameCol     = c => { const n = norm(c); return /받는분|수취인명|수령자|수취인|받는사람|수신자|수령인|수화인|수하인/.test(n) && !/주소|전화|전번|연락처|우편|코드|번호/.test(n); };
+        const isCourierCol  = c => /택배사|배송사|운송사|courier/.test(norm(c));
+        const isAddrCol      = c => { const n = norm(c); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); };
+        const isRecvAddrCol  = c => { const n = norm(c); return /주소/.test(n) && /받는분|수취인|수령인|배송지|도착|수화인|수하인/.test(n); };
+        const isOrderCodeCol = c => /주문고유코드|주문번호/.test(norm(c));
+        let trackIdx = -1, nameIdx = -1, orderCodeIdx = -1, courierIdx = -1, addrIdx = -1, hdrRow = -1;
         for (let ri = 0; ri < Math.min(20, rawRows.length); ri++) {
           const row = rawRows[ri];
           const ti = row.findIndex(isTrackCol);
           const ni = row.findIndex(isNameCol);
-          if (ti >= 0 && ni >= 0) {
-            trackIdx = ti; nameIdx = ni; hdrRow = ri;
+          const oi = row.findIndex(isOrderCodeCol);
+          if (ti >= 0 && (ni >= 0 || oi >= 0)) {
+            trackIdx = ti; nameIdx = ni; orderCodeIdx = oi; hdrRow = ri;
             courierIdx = row.findIndex(isCourierCol);
             addrIdx = row.findIndex(isRecvAddrCol);
             if (addrIdx < 0) addrIdx = row.findIndex(isAddrCol);
             break;
           }
         }
-        if (trackIdx < 0 || nameIdx < 0) {
+        if (trackIdx < 0 || (nameIdx < 0 && orderCodeIdx < 0)) {
           const hdrSample = rawRows.length > 0 ? rawRows[0].filter(c=>c).slice(0,8).join(' / ') : '(행 없음)';
           invShowTrackError(file.name,
             (trackIdx < 0 ? '❌운송장 컬럼 없음' : '✅운송장OK') + ' | ' +
@@ -5672,26 +5663,27 @@ function invLoadTracks(files, vendorHint) {
             ' (총 ' + (rawRows[0]||[]).length + '열, ' + rawRows.length + '행)');
           return;
         }
-        // map: 수령인 → [{no, courier, addr}] (동명이인 대응: 같은 이름도 모두 배열로 보관)
-        // 이름 정규화: 공백 제거 (ex: "김 민수" → "김민수")
+        // map: 수령인 → [{no, courier, addr}]  |  orderCodeMap: 주문번호 → [{no, courier}]
         const _normName = s => String(s||'').replace(/\s+/g,'');
-        const map = {};
+        const map = {}, orderCodeMap = {};
         rawRows.slice(hdrRow + 1).forEach(row => {
-          const name = _normName(row[nameIdx]).trim();
-          const no   = String(row[trackIdx]||'').replace(/\s+/g,'').trim();
-          if (name && no) {
-            const courier = courierIdx >= 0 ? normalizeCourier(row[courierIdx]) : '';
-            const addr    = addrIdx    >= 0 ? String(row[addrIdx]||'').trim()    : '';
-            (map[name] || (map[name] = [])).push({no, courier, addr});
-          }
+          const name      = nameIdx      >= 0 ? _normName(row[nameIdx]).trim() : '';
+          const orderCode = orderCodeIdx >= 0 ? String(row[orderCodeIdx]||'').replace(/\s+/g,'').trim() : '';
+          const no        = String(row[trackIdx]||'').replace(/\s+/g,'').trim();
+          if (!no) return;
+          const courier = courierIdx >= 0 ? normalizeCourier(row[courierIdx]) : '';
+          const addr    = addrIdx    >= 0 ? String(row[addrIdx]||'').trim()    : '';
+          if (name)      (map[name]           || (map[name]           = [])).push({no, courier, addr});
+          if (orderCode) (orderCodeMap[orderCode] || (orderCodeMap[orderCode] = [])).push({no, courier, addr});
         });
         const hasCourier   = courierIdx >= 0;
+        const hasOrderCode = Object.keys(orderCodeMap).length > 0;
         const lookup       = invLookupCourier(file.name, vendorHint);
         const _rawGuess    = lookup.matchedKey || invGuessVendor(file.name);
-        // vendorHint(Gmail 발신자명)가 있으면 파일명 추측보다 우선 사용
         const vendorGuess  = vendorHint || ((_rawGuess !== '미확인') ? _rawGuess : '미확인');
         const courierGuess = lookup.courier;
-        invTrackFiles.push({fileName: file.name, vendorName: vendorGuess, courierName: courierGuess, hasCourier, map});
+        const entryCount   = Object.keys(map).length || Object.keys(orderCodeMap).length;
+        invTrackFiles.push({fileName: file.name, vendorName: vendorGuess, courierName: courierGuess, hasCourier, hasOrderCode, map, orderCodeMap});
         invRenderTrackList();
         invRenderVendorCard();
         invCheckReady();
@@ -5727,8 +5719,8 @@ function invRenderTrackList() {
     '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">' +
     '<span style="color:var(--success)">✅</span>' +
     '<span>' + escHtml(t.fileName) + '</span>' +
-    '<span style="color:var(--text3)">— ' + Object.keys(t.map).length + '건</span>' +
-    (t.hasCourier ? '<span style="color:var(--success);font-size:11px;margin-left:4px">택배사자동</span>' : '') +
+    '<span style="color:var(--text3)">— ' + (Object.keys(t.map).length || Object.keys(t.orderCodeMap||{}).length) + '건</span>' +
+    (t.hasOrderCode ? '<span style="color:var(--primary);font-size:11px;margin-left:4px">주문코드매칭</span>' : (t.hasCourier ? '<span style="color:var(--success);font-size:11px;margin-left:4px">택배사자동</span>' : '')) +
     '<button class="btn btn-danger btn-sm" onclick="invRemoveTrack(' + i + ')">✕</button>' +
     '</div>'
   ).join('');
@@ -5760,7 +5752,7 @@ function invRenderVendorCard() {
     couriers.map(c => '<option value="' + c + '"' + (c===t.courierName?' selected':'') + '>' + c + '</option>').join('') +
     '</select>' +
     '</div>' +
-    '<div style="font-size:12px;color:var(--text3);padding-top:18px">' + Object.keys(t.map).length + '건</div>' +
+    '<div style="font-size:12px;color:var(--text3);padding-top:18px">' + (Object.keys(t.map).length || Object.keys(t.orderCodeMap||{}).length) + '건' + (t.hasOrderCode?'<span style="font-size:10px;color:var(--primary);margin-left:4px">주문코드</span>':'') + '</div>' +
     '</div>'
   ).join('');
 }
@@ -5803,17 +5795,19 @@ function invProcess() {
       }
       return fallback;
     };
-    const nameCol    = _findCol(['수령자','받는분성명','수취인명','수령인','수화인','수하인'], '수령자');
-    const addrCol    = Object.keys(sample).find(k => { const n = k.replace(/\s/g,''); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); }) || '';
-    const codeCol    = _findCol(['판매자상품코드','상품코드'], '판매자상품코드');
-    const courierCol = _findCol(['택배사'], '택배사');
-    const trackCol   = _findCol(['송장번호','운송장번호'], '송장번호');
-    const prodCol    = _findCol(['상품명'], '상품명');
+    const nameCol      = _findCol(['수령자','받는분성명','수취인명','수령인','수화인','수하인'], '수령자');
+    const addrCol      = Object.keys(sample).find(k => { const n = k.replace(/\s/g,''); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); }) || '';
+    const codeCol      = _findCol(['판매자상품코드','상품코드'], '판매자상품코드');
+    const courierCol   = _findCol(['택배사'], '택배사');
+    const trackCol     = _findCol(['송장번호','운송장번호'], '송장번호');
+    const prodCol      = _findCol(['상품명'], '상품명');
+    const orderCodeCol = Object.keys(sample).find(k => /주문고유코드/.test(k.replace(/\s/g,''))) || '';
     const dupReg = {};
     invPreviewRows = [];
     invResultData = invOrderData.map((row, rowIdx) => {
       const newRow = {...row};
       const name = String(row[nameCol]||'').replace(/\s+/g,'').trim();
+      const orderCode = orderCodeCol ? String(row[orderCodeCol]||'').replace(/\s+/g,'').trim() : '';
       const code = String(row[codeCol]||'');
       // 판매자코드에서 거래처명 추출: "푸드앤]간고등어/100g-10" → "푸드앤"
       let vendor = '';
@@ -5842,8 +5836,10 @@ function invProcess() {
         return cands.length ? cands : null;
       };
       for (const tf of invTrackFiles) {
-        const entries = tf.map[name] || _matchMaskedName(name, tf.map);
-        if (!name || !entries || !entries.length) continue;
+        // 주문고유코드 우선 매칭, 없으면 수령인명 매칭
+        const codeEntries = (orderCode && tf.orderCodeMap && tf.orderCodeMap[orderCode]) || null;
+        const entries = codeEntries || tf.map[name] || _matchMaskedName(name, tf.map);
+        if ((!orderCode && !name) || !entries || !entries.length) continue;
         let entry;
         if (entries.length === 1) {
           entry = entries[0];                       // 동일 이름 1건 → 모호하지 않음
