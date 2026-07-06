@@ -2983,7 +2983,7 @@ function buildDongilSettlementXlsx(orders, alias, dateStr) {
     const rname = String(o.recv_name||'').trim();
     const isReview = rname && srReviewSet && srReviewSet.has(bKey + '||' + rname);
     ws[encC(r,0)] = {t:'n', v: idx+1,                              s:sDataCtr};
-    ws[encC(r,1)] = {t:'s', v: _oDate(o.order_date),               s:sDataCtr};
+    ws[encC(r,1)] = {t:'s', v: mm + '/' + day,                     s:sDataCtr};
     ws[encC(r,2)] = {t:'s', v: rname,                              s:sDataCtr};
     ws[encC(r,3)] = {t:'s', v: String(o.addr||'').trim(),          s:sDataLft};
     ws[encC(r,4)] = {t:'s', v: '깐마늘 1kg',                       s:sDataCtr};
