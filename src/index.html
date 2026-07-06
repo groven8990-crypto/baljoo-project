@@ -3732,21 +3732,27 @@ function dlOne(gk){
   const wb=XLSX.utils.book_new();
   const orders = groupedOrders[gk];
   const rows=buildRows(v,orders,a);
-  const ws=XLSX.utils.aoa_to_sheet(rows);
-  autoColWidth(ws, rows);
-  // 합배송 묶음 행에 배경색 적용
-  const hasBundles = _lastBundledRows.length > 0;
-  if (hasBundles) {
-    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-    _lastBundledRows.forEach(({dataIdx, rgb}) => {
-      const sheetRow = dataIdx + 1; // +1 for header row
-      for (let ci = range.s.c; ci <= range.e.c; ci++) {
-        const addr = XLSX.utils.encode_cell({r: sheetRow, c: ci});
-        if (!ws[addr]) ws[addr] = {t:'s', v:''};
-        ws[addr].s = {fill:{fgColor:{rgb}, bgColor:{indexed:64}, patternType:'solid'}};
-      }
+  // 합배송 색상 맵: sheetRow(0-based) → rgb
+  const bundleMap = new Map((_lastBundledRows||[]).map(({dataIdx,rgb})=>[dataIdx+1,rgb]));
+  const hasBundles = bundleMap.size > 0;
+  // 시트 수동 생성 — 스타일을 셀 객체 생성 시점에 바로 포함 (buildDongilSettlementXlsx와 동일 방식)
+  const ws = {};
+  const numCols = rows.reduce((m,r)=>Math.max(m,r.length),0);
+  rows.forEach((row,r)=>{
+    const rgb = bundleMap.get(r);
+    const fill = rgb ? {fgColor:{rgb},bgColor:{indexed:64},patternType:'solid'} : null;
+    row.forEach((val,c)=>{
+      if(val===null||val===undefined) return;
+      const addr = XLSX.utils.encode_cell({r,c});
+      const t = typeof val==='number'?'n':'s';
+      const cell = {v:val,t};
+      if(fill) cell.s = {fill};
+      ws[addr]=cell;
     });
-  }
+  });
+  if(rows.length>0&&numCols>0)
+    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rows.length-1,c:numCols-1}});
+  autoColWidth(ws, rows);
   XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
   const fname = makeFileName(v, a);
   // 버튼 시각적 피드백 (저장 중 → 완료)
