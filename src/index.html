@@ -3914,9 +3914,16 @@ async function _poWriteWorkbook(wb, fname, alias, wopts){
       // 폴백으로 진행
     }
   }
-  // 폴더 미지정 or 실패 → 기존 다운로드
+  // 폴더 미지정 or 실패 → Blob + anchor 다운로드 (cellStyles 유지)
   console.log('[발주서] 브라우저 다운로드:', safeName, '(_poSaveDirHandle=', !!_poSaveDirHandle, ')');
-  XLSX.writeFile(wb, safeName, wopts||{});
+  const u8dl = XLSX.write(wb, writeOpts);
+  const blobDl = new Blob([u8dl], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const urlDl = URL.createObjectURL(blobDl);
+  const linkDl = document.createElement('a');
+  linkDl.href = urlDl; linkDl.download = safeName;
+  document.body.appendChild(linkDl); linkDl.click();
+  document.body.removeChild(linkDl);
+  URL.revokeObjectURL(urlDl);
   return {ok:true, path: 'Downloads/' + safeName, mode:'download'};
 }
 
