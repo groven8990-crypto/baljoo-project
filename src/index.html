@@ -748,6 +748,7 @@
           oninput="expSheetUrlInput(this.value)">
         <button class="btn btn-sm" onclick="expSheetSave()" style="background:#16A34A;color:#fff;border:none;white-space:nowrap">저장</button>
         <button class="btn btn-sm" onclick="expSheetClear()" style="color:#DC2626;border-color:#DC2626;white-space:nowrap">해제</button>
+        <button id="expExportAllBtn" class="btn btn-sm" onclick="expSheetsExportAll()" style="background:#2563EB;color:#fff;border:none;white-space:nowrap">📤 기존 이력 전체 내보내기</button>
         <span id="expSheetStatus" style="font-size:11px;color:#15803D"></span>
       </div>
       <div style="font-size:11px;color:#166534;margin-top:6px">💾 이력 저장 시 스프레드시트에 자동으로 행이 추가됩니다. 시트가 없으면 빈 구글 시트를 만들어서 URL을 붙여넣으세요.</div>
@@ -8771,24 +8772,29 @@ function _parseSheetId(url){
   const m = String(url||'').match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]{20,})/);
   return m ? m[1] : null;
 }
+function _expSheetRow(d){
+  // 매입현황 시트 컬럼 순서: 년|월|일|증빙|분류|내용|업체명|공급가|세액|합계|주문건수|결제일|결제여부|비고
+  const dt = d.date ? new Date(d.date + 'T00:00:00') : new Date();
+  const evList = [d.ev1&&'세금계산서', d.ev2&&'계산서', d.ev3&&'현금영수증', d.ev4&&'고지서', d.ev5&&'기타', d.ev6&&'사후첨부'].filter(Boolean).join(', ');
+  return [
+    dt.getFullYear(), dt.getMonth()+1, dt.getDate(),
+    evList, '',
+    d.desc||'', d.vendor||'',
+    Number(d.supply)||0, Number(d.vat)||0, Number(d.total)||0,
+    '', '',
+    d.payType||'', d.note||''
+  ];
+}
 async function expSheetsAppend(d){
   const sheetId = localStorage.getItem(LS_EXP_SHEET_ID);
   if (!sheetId) return;
   let token;
   try { token = await gmailRequestToken(); } catch(e) { console.warn('[Sheets] 토큰 실패:', e); return; }
-  const evList = [d.ev1&&'세금계산서', d.ev2&&'계산서', d.ev3&&'현금영수증', d.ev4&&'고지서', d.ev5&&'기타', d.ev6&&'사후첨부'].filter(Boolean).join(', ');
-  const now = new Date();
-  const row = [
-    now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')+' '+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),
-    d.date||'', d.co||'', d.vendor||'', d.desc||'',
-    Number(d.supply)||0, Number(d.vat)||0, Number(d.total)||0,
-    d.payType||'', evList, d.memo||'', d.note||''
-  ];
   try {
     const resp = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       { method:'POST', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
-        body: JSON.stringify({values:[row]}) }
+        body: JSON.stringify({values:[_expSheetRow(d)]}) }
     );
     if (!resp.ok) {
       const err = await resp.json().catch(()=>({}));
@@ -8797,6 +8803,34 @@ async function expSheetsAppend(d){
       _poShowToast('📊 구글 시트에 기록됐어요');
     }
   } catch(e) { console.warn('[Sheets] append 오류:', e); }
+}
+async function expSheetsExportAll(){
+  const sheetId = localStorage.getItem(LS_EXP_SHEET_ID);
+  if (!sheetId) { alert('구글 시트 URL을 먼저 연동해주세요.'); return; }
+  const hist = loadExpHist();
+  if (!hist.length) { alert('내보낼 이력이 없어요.'); return; }
+  if (!confirm(`저장된 이력 ${hist.length}건을 구글 시트에 추가할게요. (중복 방지 없이 그냥 추가됩니다)\n계속할까요?`)) return;
+  let token;
+  try { token = await gmailRequestToken(); } catch(e) { alert('구글 로그인이 필요해요.'); return; }
+  // 날짜 오름차순 (오래된 것부터)
+  const sorted = [...hist].sort((a,b) => (a.date||'') < (b.date||'') ? -1 : 1);
+  const rows = sorted.map(d => _expSheetRow(d));
+  const btn = document.getElementById('expExportAllBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const resp = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      { method:'POST', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
+        body: JSON.stringify({values: rows}) }
+    );
+    if (!resp.ok) {
+      const err = await resp.json().catch(()=>({}));
+      _poShowToast('⚠️ 내보내기 실패: ' + (err.error?.message||resp.status));
+    } else {
+      _poShowToast(`✅ ${rows.length}건 시트에 추가됐어요`);
+    }
+  } catch(e) { _poShowToast('⚠️ 내보내기 오류: ' + e.message); }
+  finally { if (btn) btn.disabled = false; }
 }
 // 시트 연동 설정 로드 (페이지 로드 시)
 function expSheetInitUi(){
