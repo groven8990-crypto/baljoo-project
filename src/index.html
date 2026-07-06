@@ -2719,15 +2719,11 @@ function kakaoEnsureInit(){
   try { if (!_kakaoInited || !Kakao.isInitialized()) { Kakao.init(k); _kakaoInited = true; } } catch(e) { console.warn('Kakao init:', e); }
   return Kakao.isInitialized();
 }
-// 발주처 카드의 💬 카카오 발송 버튼
+// 발주처 카드의 💬 카카오 발송 버튼 — 앱 키 없이 클립보드 복사로 동작
 function kakaoSendOne(gk){
   const [v, a] = gk.split('|');
   const orders = groupedOrders[gk] || [];
   if (!orders.length) { alert('주문이 없어요.'); return; }
-  if (!kakaoEnsureInit()) {
-    alert('Kakao App Key를 먼저 설정해주세요.\n(⚙️ 코드 관리 → 📧 Gmail 자동발송 → 💬 카카오 설정)');
-    return;
-  }
   const today = _localISO();
   const brand = _brandLabel(a) || a || v;
   const lines = [`[발주서] ${today} ${v} (${brand})`, `총 ${orders.length}건`, ''];
@@ -2738,18 +2734,36 @@ function kakaoSendOne(gk){
     lines.push(`   ${o.addr}`);
   });
   const text = lines.join('\n');
-  try {
-    Kakao.Share.sendDefault({
-      objectType: 'text',
-      text: text,
-      link: { mobileWebUrl: location.href, webUrl: location.href }
-    });
-  } catch(e) {
-    // SDK 오류 시 클립보드 복사 + 카카오톡 웹 열기로 대체
-    navigator.clipboard?.writeText(text).catch(()=>{});
-    _poShowToast('📋 주문내용 클립보드 복사됨 — 카카오톡에 붙여넣기 해주세요');
-    console.warn('Kakao.Share 실패:', e);
+  // 1) 카카오 SDK 사용 가능하면 공유 다이얼로그 (선택적)
+  if (kakaoEnsureInit()) {
+    try {
+      Kakao.Share.sendDefault({ objectType:'text', text, link:{ mobileWebUrl:location.href, webUrl:location.href } });
+      return;
+    } catch(e) { console.warn('Kakao.Share 실패, 클립보드로 대체:', e); }
   }
+  // 2) 클립보드 복사 + 카카오톡 열기 (앱 키 불필요)
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      _poShowToast('📋 복사됨! 카카오톡 열고 붙여넣기 하세요 (Ctrl+V / 길게누르기)');
+      // 모바일: 카카오톡 앱 직접 열기 시도
+      setTimeout(() => { window.location.href = 'kakaotalk://'; }, 300);
+    }).catch(() => {
+      _kakaoFallbackPrompt(text);
+    });
+  } else {
+    _kakaoFallbackPrompt(text);
+  }
+}
+function _kakaoFallbackPrompt(text){
+  // 클립보드 API 없는 환경: 텍스트 선택 가능한 팝업
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:80vw;max-width:500px;height:300px;z-index:99999;font-size:13px;padding:10px;border:2px solid #FEE500;border-radius:8px;';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  _poShowToast('📋 복사됨! 카카오톡에 붙여넣기 하세요');
+  setTimeout(() => ta.remove(), 3000);
 }
 const LS_GMAIL_CLIENT_ID   = 'yb_gmail_client_id';
 const LS_GMAIL_TOKEN       = 'yb_gmail_token';
@@ -3325,11 +3339,10 @@ function renderGmailSettingsArea(){
         </div>
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:6px">💬 카카오 설정</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">💬 카카오 설정 <span style="font-size:10px;font-weight:400;color:var(--text3)">(선택사항 — 없어도 발주서 복사 후 카톡 붙여넣기 가능)</span></div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
-          <a href="https://developers.kakao.com/console/app" target="_blank" style="color:var(--primary);text-decoration:underline">Kakao Developers</a>에서 앱 생성 후 <b>JavaScript 앱 키</b>를 입력하세요.<br>
-          발주처 전달방식에서 💬 카톡 선택 시 발주서 카드에 카카오 발송 버튼이 나타납니다.<br>
-          <span style="color:var(--warn)">※ 플랫폼 등록: 카카오 앱 설정 → 플랫폼 → Web → <code>${escHtml(location.origin)}</code> 추가 필요</span>
+          앱 키 없이도 💬 카톡 버튼을 누르면 발주 내용이 <b>클립보드에 자동 복사</b>돼요.<br>
+          카카오 공유 다이얼로그를 쓰려면 <a href="https://developers.kakao.com/console/app" target="_blank" style="color:var(--primary);text-decoration:underline">Kakao Developers</a>에서 앱 생성 후 <b>JavaScript 앱 키</b> 입력 + 플랫폼 → Web → <code>${escHtml(location.origin)}</code> 등록 필요.
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <input class="inp" id="kakaoAppKeyInput" value="${escHtml(kakaoGetAppKey())}" placeholder="JavaScript 앱 키 (예: abcdef1234567890)" style="flex:1;font-family:monospace;font-size:12px">
