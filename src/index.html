@@ -3019,7 +3019,7 @@ function buildDongilSettlementXlsx(orders, alias, dateStr) {
   XLSX.utils.book_append_sheet(wb, ws, '거래명세서');
   const b64 = _wbToBase64(wb);
   const safeAlias = String(alias||'').replace(/[\/\\:*?"<>|]/g,'');
-  const fname = `발주정산내역서_동일_${safeAlias}_${dateStr||mmdd}.xlsx`;
+  const fname = `${yy}${mm}${day}-발주정산내역서_${safeAlias}.xlsx`;
   return {wb, b64, fname};
 }
 // base64 76자 단위 청크 (RFC 2045)
