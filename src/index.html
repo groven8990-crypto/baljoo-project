@@ -2920,51 +2920,53 @@ function buildDongilSettlementXlsx(orders, alias, dateStr) {
 
   // ── 스타일 상수 ──
   const ACCT = '_-* #,##0_-;\\-* #,##0_-;_-* \\-_-;_-@';
-  const GRAY = {fgColor:{rgb:'FFD3D3D3'}, patternType:'solid'};
-  const ctr  = {horizontal:'center', vertical:'center'};
-  const lft  = {horizontal:'left',   vertical:'center'};
-  const rgt  = {horizontal:'right',  vertical:'center'};
-  const fN   = (bold, sz) => ({name:'맑은 고딕', sz: sz||10, bold: !!bold});
-  const mkS  = (bold, sz, fill, align) => ({font:fN(bold,sz), fill:fill||{patternType:'none'}, alignment:align||ctr});
-  const sTitle    = mkS(true, 14, null, ctr);
-  const sDate     = mkS(false, 10, null, rgt);
-  const sGrayHdr  = mkS(true,  10, GRAY, ctr);
-  const sBoldCtr  = mkS(true,  10, null, ctr);
-  const sDataCtr  = mkS(false, 10, null, ctr);
-  const sDataLft  = mkS(false, 10, null, lft);
+  const GRAY  = {fgColor:{rgb:'FFD3D3D3'}, patternType:'solid'};
+  const noFill = {patternType:'none'};
+  const ctr = {horizontal:'center', vertical:'center'};
+  const lft = {horizontal:'left',   vertical:'center'};
+  const rgt = {horizontal:'right',  vertical:'center'};
+  // 레퍼런스 파일 기준: 텍스트=Noto Sans, 수식/숫자=맑은 고딕
+  const fNoto   = (bold, sz) => ({name:'Noto Sans',  sz:sz||10, bold:!!bold});
+  const fMalgun = (bold, sz) => ({name:'맑은 고딕',  sz:sz||10, bold:!!bold});
+  const mkN = (bold, sz, fill, align) => ({font:fNoto(bold,sz),   fill:fill||noFill, alignment:align||ctr});
+  const mkM = (bold, sz, fill, align) => ({font:fMalgun(bold,sz), fill:fill||noFill, alignment:align||ctr});
+
+  const sTitle    = mkN(true,  14, null, ctr);  // A1 제목 — Noto 14 bold
+  const sDateR    = mkM(false, 10, null, rgt);  // I2 작성일자 — Malgun right
+  const sGrayN    = mkN(true,  10, GRAY, ctr);  // 회색 헤더 — Noto bold (A-F 컬럼 헤더, B3/C3)
+  const sBoldN    = mkN(true,  10, null, ctr);  // Noto bold (A4/A5 라벨, G-I 헤더, 합계 라벨)
+  const sBoldM    = mkM(true,  10, null, ctr);  // Malgun bold (수식 셀 bold)
+  const sDataN_c  = mkN(false, 10, null, ctr);  // Noto center — 이름·품목·수량
+  const sDataN_l  = mkN(false, 10, null, lft);  // Noto left   — 주소
+  const sDataM_c  = mkM(false, 10, null, ctr);  // Malgun center — 번호·날짜·수식
 
   // ── 행 1: 제목 (A1:I1 병합) ──
   ws['A1'] = {t:'s', v:`발주정산내역서 ${brandLabel} (${mmdd})`, s:sTitle};
   merges.push({s:{r:0,c:0}, e:{r:0,c:8}});
 
   // ── 행 2: 작성일자 ──
-  ws['I2'] = {t:'s', v:`작성일자: ${yy}.${mm}.${day}`, s:sDate};
+  ws['I2'] = {t:'s', v:`작성일자: ${yy}.${mm}.${day}`, s:sDateR};
 
-  // ── 행 3: 소계표 헤더 ──
-  ws['B3'] = {t:'s', v:'건수',    s:sGrayHdr};
-  ws['C3'] = {t:'s', v:'총 합계', s:sGrayHdr};
+  // ── 행 3: 소계표 헤더 (B3=건수, C3=총합계) ──
+  ws['B3'] = {t:'s', v:'건수',    s:sGrayN};
+  ws['C3'] = {t:'s', v:'총 합계', s:sGrayN};
 
-  // ── 행 4: 리뷰 요약 ──
-  ws['A4'] = {t:'s', v:'리뷰',   s:sBoldCtr};
-  ws['B4'] = {t:'n', f:`COUNTIF($F$${DATA_START}:$F$${DATA_END},"리뷰")`,                         s:sBoldCtr};
-  ws['C4'] = {t:'n', f:`SUMIF($F$${DATA_START}:$F$${DATA_END},"리뷰",I${DATA_START}:I${DATA_END})`, s:sBoldCtr, z:ACCT};
+  // ── 행 4: 리뷰 요약 (COUNTIF 기준을 A4 셀 참조로) ──
+  ws['A4'] = {t:'s', v:'리뷰',   s:sBoldN};
+  ws['B4'] = {t:'n', f:`COUNTIF($F$${DATA_START}:$F$${DATA_END},A4)`,                            s:sBoldM};
+  ws['C4'] = {t:'n', f:`SUMIF($F$${DATA_START}:$F$${DATA_END},A4,I${DATA_START}:I${DATA_END})`,  s:sBoldM, z:ACCT};
 
-  // ── 행 5: 실주문 요약 ──
-  ws['A5'] = {t:'s', v:'실주문', s:sBoldCtr};
-  ws['B5'] = {t:'n', f:`COUNTA(F${DATA_START}:F${DATA_END})-B4`,  s:sBoldCtr};
-  ws['C5'] = {t:'n', f:`SUM(I${DATA_START}:I${DATA_END})-C4`,     s:sBoldCtr, z:ACCT};
+  // ── 행 5: 실주문 요약 (COUNTA 기준 A열, C5=합계행 직접 참조) ──
+  ws['A5'] = {t:'s', v:'실주문', s:sBoldN};
+  ws['B5'] = {t:'n', f:`COUNTA(A${DATA_START}:A${DATA_END})-B4`, s:sBoldM};
+  ws['C5'] = {t:'n', f:`I${SUM_ROW}-C4`,                         s:sBoldM, z:ACCT};
 
-  // ── 행 8: 컬럼 헤더 ──
+  // ── 행 8: 컬럼 헤더 (A-F 회색, G-I 흰색) ──
   ['번호','발주일자','받는분성명','받는분주소','품목명','수량','공급가(원)','배송비(원)','합계(원)']
-    .forEach((h, ci) => { ws[encC(7, ci)] = {t:'s', v:h, s: ci < 6 ? sGrayHdr : sBoldCtr}; });
+    .forEach((h, ci) => { ws[encC(7, ci)] = {t:'s', v:h, s: ci < 6 ? sGrayN : sBoldN}; });
 
   // ── 데이터 행 (row 9 ~) ──
   const bKey = String(alias||'').includes('로또상회') ? 'grobn' : 'yb';
-  const _oDate = s => {
-    const m = String(s||'').match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
-    if (m) return m[2].padStart(2,'0') + '/' + m[3].padStart(2,'0');
-    return mmdd;
-  };
   orders.forEach((o, idx) => {
     const rowNum = DATA_START + idx;
     const r = rowNum - 1;
@@ -2982,33 +2984,33 @@ function buildDongilSettlementXlsx(orders, alias, dateStr) {
     }
     const rname = String(o.recv_name||'').trim();
     const isReview = rname && srReviewSet && srReviewSet.has(bKey + '||' + rname);
-    ws[encC(r,0)] = {t:'n', v: idx+1,                              s:sDataCtr};
-    ws[encC(r,1)] = {t:'s', v: mm + '/' + day,                     s:sDataCtr};
-    ws[encC(r,2)] = {t:'s', v: rname,                              s:sDataCtr};
-    ws[encC(r,3)] = {t:'s', v: String(o.addr||'').trim(),          s:sDataLft};
-    ws[encC(r,4)] = {t:'s', v: '깐마늘 1kg',                       s:sDataCtr};
+    ws[encC(r,0)] = {t:'n', v: idx+1,                            s:sDataM_c};  // 번호 Malgun
+    ws[encC(r,1)] = {t:'s', v: mm + '/' + day,                   s:sDataM_c};  // 발주일자 Malgun
+    ws[encC(r,2)] = {t:'s', v: rname,                            s:sDataN_c};  // 이름 Noto
+    ws[encC(r,3)] = {t:'s', v: String(o.addr||'').trim(),        s:sDataN_l};  // 주소 Noto left
+    ws[encC(r,4)] = {t:'s', v: '깐마늘 1kg',                     s:sDataN_c};  // 품목 Noto
     if (isReview) {
-      ws[encC(r,5)] = {t:'s', v:'리뷰',                            s:sDataCtr};
-      ws[encC(r,6)] = {t:'n', v:0,                                 s:sDataCtr, z:ACCT};
-      ws[encC(r,7)] = {t:'n', v:0,                                 s:sDataCtr, z:ACCT};
-      ws[encC(r,8)] = {t:'n', v:0,                                 s:sDataCtr, z:ACCT};
+      ws[encC(r,5)] = {t:'s', v:'리뷰',                          s:sDataN_c};  // 리뷰 Noto
+      ws[encC(r,6)] = {t:'n', v:0,                               s:sDataM_c, z:ACCT};
+      ws[encC(r,7)] = {t:'n', v:0,                               s:sDataM_c, z:ACCT};
+      ws[encC(r,8)] = {t:'n', v:0,                               s:sDataM_c, z:ACCT};
     } else {
-      ws[encC(r,5)] = {t:'n', v: kgN,                              s:sDataCtr};
+      ws[encC(r,5)] = {t:'n', v: kgN,                            s:sDataN_c};  // 수량 Noto
       const supply   = 6300 * kgN;
       const delivery = Math.ceil(kgN/3) * 2500;
-      ws[encC(r,6)] = {t:'n', f:`6300*F${rowNum}`,                 v:supply,            s:sDataCtr, z:ACCT};
-      ws[encC(r,7)] = {t:'n', f:`ROUNDUP(F${rowNum}/3,0)*2500`,    v:delivery,          s:sDataCtr, z:ACCT};
-      ws[encC(r,8)] = {t:'n', f:`SUM(G${rowNum}:H${rowNum})`,      v:supply+delivery,   s:sDataCtr, z:ACCT};
+      ws[encC(r,6)] = {t:'n', f:`6300*F${rowNum}`,               v:supply,          s:sDataM_c, z:ACCT};
+      ws[encC(r,7)] = {t:'n', f:`ROUNDUP(F${rowNum}/3,0)*2500`,  v:delivery,        s:sDataM_c, z:ACCT};
+      ws[encC(r,8)] = {t:'n', f:`SUM(G${rowNum}:H${rowNum})`,    v:supply+delivery, s:sDataM_c, z:ACCT};
     }
   });
 
-  // ── 합계 행 ──
+  // ── 합계 행 (A:F 병합, G/H/I SUM 수식) ──
   const sr = SUM_ROW - 1;
-  ws[encC(sr,0)] = {t:'s', v:'합계', s:sBoldCtr};
+  ws[encC(sr,0)] = {t:'s', v:'합계', s:sBoldN};
   merges.push({s:{r:sr,c:0}, e:{r:sr,c:5}});
-  ws[encC(sr,6)] = {t:'n', f:`SUM(G${DATA_START}:G${DATA_END})`, s:sBoldCtr, z:ACCT};
-  ws[encC(sr,7)] = {t:'n', f:`SUM(H${DATA_START}:H${DATA_END})`, s:sBoldCtr, z:ACCT};
-  ws[encC(sr,8)] = {t:'n', f:`SUM(I${DATA_START}:I${DATA_END})`, s:sBoldCtr, z:ACCT};
+  ws[encC(sr,6)] = {t:'n', f:`SUM(G${DATA_START}:G${DATA_END})`, s:sBoldM, z:ACCT};
+  ws[encC(sr,7)] = {t:'n', f:`SUM(H${DATA_START}:H${DATA_END})`, s:sBoldM, z:ACCT};
+  ws[encC(sr,8)] = {t:'n', f:`SUM(I${DATA_START}:I${DATA_END})`, s:sBoldM, z:ACCT};
 
   ws['!ref']    = `A1:I${SUM_ROW}`;
   ws['!merges'] = merges;
