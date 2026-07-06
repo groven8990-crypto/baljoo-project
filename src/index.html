@@ -3535,10 +3535,7 @@ function _effOrderUnits(o, vendor){
   return baseQty * (Number(o.code_qty)||1);
 }
 function applyMergeForVendor(orders, vendor){
-  // 같은 (이름+주소)가 _mergeDecisions에 있으면 합배송 처리:
-  // - 같은 품목끼리는 수량 합산해 1행으로 (발주서에서 하나로 묶음)
-  // - 다른 품목끼리는 각각 별도 행 유지
-  // - 모든 합배송 행에 색상 태그 부여 (dlOne에서 셀 배경색 적용)
+  // 합배송: 행은 각각 그대로 유지, 메모 수정 없음, 색상 태그만 부여 (dlOne에서 배경색 적용)
   _lastBundledRows = [];
   const cntByKey = new Map();
   orders.forEach(o => {
@@ -3547,37 +3544,14 @@ function applyMergeForVendor(orders, vendor){
   });
   const bundleColorIdx = {}; let nextColor = 0;
   const result = [];
-  const processedKeys = new Set();
   orders.forEach(o => {
     const k = _mergeKey(o);
-    const isBundled = _mergeDecisions.has(k) && (cntByKey.get(k)||0) > 1;
-    if (!isBundled) { result.push(o); return; }
-    if (processedKeys.has(k)) return; // 이미 처리한 묶음은 건너뜀
-    processedKeys.add(k);
-    if (!(k in bundleColorIdx)) bundleColorIdx[k] = nextColor++ % _BUNDLE_COLORS.length;
-    const rgb = _BUNDLE_COLORS[bundleColorIdx[k]];
-    const groupOrders = orders.filter(oo => _mergeKey(oo) === k);
-    const bundleCnt = groupOrders.length;
-    const memoSuffix = `합배송 ${bundleCnt}건`;
-    const addMemo = oo => oo.memo ? (oo.memo.includes(memoSuffix) ? oo.memo : oo.memo + ' / ' + memoSuffix) : memoSuffix;
-    // 품목별 서브그룹: 같은 품목은 수량 합산, 다른 품목은 별도 행
-    const productGroups = new Map();
-    const productKeyOrder = [];
-    for (const oo of groupOrders) {
-      const pk = String(oo.item_name||'').trim() + '||' + String(oo.option_name||'').trim();
-      if (!productGroups.has(pk)) { productGroups.set(pk, []); productKeyOrder.push(pk); }
-      productGroups.get(pk).push(oo);
-    }
-    for (const pk of productKeyOrder) {
-      const pOrders = productGroups.get(pk);
-      _lastBundledRows.push({dataIdx: result.length, rgb});
-      if (pOrders.length === 1) {
-        result.push({...pOrders[0], memo: addMemo(pOrders[0]), _bundleGroup: k});
-      } else {
-        // 같은 품목 여러 건: effQty 합산 후 1행으로
-        const totalEffQty = pOrders.reduce((s, oo) => s + (Number(oo.qty)||1)*(Number(oo.code_qty)||1), 0);
-        result.push({...pOrders[0], qty: totalEffQty, code_qty: 1, memo: addMemo(pOrders[0]), _bundleGroup: k, _merged: true});
-      }
+    if (_mergeDecisions.has(k) && (cntByKey.get(k)||0) > 1) {
+      if (!(k in bundleColorIdx)) bundleColorIdx[k] = nextColor++ % _BUNDLE_COLORS.length;
+      _lastBundledRows.push({dataIdx: result.length, rgb: _BUNDLE_COLORS[bundleColorIdx[k]]});
+      result.push({...o, _bundleGroup: k}); // 원래 데이터 그대로, 메모 건드리지 않음
+    } else {
+      result.push(o);
     }
   });
   return result;
