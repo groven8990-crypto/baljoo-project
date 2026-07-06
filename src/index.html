@@ -2728,6 +2728,15 @@ function kakaoEnsureInit(){
   return Kakao.isInitialized();
 }
 // 발주처 카드의 💬 카카오 발송 버튼 — 앱 키 없이 클립보드 복사로 동작
+function _kakaoOpenApp(){
+  // 페이지 이탈 없이 앱 스킴 실행
+  const a = document.createElement('a');
+  a.href = 'kakaotalk://';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
 function kakaoSendOne(gk){
   const [v, a] = gk.split('|');
   const orders = groupedOrders[gk] || [];
@@ -2742,24 +2751,24 @@ function kakaoSendOne(gk){
     lines.push(`   ${o.addr}`);
   });
   const text = lines.join('\n');
-  // 1) 카카오 SDK 사용 가능하면 공유 다이얼로그 (선택적)
+  // 1) 발주서 엑셀 파일 먼저 다운로드 (카톡에 첨부할 수 있도록)
+  try { dlOne(gk); } catch(e) { console.warn('카카오 발주서 다운로드 실패:', e); }
+  // 2) 카카오 SDK 사용 가능하면 공유 다이얼로그 (선택적)
   if (kakaoEnsureInit()) {
     try {
       Kakao.Share.sendDefault({ objectType:'text', text, link:{ mobileWebUrl:location.href, webUrl:location.href } });
       return;
     } catch(e) { console.warn('Kakao.Share 실패, 클립보드로 대체:', e); }
   }
-  // 2) 클립보드 복사 + 카카오톡 열기 (앱 키 불필요)
+  // 3) 클립보드 복사 + 카카오톡 앱 열기
+  const doOpen = () => { setTimeout(_kakaoOpenApp, 500); };
   if (navigator.clipboard) {
     navigator.clipboard.writeText(text).then(() => {
-      _poShowToast('📋 복사됨! 카카오톡 열고 붙여넣기 하세요 (Ctrl+V / 길게누르기)');
-      // 모바일: 카카오톡 앱 직접 열기 시도
-      setTimeout(() => { window.location.href = 'kakaotalk://'; }, 300);
-    }).catch(() => {
-      _kakaoFallbackPrompt(text);
-    });
+      _poShowToast('✅ 발주서 다운로드됨!\n📋 내용 복사됨 — 카카오톡 열고 파일 첨부 후 붙여넣기 하세요');
+      doOpen();
+    }).catch(() => { _kakaoFallbackPrompt(text); doOpen(); });
   } else {
-    _kakaoFallbackPrompt(text);
+    _kakaoFallbackPrompt(text); doOpen();
   }
 }
 function _kakaoFallbackPrompt(text){
