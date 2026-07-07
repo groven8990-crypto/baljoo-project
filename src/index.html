@@ -8961,7 +8961,8 @@ async function expSheetsLoad(showAlert){
         payType = String(row[10]||'').trim() || '즉시결제';
         note    = String(row[11]||'').trim();
       } else {
-        // 구형식 (년/월/일 숫자 3열)
+        // 구형식 (년/월/일 숫자 3열) — col0이 순수 4자리 숫자여야 함 (날짜문자열 오인 방지)
+        if (!/^\d{4}$/.test(col0)) continue;
         const yr = parseInt(col0);
         if (!yr || yr < 2000 || yr > 2100) continue;
         const mo = parseInt(row[1]) || 1;
