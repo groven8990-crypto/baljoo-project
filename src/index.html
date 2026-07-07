@@ -749,9 +749,10 @@
         <button class="btn btn-sm" onclick="expSheetSave()" style="background:#16A34A;color:#fff;border:none;white-space:nowrap">저장</button>
         <button class="btn btn-sm" onclick="expSheetClear()" style="color:#DC2626;border-color:#DC2626;white-space:nowrap">해제</button>
         <button id="expExportAllBtn" class="btn btn-sm" onclick="expSheetsExportAll()" style="background:#2563EB;color:#fff;border:none;white-space:nowrap">📤 기존 이력 전체 내보내기</button>
+        <button id="expImportBtn" class="btn btn-sm" onclick="expSheetsLoad(true)" style="background:#7C3AED;color:#fff;border:none;white-space:nowrap">📥 시트에서 불러오기</button>
         <span id="expSheetStatus" style="font-size:11px;color:#15803D"></span>
       </div>
-      <div style="font-size:11px;color:#166534;margin-top:6px">💾 이력 저장 시 스프레드시트에 자동으로 행이 추가됩니다. 시트가 없으면 빈 구글 시트를 만들어서 URL을 붙여넣으세요.</div>
+      <div style="font-size:11px;color:#166534;margin-top:6px">💾 이력 저장 시 스프레드시트에 자동으로 행이 추가됩니다. 📥 시트에서 불러오기를 누르면 다른 컴퓨터에서 저장한 내역도 가져올 수 있어요.</div>
     </div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
@@ -6182,7 +6183,7 @@ function switchExpSubTab(name) {
   const btn = document.getElementById('stab-exp' + name);
   if (content) { content.classList.add('active'); content.style.display = ''; }
   if (btn) btn.classList.add('active');
-  if (name === 'list')  renderExpHistList();
+  if (name === 'list')  { renderExpHistList(); expSheetsLoad(false); }
   if (name === 'bank')  renderBankList();
   if (name === 'write') expSheetInitUi();
 }
@@ -8880,6 +8881,85 @@ async function expSheetsExportAll(){
   } catch(e) { _poShowToast('⚠️ 내보내기 오류: ' + e.message); }
   finally { if (btn) btn.disabled = false; }
 }
+async function expSheetsLoad(showAlert){
+  const sheetId = localStorage.getItem(LS_EXP_SHEET_ID);
+  if (!sheetId) {
+    if (showAlert) alert('구글 시트 URL을 먼저 연동해주세요.\n(지출결의서 → 작성 탭에서 URL을 입력하고 저장하세요)');
+    return;
+  }
+  let token;
+  try { token = await gmailRequestToken(); } catch(e) {
+    if (showAlert) alert('구글 로그인이 필요해요.');
+    return;
+  }
+  const btn = document.getElementById('expImportBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 불러오는 중...'; }
+  try {
+    const resp = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:N`,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!resp.ok) {
+      const err = await resp.json().catch(()=>({}));
+      if (showAlert) alert('시트 읽기 실패: ' + (err.error?.message || resp.status));
+      return;
+    }
+    const data = await resp.json();
+    const rows = (data.values || []);
+    // 유효한 데이터 행만 파싱 (헤더 행 스킵: 첫 칼럼이 숫자가 아니면 스킵)
+    const parsed = [];
+    for (const row of rows) {
+      const yr = parseInt(row[0]);
+      if (!yr || yr < 2000 || yr > 2100) continue; // 헤더 or 빈 행 스킵
+      const mo = parseInt(row[1]) || 1;
+      const dy = parseInt(row[2]) || 1;
+      const date = yr + '-' + String(mo).padStart(2,'0') + '-' + String(dy).padStart(2,'0');
+      const evStr = String(row[3]||'');
+      const ev1 = evStr.includes('세금계산서');
+      const ev2 = evStr.includes('계산서') && !evStr.includes('세금계산서');
+      const ev3 = evStr.includes('현금영수증');
+      const ev4 = evStr.includes('고지서');
+      const ev5 = evStr.includes('기타');
+      const ev6 = evStr.includes('사후첨부');
+      const desc    = String(row[5]||'').trim();
+      const vendor  = String(row[6]||'').trim();
+      const supply  = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
+      const vat     = Number(String(row[8]||'0').replace(/,/g,'')) || 0;
+      const total   = Number(String(row[9]||'0').replace(/,/g,'')) || 0;
+      const payType = String(row[12]||'').trim() || '즉시결제';
+      const note    = String(row[13]||'').trim();
+      if (!vendor && !total) continue;
+      parsed.push({ date, ev1, ev2, ev3, ev4, ev5, ev6, desc, vendor, supply, vat, total, payType, note });
+    }
+    if (!parsed.length) {
+      if (showAlert) _poShowToast('시트에 불러올 데이터가 없어요 (헤더 행 제외)');
+      return;
+    }
+    const local = loadExpHist();
+    // 중복 제거 키: date+vendor+total
+    const existingKeys = new Set(local.map(d => (d.date||'')+'|'+(d.vendor||'')+'|'+(d.total||0)));
+    let added = 0;
+    for (const p of parsed) {
+      const key = (p.date||'')+'|'+(p.vendor||'')+'|'+(p.total||0);
+      if (existingKeys.has(key)) continue;
+      existingKeys.add(key);
+      local.push({ ...p, id: Date.now() + added, savedAt: new Date().toISOString() });
+      added++;
+    }
+    // 날짜 내림차순 정렬
+    local.sort((a,b) => (b.date||'') < (a.date||'') ? -1 : (b.date||'') > (a.date||'') ? 1 : 0);
+    saveExpHist(local);
+    renderExpHistList();
+    if (showAlert) _poShowToast(added > 0 ? `✅ ${added}건 새로 불러왔어요` : '이미 모두 있어요 (새 항목 없음)');
+    else if (added > 0) _poShowToast(`📥 시트에서 ${added}건 추가됐어요`);
+  } catch(e) {
+    console.warn('[Sheets] load 오류:', e);
+    if (showAlert) alert('불러오기 오류: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📥 시트에서 불러오기'; }
+  }
+}
+
 // 시트 연동 설정 로드 (페이지 로드 시)
 function expSheetInitUi(){
   const id = localStorage.getItem(LS_EXP_SHEET_ID);
