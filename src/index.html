@@ -3736,6 +3736,7 @@ function dlOne(gk){
   // 합배송 색상 맵: sheetRow(0-based) → rgb
   const bundleMap = new Map((_lastBundledRows||[]).map(({dataIdx,rgb})=>[dataIdx+1,rgb]));
   const hasBundles = bundleMap.size > 0;
+  console.log('[dlOne] _lastBundledRows:', JSON.stringify(_lastBundledRows), 'hasBundles:', hasBundles, 'bundleMap:', [...bundleMap.entries()]);
   // 시트 수동 생성 — 스타일을 셀 객체 생성 시점에 바로 포함 (buildDongilSettlementXlsx와 동일 방식)
   const ws = {};
   const numCols = rows.reduce((m,r)=>Math.max(m,r.length),0);
@@ -3747,7 +3748,7 @@ function dlOne(gk){
       const addr = XLSX.utils.encode_cell({r,c});
       const t = typeof val==='number'?'n':'s';
       const cell = {v:val,t};
-      if(fill) cell.s = {fill};
+      if(fill) cell.s = {fill, font:{name:'맑은 고딕', sz:10}};
       ws[addr]=cell;
     });
   });
@@ -8822,11 +8823,12 @@ function _parseSheetId(url){
   return m ? m[1] : null;
 }
 function _expSheetRow(d){
-  // 매입현황 시트 컬럼 순서: 년|월|일|증빙|분류|내용|업체명|공급가|세액|합계|주문건수|결제일|결제여부|비고
+  // 컬럼 순서: 날짜(YYYY-MM-DD)|증빙|분류|내용|업체명|공급가|세액|합계|주문건수|결제일|결제여부|비고
   const dt = d.date ? new Date(d.date + 'T00:00:00') : new Date();
   const evList = [d.ev1&&'세금계산서', d.ev2&&'계산서', d.ev3&&'현금영수증', d.ev4&&'고지서', d.ev5&&'기타', d.ev6&&'사후첨부'].filter(Boolean).join(', ');
+  const dateStr = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
   return [
-    dt.getFullYear(), dt.getMonth()+1, dt.getDate(),
+    dateStr,
     evList, '',
     d.desc||'', d.vendor||'',
     Number(d.supply)||0, Number(d.vat)||0, Number(d.total)||0,
@@ -8906,28 +8908,48 @@ async function expSheetsLoad(showAlert){
     }
     const data = await resp.json();
     const rows = (data.values || []);
-    // 유효한 데이터 행만 파싱 (헤더 행 스킵: 첫 칼럼이 숫자가 아니면 스킵)
+    // 유효한 데이터 행만 파싱
+    // 신형식: row[0]=YYYY-MM-DD 문자열, row[1]=증빙, row[3]=내용, row[4]=업체명, row[5..7]=금액, row[10]=결제여부, row[11]=비고
+    // 구형식: row[0]=년, row[1]=월, row[2]=일, row[3]=증빙, row[5]=내용, row[6]=업체명, row[7..9]=금액, row[12]=결제여부, row[13]=비고
+    const _isNewFmt = (r) => /^\d{4}-\d{2}-\d{2}$/.test(String(r[0]||''));
     const parsed = [];
     for (const row of rows) {
-      const yr = parseInt(row[0]);
-      if (!yr || yr < 2000 || yr > 2100) continue; // 헤더 or 빈 행 스킵
-      const mo = parseInt(row[1]) || 1;
-      const dy = parseInt(row[2]) || 1;
-      const date = yr + '-' + String(mo).padStart(2,'0') + '-' + String(dy).padStart(2,'0');
-      const evStr = String(row[3]||'');
+      const col0 = String(row[0]||'').trim();
+      if (!col0) continue;
+      let date, evStr, desc, vendor, supply, vat, total, payType, note;
+      if (_isNewFmt(row)) {
+        // 신형식 (날짜 문자열)
+        date    = col0;
+        evStr   = String(row[1]||'');
+        desc    = String(row[3]||'').trim();
+        vendor  = String(row[4]||'').trim();
+        supply  = Number(String(row[5]||'0').replace(/,/g,'')) || 0;
+        vat     = Number(String(row[6]||'0').replace(/,/g,'')) || 0;
+        total   = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
+        payType = String(row[10]||'').trim() || '즉시결제';
+        note    = String(row[11]||'').trim();
+      } else {
+        // 구형식 (년/월/일 숫자 3열)
+        const yr = parseInt(col0);
+        if (!yr || yr < 2000 || yr > 2100) continue;
+        const mo = parseInt(row[1]) || 1;
+        const dy = parseInt(row[2]) || 1;
+        date    = yr + '-' + String(mo).padStart(2,'0') + '-' + String(dy).padStart(2,'0');
+        evStr   = String(row[3]||'');
+        desc    = String(row[5]||'').trim();
+        vendor  = String(row[6]||'').trim();
+        supply  = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
+        vat     = Number(String(row[8]||'0').replace(/,/g,'')) || 0;
+        total   = Number(String(row[9]||'0').replace(/,/g,'')) || 0;
+        payType = String(row[12]||'').trim() || '즉시결제';
+        note    = String(row[13]||'').trim();
+      }
       const ev1 = evStr.includes('세금계산서');
       const ev2 = evStr.includes('계산서') && !evStr.includes('세금계산서');
       const ev3 = evStr.includes('현금영수증');
       const ev4 = evStr.includes('고지서');
       const ev5 = evStr.includes('기타');
       const ev6 = evStr.includes('사후첨부');
-      const desc    = String(row[5]||'').trim();
-      const vendor  = String(row[6]||'').trim();
-      const supply  = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
-      const vat     = Number(String(row[8]||'0').replace(/,/g,'')) || 0;
-      const total   = Number(String(row[9]||'0').replace(/,/g,'')) || 0;
-      const payType = String(row[12]||'').trim() || '즉시결제';
-      const note    = String(row[13]||'').trim();
       if (!vendor && !total) continue;
       parsed.push({ date, ev1, ev2, ev3, ev4, ev5, ev6, desc, vendor, supply, vat, total, payType, note });
     }
