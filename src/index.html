@@ -3736,18 +3736,19 @@ function dlOne(gk){
   // 합배송 색상 맵: sheetRow(0-based) → rgb
   const bundleMap = new Map((_lastBundledRows||[]).map(({dataIdx,rgb})=>[dataIdx+1,rgb]));
   const hasBundles = bundleMap.size > 0;
-  console.log('[dlOne] _lastBundledRows:', JSON.stringify(_lastBundledRows), 'hasBundles:', hasBundles, 'bundleMap:', [...bundleMap.entries()]);
-  // 시트 수동 생성 — 스타일을 셀 객체 생성 시점에 바로 포함 (buildDongilSettlementXlsx와 동일 방식)
+  // 시트 수동 생성 — 스타일을 셀 객체 생성 시점에 바로 포함
   const ws = {};
   const numCols = rows.reduce((m,r)=>Math.max(m,r.length),0);
   rows.forEach((row,r)=>{
     const rgb = bundleMap.get(r);
     const fill = rgb ? {fgColor:{rgb},bgColor:{indexed:64},patternType:'solid'} : null;
     row.forEach((val,c)=>{
-      if(val===null||val===undefined) return;
+      // 번들 행은 빈칸도 셀 생성 (배경색 적용을 위해)
+      if(!fill && (val===null||val===undefined)) return;
       const addr = XLSX.utils.encode_cell({r,c});
-      const t = typeof val==='number'?'n':'s';
-      const cell = {v:val,t};
+      const safeVal = (val===null||val===undefined) ? '' : val;
+      const t = typeof safeVal==='number'?'n':'s';
+      const cell = {t, v:safeVal};
       if(fill) cell.s = {fill, font:{name:'맑은 고딕', sz:10}};
       ws[addr]=cell;
     });
@@ -3757,31 +3758,62 @@ function dlOne(gk){
   autoColWidth(ws, rows);
   XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
   const fname = makeFileName(v, a);
+  const safeName = String(fname||'').replace(/[\\/:*?"<>|]/g, '_');
   // 버튼 시각적 피드백 (저장 중 → 완료)
   const card = document.getElementById('gc_'+ekey(gk));
   const dlBtn = card?.querySelector('button.btn-sm');
   const prevText = dlBtn?.textContent;
   if (dlBtn) { dlBtn.disabled = true; dlBtn.textContent = '⏳ 저장 중...'; }
-  const wopts = hasBundles ? {cellStyles:true} : {};
-  _poWriteWorkbook(wb, fname, a, wopts).then((info)=>{
+
+  if (hasBundles) {
+    // 합배송 색채움: buildDongilSettlementXlsx와 동일한 방식 — data URL 직접 다운로드 (검증된 경로)
+    const b64 = _wbToBase64(wb);
+    const dataUrl = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + b64;
+    const link = document.createElement('a');
+    link.href = dataUrl; link.download = safeName;
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    // 폴더도 같이 저장 시도 (비동기, 실패해도 괜찮음)
+    _getPoSubDirHandle(a).then(subDir => {
+      if (!subDir) return;
+      const bin = atob(b64); const u8 = new Uint8Array(bin.length);
+      for (let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+      return subDir.getFileHandle(safeName,{create:true})
+        .then(fh=>fh.createWritable()).then(w=>w.write(u8.buffer).then(()=>w.close()))
+        .then(()=>console.log('[발주서] 폴더 저장(색채움):', safeName));
+    }).catch(e=>console.warn('[발주서] 폴더 저장 실패:', e));
+    // UI 업데이트
     if (card) card.classList.add('done');
     const mk=document.getElementById('dlm_'+ekey(gk));
     if(mk){
       const nowTime = new Date().toTimeString().slice(0,5);
-      mk.title = `${nowTime} 저장: ${info?.path || fname}`;
-      mk.textContent = info?.mode==='folder' ? `✅ 폴더 저장` : `✅ 다운로드`;
+      mk.title = `${nowTime} 저장: ${safeName}`;
+      mk.textContent = '✅ 다운로드(색채움)';
       mk.style.display = 'inline-flex';
     }
-    logDownload(v, a, orders, fname);  // 다운로드 이력 저장
-    _poShowToast(info?.mode==='folder'
-      ? `✅ 폴더에 저장됨: ${info.path}`
-      : `✅ 다운로드: ${info?.path||fname}`);
-  }).catch(err => {
-    console.error('발주서 다운로드 실패:', err);
-    alert('발주서 저장 실패: ' + (err?.message||err));
-  }).finally(()=>{
+    logDownload(v, a, orders, fname);
+    _poShowToast('✅ 합배송 색채움 발주서 다운로드: ' + safeName);
     if (dlBtn) { dlBtn.disabled = false; dlBtn.textContent = prevText || '⬇ 다운로드'; }
-  });
+  } else {
+    _poWriteWorkbook(wb, fname, a, {}).then((info)=>{
+      if (card) card.classList.add('done');
+      const mk=document.getElementById('dlm_'+ekey(gk));
+      if(mk){
+        const nowTime = new Date().toTimeString().slice(0,5);
+        mk.title = `${nowTime} 저장: ${info?.path || fname}`;
+        mk.textContent = info?.mode==='folder' ? `✅ 폴더 저장` : `✅ 다운로드`;
+        mk.style.display = 'inline-flex';
+      }
+      logDownload(v, a, orders, fname);
+      _poShowToast(info?.mode==='folder'
+        ? `✅ 폴더에 저장됨: ${info.path}`
+        : `✅ 다운로드: ${info?.path||fname}`);
+    }).catch(err => {
+      console.error('발주서 다운로드 실패:', err);
+      alert('발주서 저장 실패: ' + (err?.message||err));
+    }).finally(()=>{
+      if (dlBtn) { dlBtn.disabled = false; dlBtn.textContent = prevText || '⬇ 다운로드'; }
+    });
+  }
 }
 // 동일 배송 분할: 3kg 초과 시 균등 분할 (한 라벨 max 3kg)
 // 예) 4→[2,2], 5→[3,2], 6→[3,3], 7→[3,2,2], 9→[3,3,3]
