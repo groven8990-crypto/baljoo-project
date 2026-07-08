@@ -862,7 +862,7 @@
           ondragover="onExpAttachDragOver(event)"
           ondragleave="onExpAttachDragLeave(event)"
           ondrop="onExpAttachDrop(event)">
-          <div style="font-size:13px;color:var(--text3);pointer-events:none">📎 여기에 이미지를 드래그하거나 클릭해서 선택</div>
+          <div style="font-size:13px;color:var(--text3);pointer-events:none">📎 드래그 · 클릭 · <b>Ctrl+V 붙여넣기</b></div>
           <div style="font-size:11px;color:var(--text3);margin-top:4px;opacity:.7;pointer-events:none">여러 장 동시 선택 가능</div>
         </div>
         <div id="expAttachGrid" style="display:none;margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start"></div>
@@ -6664,6 +6664,21 @@ function onExpAttachDrop(e) {
   const files = e.dataTransfer && e.dataTransfer.files;
   if (files && files.length) _expAddFiles(files);
 }
+function onExpAttachPaste(e) {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  const imageItems = Array.from(items).filter(it => it.kind === 'file' && (it.type||'').startsWith('image/'));
+  if (!imageItems.length) return;
+  e.preventDefault();
+  _expAddFiles(imageItems.map(it => it.getAsFile()));
+}
+// 지출결의서 작성 탭이 보일 때 전역 Ctrl+V 캡처
+document.addEventListener('paste', function(e) {
+  const zone = document.getElementById('expDropZone');
+  if (!zone || zone.offsetParent === null) return; // 탭이 숨겨져 있으면 무시
+  if (document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
+  onExpAttachPaste(e);
+});
 function clearExpAttach(idx) {
   if (typeof idx === 'number') {
     _expPendingAttachments.splice(idx, 1);
