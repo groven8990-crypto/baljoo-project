@@ -5944,7 +5944,11 @@ function invProcess() {
         const trackNo = entry.no;
         // 우선순위: ① 운송장파일 택배사컬럼 ② 사용자가 고른 거래처별 택배사(파일별) ③ 발주처명 기반 매핑
         const trackCourier = entry.courier || '';
-        const courier = normalizeCourier(trackCourier || tf.courierName || vendorCourierDefault);
+        const trackCourierNorm = trackCourier ? normalizeCourier(trackCourier) : '';
+        const _isKnownCourier = c => /^(우체국택배|CJ대한통운|롯데택배|한진택배|로젠택배|경동택배)$/.test(c);
+        const courier = (trackCourier && _isKnownCourier(trackCourierNorm))
+          ? trackCourierNorm
+          : normalizeCourier(tf.courierName || vendorCourierDefault || trackCourier);
         newRow[trackCol]   = trackNo;
         newRow[courierCol] = courier;
         found = true;
