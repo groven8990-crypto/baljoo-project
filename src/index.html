@@ -2790,6 +2790,7 @@ const LS_SEND_HISTORY      = 'yb_send_history';
 const LS_INV_GMAIL_SENDER  = 'yb_inv_gmail_sender';
 const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/spreadsheets';
 const LS_EXP_SHEET_ID = 'yb_exp_sheet_id';
+const LS_EXP_DELETED  = 'yb_exp_deleted_keys'; // 삭제된 항목 키 블랙리스트
 let _gmailTokenClient = null;
 function gmailGetClientId(){ return (localStorage.getItem(LS_GMAIL_CLIENT_ID)||'').trim(); }
 function gmailSetClientId(id){ localStorage.setItem(LS_GMAIL_CLIENT_ID, String(id||'').trim()); }
@@ -6384,9 +6385,17 @@ function deleteExpHist(i) {
   if (!confirm('이 항목을 삭제할까요?')) return;
   const hist = loadExpHist();
   const item = hist[i];
+  if (item) {
+    // 구글 시트에서 재불러오기 방지 — 삭제 키 블랙리스트에 추가
+    const delKey = (item.date||'') + '|' + (item.vendor||'') + '|' + (item.total||0);
+    try {
+      const existing = JSON.parse(localStorage.getItem(LS_EXP_DELETED)||'[]');
+      if (!existing.includes(delKey)) existing.push(delKey);
+      localStorage.setItem(LS_EXP_DELETED, JSON.stringify(existing.slice(-200)));
+    } catch(e) {}
+  }
   hist.splice(i, 1);
   saveExpHist(hist);
-  // 첨부파일도 같이 삭제
   if (item && item.id && item.hasAttach) _idbDelAttach(item.id);
   renderExpHistList();
 }
@@ -9003,10 +9012,11 @@ async function expSheetsLoad(showAlert){
     const local = loadExpHist();
     // 중복 제거 키: date+vendor+total
     const existingKeys = new Set(local.map(d => (d.date||'')+'|'+(d.vendor||'')+'|'+(d.total||0)));
+    const deletedKeys  = new Set(JSON.parse(localStorage.getItem(LS_EXP_DELETED)||'[]'));
     let added = 0;
     for (const p of parsed) {
       const key = (p.date||'')+'|'+(p.vendor||'')+'|'+(p.total||0);
-      if (existingKeys.has(key)) continue;
+      if (existingKeys.has(key) || deletedKeys.has(key)) continue;
       existingKeys.add(key);
       local.push({ ...p, id: Date.now() + added, savedAt: new Date().toISOString() });
       added++;
