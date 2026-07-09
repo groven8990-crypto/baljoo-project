@@ -8910,30 +8910,108 @@ async function expSheetsAppend(d){
 async function expSheetsExportAll(){
   const sheetId = localStorage.getItem(LS_EXP_SHEET_ID);
   if (!sheetId) { alert('구글 시트 URL을 먼저 연동해주세요.'); return; }
-  const hist = loadExpHist();
-  if (!hist.length) { alert('내보낼 이력이 없어요.'); return; }
-  if (!confirm(`저장된 이력 ${hist.length}건을 구글 시트에 추가할게요. (중복 방지 없이 그냥 추가됩니다)\n계속할까요?`)) return;
+  if (!confirm('구글 시트 기존 데이터를 읽어서 사업자명을 자동으로 채우고 다시 씁니다.\n로컬에만 있는 항목도 추가됩니다. (기존 시트 내용은 교체됨)\n계속할까요?')) return;
   let token;
   try { token = await gmailRequestToken(); } catch(e) { alert('구글 로그인이 필요해요.'); return; }
-  // 날짜 오름차순 (오래된 것부터)
-  const sorted = [...hist].sort((a,b) => (a.date||'') < (b.date||'') ? -1 : 1);
-  const rows = sorted.map(d => _expSheetRow(d));
   const btn = document.getElementById('expExportAllBtn');
-  if (btn) btn.disabled = true;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 처리 중...'; }
   try {
-    const resp = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-      { method:'POST', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
-        body: JSON.stringify({values: rows}) }
+    // 1. 기존 시트 전체 읽기
+    const getResp = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:N`,
+      { headers: { Authorization: 'Bearer ' + token } }
     );
-    if (!resp.ok) {
-      const err = await resp.json().catch(()=>({}));
-      _poShowToast('⚠️ 내보내기 실패: ' + (err.error?.message||resp.status));
-    } else {
-      _poShowToast(`✅ ${rows.length}건 시트에 추가됐어요`);
+    if (!getResp.ok) { _poShowToast('⚠️ 시트 읽기 실패'); return; }
+    const sheetRows = (await getResp.json()).values || [];
+
+    // 2. 로컬 데이터 → key:co 맵
+    const local = loadExpHist();
+    const localCoMap = new Map(local.map(d =>
+      [(d.date||'')+'|'+(d.vendor||'')+'|'+(d.total||0), d.co||'']
+    ));
+
+    // 3. 시트 행 파싱 + 사업자명 채우기
+    const _isNewFmt = r => /^\d{4}-\d{2}-\d{2}$/.test(String(r[0]||''));
+    const existingKeys = new Set();
+    const parsedFromSheet = [];
+    for (const row of sheetRows) {
+      const col0 = String(row[0]||'').trim();
+      if (!col0) continue;
+      let date, evStr, desc, vendor, supply, vat, total, payType, note, co;
+      if (_isNewFmt(row)) {
+        date    = col0;
+        evStr   = String(row[1]||'');
+        desc    = String(row[3]||'').trim();
+        vendor  = String(row[4]||'').trim();
+        supply  = Number(String(row[5]||'0').replace(/,/g,'')) || 0;
+        vat     = Number(String(row[6]||'0').replace(/,/g,'')) || 0;
+        total   = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
+        payType = String(row[10]||'').trim() || '즉시결제';
+        // 구형(12열, L=비고) vs 신형(13열, L=사업자명, M=비고) 구분
+        if (row.length >= 13 && row[11] && !/^\d/.test(String(row[11]))) {
+          // 이미 사업자명이 L에 있는 신형
+          co   = String(row[11]||'').trim();
+          note = String(row[12]||'').trim();
+        } else {
+          // 구형: L=비고
+          note = String(row[11]||'').trim();
+          co   = '';
+        }
+      } else {
+        if (!/^\d{4}$/.test(col0)) continue;
+        const yr = parseInt(col0);
+        if (!yr || yr < 2000 || yr > 2100) continue;
+        const mo = parseInt(row[1]) || 1;
+        const dy = parseInt(row[2]) || 1;
+        date    = yr + '-' + String(mo).padStart(2,'0') + '-' + String(dy).padStart(2,'0');
+        evStr   = String(row[3]||'');
+        desc    = String(row[5]||'').trim();
+        vendor  = String(row[6]||'').trim();
+        supply  = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
+        vat     = Number(String(row[8]||'0').replace(/,/g,'')) || 0;
+        total   = Number(String(row[9]||'0').replace(/,/g,'')) || 0;
+        payType = String(row[12]||'').trim() || '즉시결제';
+        note    = String(row[13]||'').trim();
+        co      = '';
+      }
+      if (!vendor && !total) continue;
+      const key = date+'|'+vendor+'|'+total;
+      existingKeys.add(key);
+      if (!co) co = localCoMap.get(key) || '';
+      const ev1=evStr.includes('세금계산서'), ev2=evStr.includes('계산서')&&!ev1,
+            ev3=evStr.includes('현금영수증'), ev4=evStr.includes('고지서'),
+            ev5=evStr.includes('기타'),       ev6=evStr.includes('사후첨부');
+      parsedFromSheet.push({ date, ev1, ev2, ev3, ev4, ev5, ev6, desc, vendor, supply, vat, total, payType, note, co });
     }
-  } catch(e) { _poShowToast('⚠️ 내보내기 오류: ' + e.message); }
-  finally { if (btn) btn.disabled = false; }
+
+    // 4. 로컬에만 있는 항목 추가
+    const localOnly = local.filter(d =>
+      !existingKeys.has((d.date||'')+'|'+(d.vendor||'')+'|'+(d.total||0))
+    );
+
+    // 5. 합치고 날짜 오름차순 정렬
+    const allParsed = [...parsedFromSheet, ...localOnly]
+      .sort((a,b) => (a.date||'') < (b.date||'') ? -1 : 1);
+    const allRows = allParsed.map(d => _expSheetRow(d));
+
+    // 6. 시트 클리어 후 재작성
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:Z:clear`,
+      { method:'POST', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' } }
+    );
+    const writeResp = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1?valueInputOption=USER_ENTERED`,
+      { method:'PUT', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
+        body: JSON.stringify({ values: allRows }) }
+    );
+    if (!writeResp.ok) {
+      const err = await writeResp.json().catch(()=>({}));
+      _poShowToast('⚠️ 쓰기 실패: ' + (err.error?.message||writeResp.status));
+    } else {
+      _poShowToast(`✅ ${allRows.length}건 완료 — 사업자명 자동 채움`);
+    }
+  } catch(e) { _poShowToast('⚠️ 오류: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '📤 기존 이력 전체 내보내기'; } }
 }
 async function expSheetsLoad(showAlert){
   const sheetId = localStorage.getItem(LS_EXP_SHEET_ID);
