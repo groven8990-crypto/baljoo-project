@@ -1648,6 +1648,48 @@ async function _sbSyncOptMaps() {
   } catch(e) { console.warn('[SB] sync opt_maps error:', e); }
 }
 
+// kv_store: 범용 키-값 저장 (계좌관리 등)
+async function _sbSaveKV(key, value) {
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/kv_store', {
+      method: 'POST',
+      headers: _sbH({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({ key, value })
+    });
+    if (!r.ok) console.warn('[SB] kv_store save:', r.status);
+  } catch(e) { console.warn('[SB] kv_store save error:', e); }
+}
+
+async function _sbLoadKV(key) {
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/kv_store?key=eq.' + encodeURIComponent(key) + '&select=value', {
+      headers: _sbH()
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!Array.isArray(rows) || !rows.length) return null;
+    return rows[0].value;
+  } catch(e) { console.warn('[SB] kv_store load error:', e); return null; }
+}
+
+async function _sbSyncBankInfo() {
+  const remote = await _sbLoadKV('bank_info');
+  if (!remote || !Array.isArray(remote) || !remote.length) return;
+  const local = loadBankInfo();
+  const localNames = new Set(local.map(b => b.name||''));
+  let added = 0;
+  for (const rb of remote) {
+    if (!localNames.has(rb.name||'')) { local.push(rb); localNames.add(rb.name||''); added++; }
+    else {
+      // 원격이 더 최신이면 덮어쓰기
+      const idx = local.findIndex(b => b.name === rb.name);
+      if (idx >= 0) local[idx] = { ...local[idx], ...rb };
+    }
+  }
+  localStorage.setItem(LS_BANK, JSON.stringify(local));
+  if (added > 0) renderBankList();
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 전체 데이터 클라우드 동기화 (v2)
 // ═══════════════════════════════════════════════════════════════
@@ -2144,6 +2186,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   try{ populateVendorSelect(); }catch(e){}
   _sbSyncCodes().catch(()=>{});
   _sbSyncOptMaps().catch(()=>{});
+  _sbSyncBankInfo().catch(()=>{});
 });
 
 function setSt(msg,err){const el=document.getElementById('status');el.textContent=msg;el.className=err?'error':'';}
@@ -6413,7 +6456,7 @@ function switchExpSubTab(name) {
   if (content) { content.classList.add('active'); content.style.display = ''; }
   if (btn) btn.classList.add('active');
   if (name === 'list')  { renderExpHistList(); expSheetsLoad(false); _sbSyncExpHist().catch(()=>{}); }
-  if (name === 'bank')  renderBankList();
+  if (name === 'bank')  { _sbSyncBankInfo().then(()=>renderBankList()).catch(()=>renderBankList()); }
   if (name === 'write') expSheetInitUi();
 }
 
@@ -8181,7 +8224,7 @@ const LS_EXPHIST = 'yb_exphist';
 let curExpCo = '옐로우브릿지';
 
 function loadBankInfo() { try{ return JSON.parse(localStorage.getItem(LS_BANK)||'[]'); }catch{ return []; } }
-function saveBankInfo(a){ localStorage.setItem(LS_BANK, JSON.stringify(a)); }
+function saveBankInfo(a){ localStorage.setItem(LS_BANK, JSON.stringify(a)); _sbSaveKV('bank_info', a).catch(()=>{}); }
 function loadExpHist() { try{ return JSON.parse(localStorage.getItem(LS_EXPHIST)||'[]'); }catch{ return []; } }
 function saveExpHist(a){
   let arr = a.slice(0, 100); // 최대 100개 유지
