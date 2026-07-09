@@ -4699,14 +4699,15 @@ function renderNonstdCodes(){
   if (!items.length) { card.style.display = 'none'; if (countEl) countEl.textContent=''; _editingNonstdIdx = -1; return; }
   card.style.display = '';
   if (countEl) countEl.textContent = `(${items.length}건)`;
-  const G = 'display:grid;grid-template-columns:1.5fr 1.1fr 1fr 60px auto;gap:8px;align-items:center';
-  let html = `<div style="${G};padding-bottom:6px;border-bottom:2px solid #fca5a5;font-size:11px;font-weight:500;color:var(--text2)"><span>판매자상품코드</span><span>품목명</span><span>옵션</span><span>수량</span><span></span></div>`;
+  const G = 'display:grid;grid-template-columns:28px 1.5fr 1.1fr 1fr 60px auto;gap:8px;align-items:center';
+  let html = `<div style="${G};padding-bottom:6px;border-bottom:2px solid #fca5a5;font-size:11px;font-weight:500;color:var(--text2)"><span>#</span><span>판매자상품코드</span><span>품목명</span><span>옵션</span><span>수량</span><span></span></div>`;
   items.forEach((o, i) => {
+    const numBadge = `<div style="font-size:12px;font-weight:700;color:var(--danger);min-width:20px">${i+1}</div>`;
     const soText = o.select_opt ? `<div style="margin-top:3px;font-size:10px;color:var(--text3)"><span style="color:var(--warn)">선택사항(Q):</span> ${escHtml(o.select_opt)}</div>` : '';
     const dopText = o.disp_opt ? `<div style="margin-top:2px;font-size:10px;color:var(--text3)"><span style="color:#0E7490">노출상품명(쿠팡):</span> ${escHtml(o.disp_opt)}</div>` : '';
     const codeCell = `<div style="font-size:11px;color:var(--text3);word-break:break-word"><span style="font-family:monospace;color:var(--danger)">${escHtml(o.vendor_code||'')}</span><div style="color:var(--text2);margin-top:2px;line-height:1.4">${escHtml(o.product||'')}</div>${soText}${dopText}</div>`;
     if (_editingNonstdIdx === i) {
-      html += `<div style="${G};padding:8px 0;border-bottom:1px solid #fee2e2;background:#fff7ed">${codeCell}
+      html += `<div style="${G};padding:8px 0;border-bottom:1px solid #fee2e2;background:#fff7ed">${numBadge}${codeCell}
         <input class="inp" id="ns_item_${i}" style="font-size:12px" value="${escHtml(o.item_name||'')}">
         <input class="inp" id="ns_opt_${i}" style="font-size:12px" value="${escHtml(o.option_name||'')}">
         <input class="inp" id="ns_qty_${i}" type="number" min="1" style="font-size:12px" value="${o.code_qty||1}">
@@ -4715,7 +4716,7 @@ function renderNonstdCodes(){
           <button class="btn btn-sm" onclick="_editingNonstdIdx=-1;renderNonstdCodes()">취소</button>
         </span></div>`;
     } else {
-      html += `<div style="${G};padding:8px 0;border-bottom:1px solid #fee2e2">${codeCell}
+      html += `<div style="${G};padding:8px 0;border-bottom:1px solid #fee2e2">${numBadge}${codeCell}
         <div style="font-size:12px">${escHtml(o.item_name||'-')}</div>
         <div style="font-size:12px">${escHtml(o.option_name||'')||'-'}</div>
         <div style="font-size:12px">${o.code_qty||1}</div>
