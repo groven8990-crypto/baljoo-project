@@ -966,6 +966,7 @@
         <button class="btn btn-sm" style="background:#1A56DB;color:#fff;border:none" onclick="exportExpHistJson()" title="이 컴퓨터의 지출결의서 작성이력을 JSON 백업 파일로 받기">📦 JSON 백업</button>
         <button class="btn btn-sm" onclick="document.getElementById('expHistJsonFile').click()" title="다른 컴퓨터에서 받은 JSON 백업을 불러오기">📤 JSON 가져오기</button>
         <input type="file" id="expHistJsonFile" accept=".json" style="display:none" onchange="importExpHistJson(this)">
+        <button id="sbUploadBtn" class="btn btn-sm" onclick="_sbUploadAllExp()" style="background:#0f766e;color:#fff;border:none" title="현재 기기 이력을 Supabase에 업로드해서 다른 직원과 공유">☁️ Supabase 업로드</button>
         <button class="btn btn-sm" onclick="if(confirm('전체 이력을 삭제할까요?')){localStorage.removeItem('yb_exphist');renderExpHistList();}">🗑 전체삭제</button>
       </div>
       <!-- 선택 다운로드 툴바 -->
@@ -1462,6 +1463,192 @@ async function loadFromCloud(key) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Supabase 실시간 동기화
+// ─── 필요한 테이블 SQL (Supabase SQL Editor에서 실행) ───────
+// CREATE TABLE IF NOT EXISTS exp_hist (
+//   id BIGINT PRIMARY KEY,
+//   data JSONB NOT NULL DEFAULT '{}'::jsonb,
+//   updated_at TIMESTAMPTZ DEFAULT NOW()
+// );
+// CREATE TABLE IF NOT EXISTS codes (
+//   id SERIAL PRIMARY KEY,
+//   data JSONB NOT NULL DEFAULT '{}'::jsonb
+// );
+// CREATE TABLE IF NOT EXISTS opt_maps (
+//   id SERIAL PRIMARY KEY,
+//   data JSONB NOT NULL DEFAULT '{}'::jsonb
+// );
+// ALTER TABLE exp_hist DISABLE ROW LEVEL SECURITY;
+// ALTER TABLE codes    DISABLE ROW LEVEL SECURITY;
+// ALTER TABLE opt_maps DISABLE ROW LEVEL SECURITY;
+// ═══════════════════════════════════════════════════════════════
+const _SB_URL = 'https://byanyksnvrqfrkeylvll.supabase.co';
+const _SB_KEY = 'sb_publishable_MtxmbtE3vIhozokgncalMg_rKeYJJE0';
+
+function _sbH(extra) {
+  return Object.assign({
+    'apikey': _SB_KEY,
+    'Authorization': 'Bearer ' + _SB_KEY,
+    'Content-Type': 'application/json'
+  }, extra || {});
+}
+
+async function _sbUpsertExp(record) {
+  if (!record || !record.id) return;
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/exp_hist', {
+      method: 'POST',
+      headers: _sbH({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({ id: record.id, data: record })
+    });
+    if (!r.ok) { const t = await r.text().catch(()=>''); console.warn('[SB] upsert exp_hist:', r.status, t); }
+  } catch(e) { console.warn('[SB] upsert exp error:', e); }
+}
+
+async function _sbDeleteExp(id) {
+  if (!id) return;
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/exp_hist?id=eq.' + id, {
+      method: 'DELETE',
+      headers: _sbH({ 'Prefer': 'return=minimal' })
+    });
+    if (!r.ok) console.warn('[SB] delete exp_hist:', r.status);
+  } catch(e) { console.warn('[SB] delete exp error:', e); }
+}
+
+async function _sbSyncExpHist() {
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/exp_hist?select=id,data&order=id.desc&limit=500', {
+      headers: _sbH()
+    });
+    if (!r.ok) return;
+    const rows = await r.json();
+    if (!Array.isArray(rows) || !rows.length) return;
+    const local = loadExpHist();
+    const deletedKeys = new Set(JSON.parse(localStorage.getItem(LS_EXP_DELETED)||'[]'));
+    const existingKeys = new Set(local.map(d => (d.date||'')+'|'+(d.vendor||'')+'|'+(d.total||0)));
+    const existingIds  = new Set(local.map(d => d.id));
+    let added = 0;
+    for (const row of rows) {
+      const rec = row.data;
+      if (!rec) continue;
+      const recId = rec.id || row.id;
+      const key = (rec.date||'')+'|'+(rec.vendor||'')+'|'+(rec.total||0);
+      if (deletedKeys.has(key)) continue;
+      if (existingIds.has(recId)) continue;
+      if (existingKeys.has(key)) continue;
+      existingKeys.add(key);
+      existingIds.add(recId);
+      if (!rec.id) rec.id = recId;
+      local.push(rec);
+      added++;
+    }
+    if (added > 0) {
+      local.sort((a,b) => (b.date||'') < (a.date||'') ? -1 : (b.date||'') > (a.date||'') ? 1 : 0);
+      saveExpHist(local);
+      renderExpHistList();
+      _poShowToast('☁️ ' + added + '건 동기화됐어요');
+    }
+  } catch(e) { console.warn('[SB] sync exp_hist error:', e); }
+}
+
+async function _sbUploadAllExp() {
+  const hist = loadExpHist();
+  if (!hist.length) { alert('업로드할 이력이 없어요.'); return; }
+  const btn = document.getElementById('sbUploadBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 업로드 중...'; }
+  try {
+    const body = hist.filter(rec => rec && rec.id).map(rec => ({ id: rec.id, data: rec }));
+    const r = await fetch(_SB_URL + '/rest/v1/exp_hist', {
+      method: 'POST',
+      headers: _sbH({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify(body)
+    });
+    if (r.ok) {
+      _poShowToast('☁️ ' + hist.length + '건 Supabase 업로드 완료!');
+    } else {
+      const t = await r.text().catch(()=>'');
+      alert('업로드 실패: ' + r.status + '\n' + t);
+    }
+  } catch(e) { alert('업로드 오류: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '☁️ Supabase 업로드'; } }
+}
+
+async function _sbSaveCodes(codes) {
+  try {
+    await fetch(_SB_URL + '/rest/v1/codes?id=gte.0', {
+      method: 'DELETE',
+      headers: _sbH({ 'Prefer': 'return=minimal' })
+    });
+    if (!codes.length) return;
+    const r = await fetch(_SB_URL + '/rest/v1/codes', {
+      method: 'POST',
+      headers: _sbH({ 'Prefer': 'return=minimal' }),
+      body: JSON.stringify(codes.map(c => ({ data: c })))
+    });
+    if (!r.ok) console.warn('[SB] insert codes:', r.status);
+  } catch(e) { console.warn('[SB] save codes error:', e); }
+}
+
+async function _sbSyncCodes() {
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/codes?select=data&order=id.asc', {
+      headers: _sbH()
+    });
+    if (!r.ok) return;
+    const rows = await r.json();
+    if (!Array.isArray(rows) || !rows.length) return;
+    const remote = rows.map(row => row.data).filter(Boolean);
+    if (!remote.length) return;
+    const local = loadCodes();
+    let added = 0;
+    for (const rc of remote) {
+      const rKey = (rc.code||rc.originalCode||'') + '|' + (rc.vendor||'');
+      const found = local.find(lc => ((lc.code||lc.originalCode||'') + '|' + (lc.vendor||'')) === rKey);
+      if (!found) { local.push(rc); added++; }
+    }
+    if (added > 0) localStorage.setItem(LS_CODES, JSON.stringify(local));
+  } catch(e) { console.warn('[SB] sync codes error:', e); }
+}
+
+async function _sbSaveOptMaps(maps) {
+  try {
+    await fetch(_SB_URL + '/rest/v1/opt_maps?id=gte.0', {
+      method: 'DELETE',
+      headers: _sbH({ 'Prefer': 'return=minimal' })
+    });
+    if (!maps.length) return;
+    const r = await fetch(_SB_URL + '/rest/v1/opt_maps', {
+      method: 'POST',
+      headers: _sbH({ 'Prefer': 'return=minimal' }),
+      body: JSON.stringify(maps.map(m => ({ data: m })))
+    });
+    if (!r.ok) console.warn('[SB] insert opt_maps:', r.status);
+  } catch(e) { console.warn('[SB] save opt_maps error:', e); }
+}
+
+async function _sbSyncOptMaps() {
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/opt_maps?select=data&order=id.asc', {
+      headers: _sbH()
+    });
+    if (!r.ok) return;
+    const rows = await r.json();
+    if (!Array.isArray(rows) || !rows.length) return;
+    const remote = rows.map(row => row.data).filter(Boolean);
+    if (!remote.length) return;
+    const local = loadOptMap();
+    let added = 0;
+    for (const rm of remote) {
+      const rKey = (rm.productKw||'') + '|' + (rm.sourceKws||'');
+      const found = local.find(lm => ((lm.productKw||'') + '|' + (lm.sourceKws||'')) === rKey);
+      if (!found) { local.push(rm); added++; }
+    }
+    if (added > 0) localStorage.setItem(LS_OPTMAP, JSON.stringify(local));
+  } catch(e) { console.warn('[SB] sync opt_maps error:', e); }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 전체 데이터 클라우드 동기화 (v2)
 // ═══════════════════════════════════════════════════════════════
 const CLOUD_SYNC_KEYS = [
@@ -1582,11 +1769,13 @@ function loadCodes() {
 function saveCodes(a) {
   localStorage.setItem(LS_CODES, JSON.stringify(a));
   saveToCloud('codes', a);
+  _sbSaveCodes(a).catch(e => console.warn('[SB] saveCodes:', e));
 }
 function loadOptMap()  { try{ return JSON.parse(localStorage.getItem(LS_OPTMAP)||'[]'); }catch{ return []; } }
 function saveOptMap(a) {
   localStorage.setItem(LS_OPTMAP, JSON.stringify(a));
   saveToCloud('optmap', a);
+  _sbSaveOptMaps(a).catch(e => console.warn('[SB] saveOptMap:', e));
 }
 
 // 직접수정(override): "코드+선택사항" 단위로 품목명/옵션/수량을 사용자가 직접 지정
@@ -1953,6 +2142,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   const fa=document.getElementById('fileInputAdd');
   if(fa) fa.addEventListener('change',e=>{handleFileAdd(e.target.files[0]);fa.value='';});
   try{ populateVendorSelect(); }catch(e){}
+  _sbSyncCodes().catch(()=>{});
+  _sbSyncOptMaps().catch(()=>{});
 });
 
 function setSt(msg,err){const el=document.getElementById('status');el.textContent=msg;el.className=err?'error':'';}
@@ -6221,7 +6412,7 @@ function switchExpSubTab(name) {
   const btn = document.getElementById('stab-exp' + name);
   if (content) { content.classList.add('active'); content.style.display = ''; }
   if (btn) btn.classList.add('active');
-  if (name === 'list')  { renderExpHistList(); expSheetsLoad(false); }
+  if (name === 'list')  { renderExpHistList(); expSheetsLoad(false); _sbSyncExpHist().catch(()=>{}); }
   if (name === 'bank')  renderBankList();
   if (name === 'write') expSheetInitUi();
 }
@@ -6397,7 +6588,10 @@ function deleteExpHist(i) {
   }
   hist.splice(i, 1);
   saveExpHist(hist);
-  if (item && item.id && item.hasAttach) _idbDelAttach(item.id);
+  if (item && item.id) {
+    if (item.hasAttach) _idbDelAttach(item.id);
+    _sbDeleteExp(item.id).catch(()=>{});
+  }
   renderExpHistList();
 }
 
@@ -9142,6 +9336,7 @@ function saveExpense() {
     if (pending.length) updated.hasAttach = true;
     hist[targetIdx] = updated;
     saveExpHist(hist);
+    _sbUpsertExp(updated).catch(()=>{});
     if (pending.length && existing.id) {
       (async () => {
         const prev = await _idbGetAttach(existing.id).catch(()=>null);
@@ -9180,6 +9375,7 @@ function saveExpense() {
   alert('저장됐어요!');
   renderExpHistList();
   expSheetsAppend(record).catch(e => console.warn('[Sheets]', e));
+  _sbUpsertExp(record).catch(()=>{});
   resetExpForm();
 }
 
