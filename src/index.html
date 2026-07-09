@@ -6492,7 +6492,7 @@ function exportExpHistXlsx() {
   const sumRow    = ['','','','','','','','매입 총합계(공급가) =','', sumSupply,'','','',''];
 
   // 행3: 컬럼 헤더 (장부 매입 시트와 동일)
-  const headers = ['년','월','일','증  빙','분  류','내   용','업체명','공급가','세  액','합  계','주문건수','결제일','결제여부','비  고'];
+  const headers = ['년','월','일','증  빙','분  류','내   용','업체명','공급가','세  액','합  계','주문건수','결제일','결제여부','비  고','사업자명'];
 
   const rows = [titleRow, sumRow, headers];
 
@@ -6517,12 +6517,13 @@ function exportExpHistXlsx() {
       '',                         // 주문건수
       '',                         // 결제일
       d.payType||'즉시결제',
-      d.note||''
+      d.note||'',
+      d.co||''                    // 사업자명 (O열)
     ]);
   });
 
   // 합계 행
-  rows.push(['합계','','','','','','', sumSupply, sumVat, sumTotal,'','','','']);
+  rows.push(['합계','','','','','','', sumSupply, sumVat, sumTotal,'','','','','']);
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
 
@@ -8874,7 +8875,7 @@ function _parseSheetId(url){
   return m ? m[1] : null;
 }
 function _expSheetRow(d){
-  // 컬럼 순서: 날짜(YYYY-MM-DD)|증빙|분류|내용|업체명|공급가|세액|합계|주문건수|결제일|결제여부|비고
+  // 컬럼 순서: A날짜|B증빙|C분류|D내용|E업체명|F공급가|G세액|H합계|I주문건수|J결제일|K결제여부|L사업자명|M비고
   const dt = d.date ? new Date(d.date + 'T00:00:00') : new Date();
   const evList = [d.ev1&&'세금계산서', d.ev2&&'계산서', d.ev3&&'현금영수증', d.ev4&&'고지서', d.ev5&&'기타', d.ev6&&'사후첨부'].filter(Boolean).join(', ');
   const dateStr = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
@@ -8884,7 +8885,7 @@ function _expSheetRow(d){
     d.desc||'', d.vendor||'',
     Number(d.supply)||0, Number(d.vat)||0, Number(d.total)||0,
     '', '',
-    d.payType||'', d.note||''
+    d.payType||'', d.co||'', d.note||''
   ];
 }
 async function expSheetsAppend(d){
