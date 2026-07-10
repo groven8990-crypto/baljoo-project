@@ -8965,7 +8965,7 @@ function _doPreviewExpense(d, attachImgUrl) {
       (d.note ? escHtml(d.note) : '') +
       (attachImgUrl && attachImgUrl.length
         ? '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">' +
-            attachImgUrl.map(u => '<img src="' + u + '" style="max-width:calc(50% - 4px);max-height:280px;object-fit:contain;border:1px solid #e0e0e0;border-radius:3px">').join('') +
+            attachImgUrl.map(u => '<img src="' + u + '" style="max-width:' + (attachImgUrl.length === 1 ? '100%' : 'calc(50% - 4px)') + ';max-height:700px;object-fit:contain;border:1px solid #e0e0e0;border-radius:3px">').join('') +
           '</div>'
         : '') +
     '</td></tr>' +
