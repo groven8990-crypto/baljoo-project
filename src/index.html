@@ -13375,6 +13375,19 @@ function _srBuildBizHeaderInner(biz, T){
       <span>매출 <b>${T.sales.toLocaleString()}</b> · 매입 <b>${T.purchase.toLocaleString()}</b>${pct(T.purchase)}${feeStr}</span>${glassBox}
     </span>`;
 }
+// 매입/순이익 화면 발주처 표시명 변경 + 취급품목 병기
+const SR_VENDOR_RENAME = { '에이팩': '3PL' };
+const SR_VENDOR_CATEGORY = {
+  '에이팩':'깐마늘', '동일':'깐마늘', '일비':'박대', '푸드엔드베스트':'간고등어',
+  '늘푸른우리':'농산물', '최고집':'농산물', '한마당식품':'밀키트', '생선상륙':'굴비 외',
+  '공덕농협':'떡류 외', '도매꾹':'잡화', '해담별':'농수산물',
+  '거풍푸드':'김치', '일해수산':'홍어회', '남부파머스':'농산물'
+};
+function _srVendorName(v){ return SR_VENDOR_RENAME[v] || v; }
+function _srVendorLabel(v){
+  const cat = SR_VENDOR_CATEGORY[v];
+  return escHtml(_srVendorName(v)) + (cat ? `<span style="color:#6B7684;font-weight:400;font-size:11px;margin-left:4px">(${escHtml(cat)})</span>` : '');
+}
 // 사업자별 발주처 요약 테이블 inner HTML (그로븐만 부가세 컬럼 숨김)
 function _srBuildBizVendorTableInner(biz, bizRows){
   const byVendor = {};
@@ -13389,7 +13402,7 @@ function _srBuildBizVendorTableInner(biz, bizRows){
   const HBG='#F8F9FA', HFG='#6B7684';
   const _vpct = (v, s) => s > 0 ? `<span style="font-size:10px;font-weight:400;opacity:.6;margin-left:3px">(${(v/s*100).toFixed(1)}%)</span>` : '';
   const vendorTrs = vendorList.map((m,i)=>`<tr style="background:${i%2===0?'#fff':'#FBFCFD'}">
-    <td style="padding:9px 14px;font-size:12px;font-weight:600;border-bottom:1px solid #F2F4F6;color:#191F28">${escHtml(m.vendor)}</td>
+    <td style="padding:9px 14px;font-size:12px;font-weight:600;border-bottom:1px solid #F2F4F6;color:#191F28">${_srVendorLabel(m.vendor)}</td>
     <td style="padding:9px 14px;text-align:right;font-size:12px;border-bottom:1px solid #F2F4F6;color:#191F28;white-space:nowrap">${m.count}건</td>
     <td style="padding:9px 14px;text-align:right;font-size:12px;color:#3182F6;font-weight:600;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.sales.toLocaleString()}원</td>
     <td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.purchase.toLocaleString()}원${_vpct(m.purchase,m.sales)}</td>
@@ -13812,7 +13825,7 @@ function _srBuildDetailRowHtml(r, i, firstOfGroup){
     <td style="padding:4px 4px;border-bottom:1px solid #eee;text-align:center">
       <button type="button" data-toggle-key="${_srEsc(r.key)}" onclick="srToggleProfitDetail(this)" style="border:1px solid #D1D5DB;background:#fff;cursor:pointer;font-size:11px;padding:1px 6px;border-radius:3px" title="사람별 검산">▶</button>
     </td>
-    <td style="padding:6px 8px;border-bottom:1px solid #eee;font-weight:600">${escHtml(r.detailVendor||r.vendor)}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;font-weight:600">${escHtml(_srVendorName(r.detailVendor||r.vendor))}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee">${escHtml(r.item||'-')}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#6B7280">${escHtml(r.option||'-')}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${r.count}</td>
@@ -14003,7 +14016,7 @@ function srBuildDetailInnerHtml(r){
   }).join('');
   const totalBoxes = r.orderDetail.reduce((s,d)=>s+d.boxes,0);
   const formula = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">계산식: <b>박스수</b> = ceil(매입수량 ÷ ${r.consol||'없음'}) · <b>매입가</b> = 매입수량 × ${r.unit.toLocaleString()}원 · <b>배송비</b> = 박스수 × ${r.shipFee.toLocaleString()}원 <span style="color:#7C3AED;margin-left:6px">· 박스수에 직접 입력하면 그 주문만 수동 보정</span></div>`;
-  return `<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📋 ${escHtml(r.brand)} · ${escHtml(r.vendor)} · ${escHtml(r.item)} · ${escHtml(r.option)} — 사람별 계산</div>
+  return `<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📋 ${escHtml(r.brand)} · ${escHtml(_srVendorName(r.vendor))} · ${escHtml(r.item)} · ${escHtml(r.option)} — 사람별 계산</div>
     ${formula}
     <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #E5E7EB;border-radius:4px">
       <thead><tr style="background:#F3F4F6;color:#374151">
