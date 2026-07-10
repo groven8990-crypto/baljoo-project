@@ -7788,6 +7788,7 @@ async function downloadSelectedExpImg() {
     document.body.appendChild(tmp);
   }
 
+  const savedIds = [];
   for (const chk of chks) {
     const i = parseInt(chk.dataset.idx);
     const d = hist[i];
@@ -7830,11 +7831,24 @@ async function downloadSelectedExpImg() {
         a.click();
         ok++;
       }
+      if (d.id) savedIds.push(d.id);
       await new Promise(r => setTimeout(r, 180));
     } catch(e) {
       console.error('이미지 생성 오류:', e);
       fail++;
     }
+  }
+
+  // 저장된 항목에 이미지 저장 날짜 기록 (개별 📷 버튼과 동일)
+  if (savedIds.length) {
+    const h2 = loadExpHist();
+    const today = _localISO();
+    let stamped = false;
+    for (const id of savedIds) {
+      const idx = h2.findIndex(x => x && x.id === id);
+      if (idx >= 0) { h2[idx].imgSavedAt = today; stamped = true; }
+    }
+    if (stamped) { saveExpHist(h2); renderExpHistList(); }
   }
 
   // 모달 닫기
@@ -8041,6 +8055,32 @@ function handleFileAdd(file){
       loadedFileNames.push(file.name+'(+'+added+'건'+(dupSkipped>0?',중복'+dupSkipped+'제외':'')+')');
       renderLoadedFiles();
       renderStep2();renderStep3();renderUnmatchedHints();renderOmPreview();
+      // 송장입력 탭에도 합산 동기화 (첫 파일 업로드와 동일하게 추가 파일도 반영)
+      try {
+        if (invOrderData && added > 0) {
+          const rows2 = XLSX.utils.sheet_to_json(ws, {defval:''});
+          const sample = invOrderData[0] || rows2[0] || {};
+          const onKey = Object.keys(sample).find(k => /주문번호/.test(k));
+          const existingNos = onKey ? new Set(invOrderData.map(r => String(r[onKey]||'').trim()).filter(Boolean)) : null;
+          const fresh = onKey ? rows2.filter(r => {
+            const v = String(r[onKey]||'').trim();
+            if (v && existingNos.has(v)) return false;
+            if (v) existingNos.add(v);
+            return true;
+          }) : rows2;
+          if (fresh.length) {
+            invOrderData = invOrderData.concat(fresh);
+            invOrderFileName = invOrderFileName ? (invOrderFileName + ' + ' + file.name) : file.name;
+            try {
+              const appended = JSON.parse(localStorage.getItem('invOrderAppended')||'[]');
+              appended.push({ fname: file.name, rows: fresh });
+              localStorage.setItem('invOrderAppended', JSON.stringify(appended));
+            } catch(_q) {}
+            if (typeof invShowOrderInfo === 'function') invShowOrderInfo(invOrderFileName, invOrderData.length);
+            if (typeof invCheckReady === 'function') invCheckReady();
+          }
+        }
+      } catch(_e) { console.warn('송장 추가 동기화 실패:', _e); }
     }catch(err){setSt('오류: '+err.message,true);console.error(err);}
   };
   reader.readAsArrayBuffer(file);
