@@ -1572,12 +1572,23 @@ async function _sbUploadAllExp() {
       headers: _sbH({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
       body: JSON.stringify(body)
     });
-    if (r.ok) {
-      _poShowToast('☁️ ' + hist.length + '건 Supabase 업로드 완료!');
-    } else {
+    if (!r.ok) {
       const t = await r.text().catch(()=>'');
       alert('업로드 실패: ' + r.status + '\n' + t);
+      return;
     }
+    // 이 컴퓨터에 있는 첨부파일도 업로드 (한 건씩 — 용량이 커서 순차 처리)
+    const withAttach = hist.filter(rec => rec && rec.id && rec.hasAttach);
+    let aOk = 0;
+    for (const rec of withAttach) {
+      const attach = await _idbGetAttach(rec.id).catch(()=>null);
+      if (attach) {
+        if (btn) btn.textContent = '⏳ 첨부 ' + (aOk+1) + '/' + withAttach.length + ' 업로드 중...';
+        await _sbUpsertAttach(rec.id, attach);
+        aOk++;
+      }
+    }
+    _poShowToast('☁️ ' + hist.length + '건 업로드 완료!' + (aOk ? ' (첨부 ' + aOk + '건 포함)' : ''));
   } catch(e) { alert('업로드 오류: ' + e.message); }
   finally { if (btn) { btn.disabled = false; btn.textContent = '☁️ Supabase 업로드'; } }
 }
@@ -1696,6 +1707,93 @@ async function _sbSyncBankInfo() {
   }
   localStorage.setItem(LS_BANK, JSON.stringify(local));
   if (added > 0) renderBankList();
+}
+
+// ─── 지출결의서 첨부파일 동기화 (exp_attach 테이블) ───
+// 필요 SQL:
+// CREATE TABLE IF NOT EXISTS exp_attach (
+//   id BIGINT PRIMARY KEY,
+//   data JSONB NOT NULL DEFAULT '{}'::jsonb,
+//   updated_at TIMESTAMPTZ DEFAULT NOW()
+// );
+// ALTER TABLE exp_attach DISABLE ROW LEVEL SECURITY;
+
+// 큰 이미지 축소 (업로드 용량 절약 — 최대 변 1600px, JPEG 80%)
+async function _shrinkImageDataUrl(dataUrl, maxDim, quality) {
+  try {
+    const img = await new Promise((res, rej) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = rej;
+      im.src = dataUrl;
+    });
+    const scale = Math.min(1, (maxDim||1600) / Math.max(img.width, img.height));
+    if (scale >= 1 && dataUrl.length < 400000) return dataUrl;
+    const c = document.createElement('canvas');
+    c.width  = Math.max(1, Math.round(img.width * scale));
+    c.height = Math.max(1, Math.round(img.height * scale));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', quality || 0.8);
+  } catch(e) { return dataUrl; }
+}
+
+async function _sbShrinkAttach(data) {
+  const list = data.attachments || (data.data ? [{name:data.name, type:data.type, data:data.data}] : []);
+  const out = [];
+  for (const a of list) {
+    if ((a.type||'').startsWith('image/')) {
+      const slim = await _shrinkImageDataUrl(a.data, 1600, 0.8);
+      out.push({ name: a.name, type: slim.startsWith('data:image/jpeg') ? 'image/jpeg' : a.type, data: slim });
+    } else {
+      out.push(a); // PDF 등은 원본 유지
+    }
+  }
+  return { attachments: out };
+}
+
+async function _sbUpsertAttach(id, data) {
+  if (!id || !data) return;
+  try {
+    const slim = await _sbShrinkAttach(data);
+    if (!slim.attachments.length) return;
+    const r = await fetch(_SB_URL + '/rest/v1/exp_attach', {
+      method: 'POST',
+      headers: _sbH({ 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({ id, data: slim })
+    });
+    if (!r.ok) { const t = await r.text().catch(()=>''); console.warn('[SB] upsert exp_attach:', r.status, t); }
+  } catch(e) { console.warn('[SB] upsert attach error:', e); }
+}
+
+async function _sbGetAttach(id) {
+  if (!id) return null;
+  try {
+    const r = await fetch(_SB_URL + '/rest/v1/exp_attach?id=eq.' + id + '&select=data', { headers: _sbH() });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return (Array.isArray(rows) && rows[0] && rows[0].data) || null;
+  } catch(e) { return null; }
+}
+
+async function _sbDeleteAttach(id) {
+  if (!id) return;
+  try {
+    await fetch(_SB_URL + '/rest/v1/exp_attach?id=eq.' + id, {
+      method: 'DELETE',
+      headers: _sbH({ 'Prefer': 'return=minimal' })
+    });
+  } catch(e) {}
+}
+
+// 첨부 조회: 이 컴퓨터 IDB → 없으면 Supabase에서 받아와 IDB에 캐시
+async function _expGetAttachAnywhere(id) {
+  if (!id) return null;
+  let attach = null;
+  try { attach = await _idbGetAttach(id); } catch(e) {}
+  if (attach) return attach;
+  attach = await _sbGetAttach(id);
+  if (attach) { try { await _idbPutAttach(id, attach, true); } catch(e) {} }
+  return attach;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -6668,7 +6766,7 @@ function deleteExpHist(i) {
   hist.splice(i, 1);
   saveExpHist(hist);
   if (item && item.id) {
-    if (item.hasAttach) _idbDelAttach(item.id);
+    if (item.hasAttach) { _idbDelAttach(item.id); _sbDeleteAttach(item.id).catch(()=>{}); }
     _sbDeleteExp(item.id).catch(()=>{});
   }
   renderExpHistList();
@@ -6868,13 +6966,15 @@ async function _idbGet(key) {
   });
 }
 // ── 거래내역서 첨부 파일 CRUD ──
-async function _idbPutAttach(id, data) {
+async function _idbPutAttach(id, data, skipCloud) {
   const db = await _idbOpen();
-  return new Promise((res, rej) => {
+  await new Promise((res, rej) => {
     const tx = db.transaction('attachments', 'readwrite');
     tx.objectStore('attachments').put(data, id);
     tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
   });
+  // Supabase에도 업로드 (클라우드에서 받아온 걸 캐시할 땐 생략)
+  if (!skipCloud) _sbUpsertAttach(id, data).catch(()=>{});
 }
 async function _idbGetAttach(id) {
   const db = await _idbOpen();
@@ -6969,7 +7069,7 @@ function clearExpAttach(idx) {
   if (inp) inp.value = '';
 }
 async function viewExpAttach(id) {
-  const attach = await _idbGetAttach(id);
+  const attach = await _expGetAttachAnywhere(id);
   if (!attach) { alert('첨부파일을 찾을 수 없어요.'); return; }
   const list = attach.attachments || (attach.data ? [{ name: attach.name, type: attach.type, data: attach.data }] : []);
   if (!list.length) { alert('첨부파일을 찾을 수 없어요.'); return; }
@@ -6993,7 +7093,7 @@ async function attachToExpHist(i) {
     if (!item) return;
     const id = item.id || 0;
     if (!id) { alert('이 항목은 ID가 없어 첨부가 불가능해요.'); return; }
-    const existing = await _idbGetAttach(id).catch(()=>null);
+    const existing = await _expGetAttachAnywhere(id).catch(()=>null);
     const existList = existing ? (existing.attachments || (existing.data ? [{name:existing.name,type:existing.type,data:existing.data}] : [])) : [];
     const newItems = await Promise.all(files.map(f => new Promise(res => {
       const r = new FileReader();
@@ -8845,11 +8945,11 @@ async function _expAttachToImageUrl(type, dataUrl){
   }
   return null;
 }
-// 이력 항목의 IDB 첨부 전체를 이미지 URL 배열로 (신형 attachments 배열 + 구형 단일 data 모두 지원)
+// 이력 항목의 첨부 전체를 이미지 URL 배열로 (이 컴퓨터 IDB → 없으면 Supabase, 신·구 형식 모두 지원)
 async function _expLoadAttachImgUrls(d){
   if (!d || !d.hasAttach || !d.id) return [];
   try {
-    const attach = await _idbGetAttach(d.id);
+    const attach = await _expGetAttachAnywhere(d.id);
     if (!attach) return [];
     const list = attach.attachments || (attach.data ? [{type: attach.type, data: attach.data}] : []);
     return (await Promise.all(list.map(a => _expAttachToImageUrl(a.type, a.data)))).filter(Boolean);
@@ -8862,7 +8962,7 @@ async function previewExpense() {
     imgUrls = (await Promise.all(_expPendingAttachments.map(a => _expAttachToImageUrl(a.type, a.dataUrl)))).filter(Boolean);
   } else if (_editingExpItemId) {
     try {
-      const attach = await _idbGetAttach(_editingExpItemId);
+      const attach = await _expGetAttachAnywhere(_editingExpItemId);
       if (attach) {
         const list = attach.attachments || (attach.data ? [{type:attach.type, data:attach.data}] : []);
         imgUrls = (await Promise.all(list.map(a => _expAttachToImageUrl(a.type, a.data)))).filter(Boolean);
@@ -9125,7 +9225,7 @@ function editExpHist(i) {
   _expPendingAttachments = [];
   _expRenderAttachGrid();
   if (d.hasAttach && d.id != null) {
-    _idbGetAttach(d.id).then(attach => {
+    _expGetAttachAnywhere(d.id).then(attach => {
       if (!attach) return;
       const list = attach.attachments || (attach.data ? [{name:attach.name,type:attach.type,data:attach.data}] : []);
       _expPendingAttachments = list.map(a => ({ name: a.name, type: a.type, dataUrl: a.data }));
@@ -9452,7 +9552,7 @@ function saveExpense() {
     _sbUpsertExp(updated).catch(()=>{});
     if (pending.length && existing.id) {
       (async () => {
-        const prev = await _idbGetAttach(existing.id).catch(()=>null);
+        const prev = await _expGetAttachAnywhere(existing.id).catch(()=>null);
         const prevList = prev ? (prev.attachments || (prev.data ? [{name:prev.name,type:prev.type,data:prev.data}] : [])) : [];
         const newList = pending.map(a => ({ name: a.name, type: a.type, data: a.dataUrl }));
         await _idbPutAttach(existing.id, { attachments: [...prevList, ...newList] });
