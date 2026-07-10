@@ -6805,12 +6805,7 @@ async function previewHistItem(i) {
   const hist = loadExpHist();
   const d = hist[i];
   if (!d) return;
-  let attachImgUrl = null;
-  if (d.hasAttach && d.id) {
-    const attach = await _idbGetAttach(d.id);
-    if (attach) attachImgUrl = await _expAttachToImageUrl(attach.type, attach.data);
-  }
-  _doPreviewExpense(d, attachImgUrl);
+  _doPreviewExpense(d, await _expLoadAttachImgUrls(d));
 }
 
 let _expSaveDirHandle = null;
@@ -7800,14 +7795,7 @@ async function downloadSelectedExpImg() {
 
     try {
       // 첨부(이미지/PDF) 로드 후 지출결의서 렌더링
-      let attachImgUrl = null;
-      if (d.hasAttach && d.id) {
-        try {
-          const attach = await _idbGetAttach(d.id);
-          if (attach) attachImgUrl = await _expAttachToImageUrl(attach.type, attach.data);
-        } catch(_) {}
-      }
-      _doPreviewExpense(d, attachImgUrl);
+      _doPreviewExpense(d, await _expLoadAttachImgUrls(d));
       await new Promise(r => setTimeout(r, 120));
       const el = document.getElementById('expPrintArea');
       if (!el) { fail++; continue; }
@@ -7866,11 +7854,7 @@ async function saveExpImgFromHist(i) {
   const d = hist[i];
   if (!d) return;
   // 첨부 이미지/PDF 로드 (PDF는 첫 페이지 PNG로 변환)
-  let attachImgUrl = null;
-  if (d.hasAttach && d.id) {
-    const attach = await _idbGetAttach(d.id);
-    if (attach) attachImgUrl = await _expAttachToImageUrl(attach.type, attach.data);
-  }
+  const attachImgUrls = await _expLoadAttachImgUrls(d);
   // 숨겨진 임시 컨테이너에 렌더링 후 캡처
   let tmp = document.getElementById('_expImgTmp');
   if (!tmp) {
@@ -7881,7 +7865,7 @@ async function saveExpImgFromHist(i) {
   }
   _expModalData = d;
   // previewContent에 렌더링 후 바로 캡처
-  _doPreviewExpense(d, attachImgUrl);
+  _doPreviewExpense(d, attachImgUrls);
   setTimeout(() => {
     const el = document.getElementById('expPrintArea');
     if (!el) return;
@@ -8793,6 +8777,16 @@ async function _expAttachToImageUrl(type, dataUrl){
     catch(e) { console.warn('PDF→이미지 변환 실패:', e); return null; }
   }
   return null;
+}
+// 이력 항목의 IDB 첨부 전체를 이미지 URL 배열로 (신형 attachments 배열 + 구형 단일 data 모두 지원)
+async function _expLoadAttachImgUrls(d){
+  if (!d || !d.hasAttach || !d.id) return [];
+  try {
+    const attach = await _idbGetAttach(d.id);
+    if (!attach) return [];
+    const list = attach.attachments || (attach.data ? [{type: attach.type, data: attach.data}] : []);
+    return (await Promise.all(list.map(a => _expAttachToImageUrl(a.type, a.data)))).filter(Boolean);
+  } catch(e) { console.warn('첨부 로드 실패:', e); return []; }
 }
 async function previewExpense() {
   const d = getExpFormData();
