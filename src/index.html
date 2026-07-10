@@ -1307,6 +1307,7 @@ const VENDOR_PREFIXES = {
   '도매꾹':        ['도매꾹]','도매꾹-','도매꾹_'],
   '동일':          ['동일]','동일-','동일_'],
   '그린캠':        ['그린캠]','그린캠-','그린캠_'],
+  '사무실':        ['사무실]','사무실-','사무실_'],
 };
 // 사용자 등록 발주처 (UI 에서 추가) — 기존 양식을 베이스로 발주처 이름/prefix 만 새로
 // 저장 형식: { '발주처명': { prefixes: ['x]','x_'], baseFormat: '일비' } }
@@ -3824,7 +3825,7 @@ function buildRows(vk,orders,alias){
   }
   const s=getSender(alias);
   switch(vk){
-    case '일비':case '일해수산':case '충남마른김수협':case '그린캠':
+    case '일비':case '일해수산':case '충남마른김수협':case '그린캠':case '사무실':
       return [['받는분성명','받는분전화번호','받는분주소(전체, 분할)','품목명','수량','배송메세지','','택배사','보내는분성명','보내는분주소(전체, 분할)','보내는분전화번호'],
         ...orders.map(o=>[o.recv_name,o.recv_phone,o.addr,ilbiItem(o),effQty(o),o.memo,'',o.carrier||'',s.name,s.addr,s.phone])];
     case '최고집':
@@ -5272,6 +5273,7 @@ const VENDOR_COURIER_DEFAULT = {
   '현해랑': '롯데택배',
   '도매꾹': '롯데택배',
   '늘푸른': '롯데택배',
+  '사무실': '롯데택배',
 };
 
 // ─── 거래처별 택배사 커스텀 매핑 (localStorage: invCarrierMap) ───────────
