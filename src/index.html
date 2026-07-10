@@ -5979,6 +5979,33 @@ function invLoadTracks(files, vendorHint) {
             break;
           }
         }
+        // 폴백: 발주서 회신형(에이팩 등) — 헤더에 운송장 컬럼명은 없지만
+        // 수령인 컬럼이 있고, 데이터 행 오른쪽에 헤더 없는 9~15자리 숫자 컬럼이 운송장번호
+        if (trackIdx < 0) {
+          for (let ri = 0; ri < Math.min(20, rawRows.length); ri++) {
+            const row = rawRows[ri];
+            const ni = row.findIndex(isNameCol);
+            if (ni < 0) continue;
+            const dataRows = rawRows.slice(ri + 1).filter(r => r && r.some(c => String(c).trim() !== ''));
+            if (!dataRows.length) break;
+            const maxLen = Math.max(row.length, ...dataRows.map(r => r.length));
+            for (let c = maxLen - 1; c >= 0; c--) {
+              const hdr = norm(row[c] || '');
+              if (/전화|연락처|우편|수량|주문/.test(hdr)) continue;
+              const vals = dataRows.map(r => String(r[c] == null ? '' : r[c]).replace(/\s/g,'')).filter(v => v !== '');
+              if (!vals.length) continue;
+              const hits = vals.filter(v => /^\d{9,15}$/.test(v)).length;
+              if (hits >= Math.max(1, Math.ceil(vals.length * 0.5))) {
+                trackIdx = c; nameIdx = ni; hdrRow = ri;
+                courierIdx = row.findIndex(isCourierCol);
+                addrIdx = row.findIndex(isRecvAddrCol);
+                if (addrIdx < 0) addrIdx = row.findIndex(isAddrCol);
+                break;
+              }
+            }
+            if (trackIdx >= 0) break;
+          }
+        }
         if (trackIdx < 0 || (nameIdx < 0 && orderCodeIdx < 0)) {
           const hdrSample = rawRows.length > 0 ? rawRows[0].filter(c=>c).slice(0,8).join(' / ') : '(행 없음)';
           invShowTrackError(file.name,
