@@ -12049,8 +12049,10 @@ function saveProductAliases(arr){ try{ localStorage.setItem(LS_PRODUCT_ALIASES, 
 function srNormalize(name){
   const n=String(name||'');
   const aliases = loadProductAliases();
+  // 최근에 추가한 별칭이 우선하도록 뒤에서부터 검사 (같은 키워드면 나중 것이 이김)
   // 1. 사용자 등록 별칭 우선 — 원본 상품명에서 직접 매칭
-  for(const a of aliases){
+  for(let i=aliases.length-1;i>=0;i--){
+    const a=aliases[i];
     if (a && a.kw && n.includes(a.kw)) return a.label || a.kw;
   }
   // 2. 내장 키워드 사전
@@ -12059,7 +12061,8 @@ function srNormalize(name){
       const builtin = SR_PRODUCT_KEYWORDS[k];
       // 3. 내장 결과에도 사용자 별칭 한 번 더 적용
       //    예: 상품명 "뼈다귀 해장국" → 내장 '뼈다귀'→'뼈다귀해장국' → 사용자 '뼈다귀해장국'→'올갱이해장국'
-      for(const a of aliases){
+      for(let i=aliases.length-1;i>=0;i--){
+        const a=aliases[i];
         if (a && a.kw && builtin.includes(a.kw)) return a.label || a.kw;
       }
       return builtin;
@@ -12078,12 +12081,16 @@ function srAddProductAlias(){
     if (errEl) errEl.textContent = '원본 키워드와 표시 이름을 모두 입력해 주세요.';
     return;
   }
-  const arr = loadProductAliases();
+  let arr = loadProductAliases();
+  // 같은 키워드가 이미 있으면 제거 후 새로 추가 (중복 방지 — 옛 매핑이 계속 이기는 문제 해결)
+  arr = arr.filter(a => !(a && a.kw === kw));
   arr.push({kw, label});
   saveProductAliases(arr);
   if (kwEl) kwEl.value = '';
   if (lbEl) lbEl.value = '';
   srRenderProductAliases();
+  // 매출 보고서가 떠 있으면 즉시 갱신
+  try { if (typeof srRender === 'function' && Array.isArray(allOrders) && allOrders.length) srRender(); } catch(e){}
 }
 function srRemoveProductAlias(i){
   const arr = loadProductAliases();
