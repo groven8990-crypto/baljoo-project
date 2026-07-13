@@ -942,7 +942,10 @@
       <div id="bnError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
     </div>
     <div class="card">
-      <div class="card-title">📋 등록된 계좌 목록</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:0">📋 등록된 계좌 목록</div>
+        <input class="inp" id="bankSearch" type="text" placeholder="🔍 발주처·은행·예금주 검색..." oninput="renderBankList()" style="max-width:260px;font-size:13px">
+      </div>
       <div id="bankList"><p style="font-size:13px;color:var(--text3)">등록된 계좌가 없습니다.</p></div>
     </div>
     <div class="alert alert-info">💾 등록한 계좌는 브라우저에 자동 저장됩니다. <strong>코드 관리 탭 → 전체 데이터 내보내기</strong>로 함께 백업됩니다.</div>
@@ -1173,7 +1176,10 @@
       <div id="incbnError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
     </div>
     <div class="card">
-      <div class="card-title">📋 등록된 계좌 목록</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:0">📋 등록된 계좌 목록</div>
+        <input class="inp" id="incBankSearch" type="text" placeholder="🔍 거래처·은행·예금주 검색..." oninput="renderIncBankList()" style="max-width:260px;font-size:13px">
+      </div>
       <div id="incBankList"><p style="font-size:13px;color:var(--text3)">등록된 계좌가 없습니다.</p></div>
     </div>
   </div>
@@ -10359,16 +10365,48 @@ function renderIncBankList() {
   const el = document.getElementById('incBankList');
   if (!el) return;
   if (!banks.length) { el.innerHTML='<p style="font-size:13px;color:var(--text3)">등록된 계좌가 없습니다.</p>'; return; }
+  const q = (document.getElementById('incBankSearch')?.value || '').trim().toLowerCase();
+  const shown = banks.map((b,i)=>({b,i})).filter(({b}) =>
+    !q || [b.name,b.bank,b.acct,b.holder].some(v => String(v||'').toLowerCase().includes(q)));
+  if (shown.length === 0) { el.innerHTML = `<p style="font-size:13px;color:var(--text3)">"${escHtml(q)}" 검색 결과가 없어요.</p>`; return; }
   let html = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;padding-bottom:8px;border-bottom:2px solid var(--border);font-size:11px;font-weight:500;color:var(--text2)"><span>거래처</span><span>은행</span><span>계좌번호</span><span>예금주</span><span></span></div>';
-  banks.forEach((b,i) => {
+  shown.forEach(({b,i}) => {
     html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:center;font-size:13px">
-        <strong>${b.name}</strong><span>${b.bank}</span><span style="font-family:monospace;font-size:12px">${b.acct}</span><span>${b.holder}</span>
-        <button class="btn btn-danger btn-sm" onclick="removeIncBankInfo(${i})">삭제</button>
+        <strong>${escHtml(b.name)}</strong><span>${escHtml(b.bank)}</span><span style="font-family:monospace;font-size:12px">${escHtml(b.acct)}</span><span>${escHtml(b.holder)}</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm" onclick="editIncBankInfo(${i})" style="font-size:12px">수정</button>
+          <button class="btn btn-danger btn-sm" onclick="removeIncBankInfo(${i})">삭제</button>
+        </div>
       </div>
     </div>`;
   });
   el.innerHTML = html;
+}
+function editIncBankInfo(i) {
+  const banks = loadBankInfo();
+  const b = banks[i];
+  if (!b) return;
+  document.getElementById('incbnName').value   = b.name   || '';
+  document.getElementById('incbnBank').value   = b.bank   || '';
+  document.getElementById('incbnAcct').value   = b.acct   || '';
+  document.getElementById('incbnHolder').value = b.holder || '';
+  {
+    const pt = b.tpayType || '즉시결제';
+    const sel = document.getElementById('incbnPayType');
+    const cus = document.getElementById('incbnPayTypeCustom');
+    const presets = Array.from(sel.options).map(o=>o.value);
+    if (presets.includes(pt)) { sel.value = pt; if (cus) cus.value = ''; }
+    else { sel.value = '즉시결제'; if (cus) cus.value = pt; }
+  }
+  // 기존 항목 삭제 후 + 추가 누르면 덮어쓰기 (증빙 등 다른 필드는 보존)
+  window._incEditBackup = { idx: i, rest: b };
+  banks.splice(i, 1);
+  saveBankInfo(banks);
+  renderIncBankList();
+  renderBankList();
+  document.getElementById('incbnName').focus();
+  document.getElementById('incbnError').textContent = '✏️ 수정 후 + 추가 버튼을 눌러주세요.';
 }
 function addIncBankInfo() {
   const name   = document.getElementById('incbnName').value.trim();
@@ -10380,7 +10418,15 @@ function addIncBankInfo() {
   if (!name||!bank||!acct||!holder) { errEl.textContent='거래처, 은행, 계좌번호, 예금주를 모두 입력해주세요.'; return; }
   errEl.textContent='';
   const banks = loadBankInfo();
-  banks.push({ name, bank, acct, holder, tpayType, tev1:false,tev2:false,tev3:false,tev4:false,tev5:false,tev6:false });
+  // 수정 모드였다면 기존 증빙·메모 등 다른 필드는 보존
+  const backup = (window._incEditBackup && window._incEditBackup.rest) || {};
+  banks.push({
+    ...backup,
+    name, bank, acct, holder, tpayType,
+    tev1:backup.tev1||false, tev2:backup.tev2||false, tev3:backup.tev3||false,
+    tev4:backup.tev4||false, tev5:backup.tev5||false, tev6:backup.tev6||false
+  });
+  window._incEditBackup = null;
   saveBankInfo(banks);
   ['incbnName','incbnBank','incbnAcct','incbnHolder','incbnPayTypeCustom'].forEach(id=>document.getElementById(id).value='');
   renderIncBankList();
@@ -10399,24 +10445,32 @@ function removeIncBankInfo(i) {
 // 계좌관리
 function renderBankList() {
   const banks = loadBankInfo();
-  if (banks.length === 0) { document.getElementById('bankList').innerHTML='<p style="font-size:13px;color:var(--text3)">등록된 계좌가 없습니다.</p>'; return; }
+  const listEl = document.getElementById('bankList');
+  if (banks.length === 0) { listEl.innerHTML='<p style="font-size:13px;color:var(--text3)">등록된 계좌가 없습니다.</p>'; updateVendorSelect(); return; }
+  const q = (document.getElementById('bankSearch')?.value || '').trim().toLowerCase();
+  // 원본 인덱스를 유지한 채 검색어로 필터
+  const shown = banks.map((b,i)=>({b,i})).filter(({b}) =>
+    !q || [b.name,b.bank,b.acct,b.holder].some(v => String(v||'').toLowerCase().includes(q)));
+  if (shown.length === 0) { listEl.innerHTML = `<p style="font-size:13px;color:var(--text3)">"${escHtml(q)}" 검색 결과가 없어요.</p>`; updateVendorSelect(); return; }
   let html = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;padding-bottom:8px;border-bottom:2px solid var(--border);font-size:11px;font-weight:500;color:var(--text2)"><span>발주처</span><span>은행</span><span>계좌번호</span><span>예금주</span><span></span></div>';
-  banks.forEach((b,i) => {
+  shown.forEach(({b,i}) => {
     const evLabels = ['세금계산서','계산서','현금영수증','고지서','기타','사후첨부'];
     const checkedEvs = evLabels.filter((_,i2)=>b['tev'+(i2+1)]).join(', ');
     html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:center;font-size:13px">
-        <strong>${b.name}</strong><span>${b.bank}</span><span style="font-family:monospace;font-size:12px">${b.acct}</span><span>${b.holder}</span>
-        <button class="btn btn-sm" onclick="editBankInfo(${i})" style="font-size:12px">수정</button>
-        <button class="btn btn-danger" onclick="removeBankInfo(${i})">삭제</button>
+        <strong>${escHtml(b.name)}</strong><span>${escHtml(b.bank)}</span><span style="font-family:monospace;font-size:12px">${escHtml(b.acct)}</span><span>${escHtml(b.holder)}</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm" onclick="editBankInfo(${i})" style="font-size:12px">수정</button>
+          <button class="btn btn-danger" onclick="removeBankInfo(${i})">삭제</button>
+        </div>
       </div>
       <div style="font-size:11px;color:var(--text2);margin-top:4px">
         결제조건: ${b.tpayType||'즉시결제'} &nbsp;|&nbsp; 증빙: ${checkedEvs||'없음'}
-        ${b.tnote?'&nbsp;|&nbsp; 특이사항: '+b.tnote:''}
+        ${b.tnote?'&nbsp;|&nbsp; 특이사항: '+escHtml(b.tnote):''}
       </div>
     </div>`;
   });
-  document.getElementById('bankList').innerHTML = html;
+  listEl.innerHTML = html;
   updateVendorSelect();
 }
 
