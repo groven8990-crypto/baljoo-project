@@ -191,10 +191,10 @@
     <div class="card">
       <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
         <div style="font-size:36px;margin-bottom:10px">📊</div>
-        <div style="font-size:15px;font-weight:700;margin-bottom:5px">주문 수집 파일을 끌어다 놓거나 클릭하여 선택</div>
-        <div style="font-size:13px;color:var(--text2)">샵마인 발송대기 엑셀 (.xls / .xlsx)</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:5px">주문 수집 파일을 끌어다 놓거나 클릭하여 선택 <span style="font-size:12px;font-weight:500;color:var(--accent)">(여러 개 동시 가능)</span></div>
+        <div style="font-size:13px;color:var(--text2)">샵마인 발송대기 엑셀 (.xls / .xlsx) — 여러 파일을 한 번에 올리면 자동 합산돼요</div>
       </div>
-      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+      <input type="file" id="fileInput" accept=".xlsx,.xls" multiple style="display:none">
       <div id="status"></div>
     </div>
 
@@ -2309,8 +2309,8 @@ let groupedOrders={}, totalCount=0, unmatchedList=[], allOrders=[], loadedFileNa
 const uz=document.getElementById('uploadZone');
 uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('dragover');});
 uz.addEventListener('dragleave',()=>uz.classList.remove('dragover'));
-uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('dragover');handleFile(e.dataTransfer.files[0]);});
-document.getElementById('fileInput').addEventListener('change',e=>handleFile(e.target.files[0]));
+uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('dragover');handleFiles(e.dataTransfer.files);});
+document.getElementById('fileInput').addEventListener('change',e=>{handleFiles(e.target.files);e.target.value='';});
 document.addEventListener('DOMContentLoaded',()=>{
   const fa=document.getElementById('fileInputAdd');
   if(fa) fa.addEventListener('change',e=>{handleFileAdd(e.target.files[0]);fa.value='';});
@@ -2523,8 +2523,8 @@ function _add11stOrdersFromRows(rows, hr){
   }
   return { added, dupSkipped };
 }
-function handleFile(file) {
-  if (!file) return;
+function handleFile(file, onDone) {
+  if (!file) { if(typeof onDone==='function') onDone(); return; }
   setSt('파일 읽는 중...');
   const reader = new FileReader();
   reader.onload = e => {
@@ -2623,8 +2623,24 @@ function handleFile(file) {
         setSt('✅ 송장입력 탭과 자동 연동됨 (' + invOrderData.length + '건)');
       } catch(_e) { setSt('⚠ 송장 자동연동 실패: '+_e.message, true); }
     }catch(err){setSt('오류: '+err.message,true);console.error(err);}
+    finally { if(typeof onDone==='function') onDone(); }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// 여러 파일 드래그앤드롭/선택 시: 첫 파일은 새로 로드, 나머지는 순차적으로 합산
+function handleFiles(fileList) {
+  const files = Array.from(fileList || []).filter(Boolean);
+  if (!files.length) return;
+  if (files.length === 1) { handleFile(files[0]); return; }
+  let idx = 1;
+  const next = () => {
+    if (idx >= files.length) { setSt(`✅ ${files.length}개 파일 모두 반영됐어요`); return; }
+    const f = files[idx++];
+    handleFileAdd(f, next);
+  };
+  // 첫 파일 로드 완료 후 나머지 순차 합산
+  handleFile(files[0], next);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -4678,7 +4694,8 @@ function renderCodeList(){
   </div>`;
   codes.forEach((cc,i)=>{
     const orig=cc.originalCode||cc.code;
-    const changed=`<div class="code-tag" style="font-size:11px;color:var(--accent);word-break:break-all">${cc.code}</div>`;
+    const vendorBadge=cc.vendor?`<div style="display:inline-block;margin-top:4px;font-size:10px;background:#ecfdf5;color:#047857;border:1px solid #6ee7b7;border-radius:10px;padding:1px 7px;white-space:nowrap">🏭 ${escHtml(cc.vendor)}</div>`:'';
+    const changed=`<div class="code-tag" style="font-size:11px;color:var(--accent);word-break:break-all">${cc.code}</div>${vendorBadge}`;
     const autoBadge=cc.auto?`<div style="display:inline-block;margin-top:4px;font-size:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;border-radius:10px;padding:1px 7px;white-space:nowrap">🤖 자동</div>`:'';
     let opText=cc.orderProduct||'', ooText=cc.orderOpt||'';
     if(!opText && typeof allOrders!=='undefined'){
@@ -8283,8 +8300,8 @@ function renderLoadedFiles(){
   if(!loadedFileNames.length){bar.innerHTML='';return;}
   bar.innerHTML='📁 <b>업로드된 파일:</b> '+loadedFileNames.map(n=>'<span style="background:var(--bg2);border-radius:4px;padding:2px 7px;margin:0 3px">'+escHtml(n)+'</span>').join('');
 }
-function handleFileAdd(file){
-  if(!file) return;
+function handleFileAdd(file, onDone){
+  if(!file) { if(typeof onDone==='function') onDone(); return; }
   setSt('파일 추가 중...');
   const reader=new FileReader();
   reader.onload=e=>{
@@ -8384,6 +8401,7 @@ function handleFileAdd(file){
         }
       } catch(_e) { console.warn('송장 추가 동기화 실패:', _e); }
     }catch(err){setSt('오류: '+err.message,true);console.error(err);}
+    finally { if(typeof onDone==='function') onDone(); }
   };
   reader.readAsArrayBuffer(file);
 }
