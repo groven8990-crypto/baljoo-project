@@ -481,6 +481,25 @@
     </div>
 
     <div class="card">
+      <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('bulkCodeBody');var t=document.getElementById('bulkCodeToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';}else{b.style.display='none';t.textContent='▼ 펼치기';}">
+        🔁 변경된 상품코드 일괄 바꾸기
+        <span id="bulkCodeToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
+      </div>
+      <div id="bulkCodeBody" style="display:none">
+        <div class="alert alert-info" style="font-size:12px;margin-bottom:12px">
+          💡 여러 코드의 <b>변경된 상품코드</b>를 한 번에 바꿔요. 예: <code>일비]박대</code> → <code>일비]민어</code><br>
+          "찾을 문자"가 포함된 코드만 바뀝니다. (부분 문자열 치환 — 예: <code>박대</code>만 넣으면 박대가 든 모든 코드의 그 부분이 바뀜)
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:end;margin-bottom:8px">
+          <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">찾을 문자 (변경코드 안에서)</label><input class="inp" id="bulkCodeFind" placeholder="예: 박대" style="font-size:13px"></div>
+          <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">바꿀 문자</label><input class="inp" id="bulkCodeReplace" placeholder="예: 민어" style="font-size:13px"></div>
+          <button class="btn btn-sm" onclick="bulkCodeReplacePreview()" style="height:36px">🔍 미리보기</button>
+          <button class="btn btn-sm btn-primary" onclick="bulkCodeReplaceApply()" style="height:36px">💾 일괄 변경</button>
+        </div>
+        <div id="bulkCodeResult"></div>
+      </div>
+    </div>
+    <div class="card">
       <div class="card-title">📋 등록된 코드 목록 <span id="codeCountText" style="font-weight:400;font-size:12px;color:var(--text3)"></span></div>
       <div id="codeList"><p style="font-size:13px;color:var(--text3)">등록된 코드가 없습니다.</p></div>
     </div>
@@ -4680,6 +4699,60 @@ function renderCodeList(){
     </div>`;
   });
   document.getElementById('codeList').innerHTML=html;
+}
+// ── 변경된 상품코드 일괄 찾기·바꾸기 ──
+function _bulkCodeMatches(find){
+  if(!find) return [];
+  const codes=loadCodes();
+  const out=[];
+  codes.forEach((cc,i)=>{
+    if(cc && typeof cc.code==='string' && cc.code.includes(find)) out.push({i, cc});
+  });
+  return out;
+}
+function bulkCodeReplacePreview(){
+  const find=(document.getElementById('bulkCodeFind').value||'').trim();
+  const repl=(document.getElementById('bulkCodeReplace').value||'');
+  const el=document.getElementById('bulkCodeResult');
+  if(!find){ el.innerHTML='<p style="font-size:12px;color:var(--danger)">찾을 문자를 입력하세요.</p>'; return; }
+  const matches=_bulkCodeMatches(find);
+  if(!matches.length){ el.innerHTML=`<p style="font-size:12px;color:var(--text3)">"${escHtml(find)}"이(가) 든 변경코드가 없어요.</p>`; return; }
+  let html=`<div style="font-size:12px;color:var(--text2);margin:6px 0 8px">🔍 ${matches.length}건 변경 예정:</div>`;
+  html+='<div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">';
+  matches.forEach(({cc})=>{
+    const before=cc.code;
+    const after=cc.code.split(find).join(repl);
+    html+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">
+      <span class="code-tag" style="font-size:11px;word-break:break-all;color:var(--text3)">${escHtml(before)}</span>
+      <span style="color:var(--text3)">→</span>
+      <span class="code-tag" style="font-size:11px;word-break:break-all;color:var(--accent);font-weight:600">${escHtml(after)}</span>
+    </div>`;
+  });
+  html+='</div>';
+  el.innerHTML=html;
+}
+function bulkCodeReplaceApply(){
+  const find=(document.getElementById('bulkCodeFind').value||'').trim();
+  const repl=(document.getElementById('bulkCodeReplace').value||'');
+  if(!find){ alert('찾을 문자를 입력하세요.'); return; }
+  const matches=_bulkCodeMatches(find);
+  if(!matches.length){ alert(`"${find}"이(가) 든 변경코드가 없어요.`); return; }
+  if(!confirm(`${matches.length}건의 변경코드에서\n"${find}" → "${repl}" 로 바꿀까요?`)) return;
+  const codes=loadCodes();
+  let changed=0;
+  matches.forEach(({i})=>{
+    if(codes[i] && typeof codes[i].code==='string'){
+      const nv=codes[i].code.split(find).join(repl);
+      if(nv!==codes[i].code){ codes[i].code=nv; changed++; }
+    }
+  });
+  saveCodes(codes);
+  renderCodeList();
+  if(typeof renderCodeMappingList==='function') renderCodeMappingList();
+  document.getElementById('bulkCodeResult').innerHTML=`<p style="font-size:13px;color:var(--success);font-weight:600">✅ ${changed}건 변경 완료!</p>`;
+  document.getElementById('bulkCodeFind').value='';
+  document.getElementById('bulkCodeReplace').value='';
+  _poShowToast(`✅ 변경코드 ${changed}건 일괄 변경됨`);
 }
 function editCode(i){
   const codes=loadCodes();
