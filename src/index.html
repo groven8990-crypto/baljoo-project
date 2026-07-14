@@ -2860,6 +2860,36 @@ function verifyVendorBuild(vendor, alias, orders){
   const itemCol = findIdx(/^(품목명|상품명|제품명|판매사상품명|상품명1|노출상품명)/);
   const optCol  = findIdx(/^(옵션|옵션명|고객선택옵션|옵션코드)/);
   const qtyCol  = findIdx(/^(수량|박스수량|주문수량|수량\(A타입\))/);
+  // ── 동일(깐마늘): 3kg 초과분은 여러 행으로 분할 → 원본 1건이 N행이 됨.
+  //    order 순서대로 행을 소비하며 kg 합계를 검증하고, 분할된 행 전부를 상세에 표시.
+  if (vendor === '동일') {
+    const dataRows = rows.slice(1);
+    let cursor = 0;
+    for (let i = 0; i < orders.length; i++) {
+      const o = orders[i];
+      const totalKg = _dongilTotalKg(o);
+      const chunks  = _splitDongilKg(totalKg);
+      const myRows  = dataRows.slice(cursor, cursor + chunks.length);
+      cursor += chunks.length;
+      const chunkKgs = myRows.map(r => qtyCol >= 0 ? (parseInt(r[qtyCol]) || 0) : 0);
+      const sumKg = chunkKgs.reduce((s,v)=>s+v, 0);
+      const issues = [];
+      if (sumKg !== totalKg) issues.push(`kg 합계 불일치: 예상 ${totalKg}kg ≠ 발주서 합계 ${sumKg}kg`);
+      res.rowDetails.push({
+        recv_name: o.recv_name||'', order_no: o.order_no||'',
+        src_product: o.product||'', src_select: o.select_opt||'', src_disp: o.disp_opt||'',
+        src_qty: Number(o.qty)||1,
+        dst_item: myRows.length ? '깐마늘 1kg' : '',
+        dst_opt: chunkKgs.length ? `총 ${totalKg}kg = ${chunkKgs.join('+')} (${chunkKgs.length}박스)` : '',
+        dst_qty: sumKg,
+        splitKgs: chunkKgs, totalKg,
+        issues, bundleRgb: _bundleColorMap.get(i)||null
+      });
+      if (issues.length) res.badCnt++;
+    }
+    if (res.badCnt > 0) res.ok = false;
+    return res;
+  }
   // 1:1 매핑이라고 가정 (모든 vendor가 orders.map(...))
   if (orders.length !== rows.length - 1) {
     res.issues.push(`행 수 불일치: 원본 ${orders.length}건 → 발주서 ${rows.length-1}행`);
@@ -4156,19 +4186,7 @@ function buildRows(vk,orders,alias){
       const hdr = ['받는사람','전화번호1','전화번호2','우편번호','주소','수량(A타입)','상품명1','보내는사람(지정)','전화번호1(지정)','주소(지정)','배송메시지','주문번호','내품수량1','운임'];
       const dataRows = [];
       for (const o of orders) {
-        let totalKg;
-        if (o._merged) {
-          totalKg = (Number(o.qty)||1) * (Number(o.code_qty)||1); // qty = 합산 effQty, code_qty = 1
-        } else {
-          let kgN = 0;
-          const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kgN = parseInt(m1[1]);
-          if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kgN = parseInt(m[1]); }
-          if (!kgN) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
-          if (!kgN) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
-          if (!kgN) kgN = 1;
-          const baseQty = Number(o.qty)||1;
-          totalKg = kgN > 1 ? baseQty * kgN : (o.code_qty||1) * baseQty;
-        }
+        const totalKg = _dongilTotalKg(o);
         // 3kg 초과 시 균등 분할: ceil(total/3)개 박스, 각 박스 최대 3kg
         for (const chunkKg of _splitDongilKg(totalKg)) {
           dataRows.push([o.recv_name, o.recv_phone, '', o.zip, o.addr, chunkKg, '깐마늘 1kg', s.name, s.phone, s.addr, o.memo, o.order_no, '', '']);
@@ -4295,6 +4313,18 @@ function dlOne(gk){
 }
 // 동일 배송 분할: 3kg 초과 시 균등 분할 (한 라벨 max 3kg)
 // 예) 4→[2,2], 5→[3,2], 6→[3,3], 7→[3,2,2], 9→[3,3,3]
+// 동일(깐마늘) 주문 1건의 총 kg 계산 (buildRows·검증 공용)
+function _dongilTotalKg(o){
+  if (o._merged) return (Number(o.qty)||1) * (Number(o.code_qty)||1); // qty=합산 effQty, code_qty=1
+  let kgN = 0;
+  const m1 = String(o.select_opt||'').match(/(\d+)\s*kg/i);  if (m1) kgN = parseInt(m1[1]);
+  if (!kgN) { const m = String(o.disp_opt||'').match(/(\d+)\s*kg/i);    if (m) kgN = parseInt(m[1]); }
+  if (!kgN) { const m = String(o.vendor_code||'').match(/마늘\/?(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+  if (!kgN) { const m = String(o.option_name||'').match(/(\d+)\s*kg/i); if (m) kgN = parseInt(m[1]); }
+  if (!kgN) kgN = 1;
+  const baseQty = Number(o.qty)||1;
+  return kgN > 1 ? baseQty * kgN : (Number(o.code_qty)||1) * baseQty;
+}
 function _splitDongilKg(totalKg) {
   if (totalKg <= 3) return [totalKg];
   const numBoxes = Math.ceil(totalKg / 3);
