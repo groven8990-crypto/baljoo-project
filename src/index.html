@@ -2704,7 +2704,13 @@ function detectMergeGroups(){
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(o);
   }
-  return [...map.values()].filter(arr => arr.length > 1).sort((a,b) => b.length - a.length);
+  // 같은 발주처에 2건 이상 있어야 실제 합배송 가능 → 그런 그룹만 후보로
+  const _hasSameVendorDup = arr => {
+    const cnt = {};
+    for (const o of arr) { const v = o.vendor_key || '미인식'; cnt[v] = (cnt[v]||0) + 1; if (cnt[v] >= 2) return true; }
+    return false;
+  };
+  return [...map.values()].filter(arr => arr.length > 1 && _hasSameVendorDup(arr)).sort((a,b) => b.length - a.length);
 }
 function renderMergeCandidates(){
   const card = document.getElementById('mergeCandidatesCard');
