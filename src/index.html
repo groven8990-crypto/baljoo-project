@@ -12655,8 +12655,8 @@ function srRenderProductAliases(){
 function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회'))return 'grobn';if(a.includes('자꾸가게'))return 'yb';return 'other';}
 function srAggregate(orders){
   const platMap={},prodMap={};let totalSales=0;
-  // 깐마늘 전용 상세: 플랫폼 × 옵션 단위 집계
-  const garlicMap = {};  // key = platform + '||' + option
+  // 깐마늘 전용 상세: 발주처(동일/3PL 등) × 옵션 단위 집계
+  const garlicMap = {};  // key = vendorLabel + '||' + option
   for(const o of orders){
     const amt=(typeof _srSalesAmt==='function')?_srSalesAmt(o):(Number(o.order_amt)||0);totalSales+=amt;
     const p=srPlatform(o);
@@ -12690,8 +12690,9 @@ function srAggregate(orders){
       if (!kg && o.code_qty && o.code_qty > 1) kg = o.code_qty;  // override에서 설정한 값
       if (!kg) kg = 1;
       const opt = kg + 'kg';
-      const k = p + '||' + opt;
-      if (!garlicMap[k]) garlicMap[k] = {platform:p, option:opt, count:0, sales:0, realCount:0, realSales:0, reviewCount:0, reviewSales:0};
+      const vLabel = (typeof _srVendorName==='function') ? _srVendorName(o.vendor_key||'기타') : (o.vendor_key||'기타');
+      const k = vLabel + '||' + opt;
+      if (!garlicMap[k]) garlicMap[k] = {platform:vLabel, option:opt, count:0, sales:0, realCount:0, realSales:0, reviewCount:0, reviewSales:0};
       garlicMap[k].count++;
       garlicMap[k].sales += amt;
       // 리뷰주문 여부 — 발주서에서 노란색 칠한 받는사람 매칭
@@ -12822,11 +12823,11 @@ function srGarlicDetailHtml(agg, color){
   const hasReview = totalReviewCnt > 0;
   // Block 1 — 플랫폼 × 옵션 상세 (분리 행 없이 합계만)
   const block1 = `
-    <div style="background:#F5F1E8;color:#6B5840;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #C9B68A">🧄 깐마늘 상세 (플랫폼 × 옵션)</div>
+    <div style="background:#F5F1E8;color:#6B5840;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #C9B68A">🧄 깐마늘 상세 (발주처 × 옵션)</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FAF8F2">
       <colgroup><col style="width:32%"><col style="width:25%"><col style="width:18%"><col style="width:25%"></colgroup>
       <thead><tr style="background:#EDE7D8">
-        <th style="padding:8px 14px;text-align:left;color:#6B5840;font-weight:700">플랫폼</th>
+        <th style="padding:8px 14px;text-align:left;color:#6B5840;font-weight:700">발주처</th>
         <th style="padding:8px 14px;text-align:left;color:#6B5840;font-weight:700">옵션</th>
         <th style="padding:8px 14px;text-align:right;color:#6B5840;font-weight:700">건수</th>
         <th style="padding:8px 14px;text-align:right;color:#6B5840;font-weight:700">매출액</th>
@@ -12852,11 +12853,11 @@ function srGarlicDetailHtml(agg, color){
       </tr>`;
     }).join('');
     block2 = `
-    <div style="background:#F5F1E8;color:#6B5840;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #C9B68A">🧄 깐마늘 실주문 / 리뷰주문 분리 (플랫폼별)</div>
+    <div style="background:#F5F1E8;color:#6B5840;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #C9B68A">🧄 깐마늘 실주문 / 리뷰주문 분리 (발주처별)</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FAF8F2">
       <colgroup><col style="width:18%"><col style="width:18%"><col style="width:23%"><col style="width:18%"><col style="width:23%"></colgroup>
       <thead><tr style="background:#EDE7D8">
-        <th style="padding:8px 10px;text-align:left;color:#6B5840;font-weight:700;white-space:nowrap">플랫폼</th>
+        <th style="padding:8px 10px;text-align:left;color:#6B5840;font-weight:700;white-space:nowrap">발주처</th>
         <th style="padding:8px 10px;text-align:right;color:#6B5840;font-weight:700;white-space:nowrap">실주문 건수</th>
         <th style="padding:8px 10px;text-align:right;color:#6B5840;font-weight:700;white-space:nowrap">실주문 매출</th>
         <th style="padding:8px 10px;text-align:right;color:#92400E;font-weight:700;white-space:nowrap">리뷰 건수</th>
