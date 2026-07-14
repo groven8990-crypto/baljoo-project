@@ -2348,6 +2348,23 @@ document.addEventListener('DOMContentLoaded',()=>{
   _sbLoadKV('time_vendor_rules').then(remote=>{
     if(Array.isArray(remote)) localStorage.setItem(LS_TIME_VENDOR_RULES, JSON.stringify(remote));
   }).catch(()=>{});
+  // 매출금액 지정: 최초 1회 제로습(쿠팡-자꾸가게) 기본값 심기 → 이후 원격 동기화
+  try {
+    if (!localStorage.getItem('yb_sales_override_seeded')) {
+      const cur = srLoadSalesOverride();
+      if (!cur.length) {
+        srSaveSalesOverride([
+          {code:'그린캠]제로습습기제거제/300g 24p-1', alias:'쿠팡-자꾸가게', amount:15300},
+          {code:'그린캠]제로습습기제거제/300g 24p-2', alias:'쿠팡-자꾸가게', amount:30450},
+          {code:'그린캠]제로습습기제거제/300g 24p-3', alias:'쿠팡-자꾸가게', amount:45700},
+        ]);
+      }
+      localStorage.setItem('yb_sales_override_seeded','1');
+    }
+  } catch(_){}
+  _sbLoadKV('sales_amt_override').then(remote=>{
+    if(Array.isArray(remote)) localStorage.setItem(LS_SALES_OVERRIDE, JSON.stringify(remote));
+  }).catch(()=>{});
 });
 
 function setSt(msg,err){const el=document.getElementById('status');el.textContent=msg;el.className=err?'error':'';}
@@ -11437,6 +11454,27 @@ function reconExportXlsx() {
       <div id="paList"></div>
     </div>
   </div>
+  <div class="card">
+    <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('soBody');var t=document.getElementById('soToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';srRenderSalesOverride();}else{b.style.display='none';t.textContent='▼ 펼치기';}">
+      💲 매출금액 직접 지정 (쿠팡 등 금액 보정)
+      <span id="soToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
+    </div>
+    <div id="soBody" style="display:none">
+      <div class="alert alert-info" style="margin-bottom:10px;font-size:12px">
+        특정 <b>판매자상품코드</b>(+선택적으로 별칭)의 <b>매출금액</b>을 보고서에서 지정값으로 바꿔요. 쿠팡처럼 주문금액이 잘못 잡힐 때 사용.<br>
+        예: <code>그린캠]제로습습기제거제/300g 24p-2</code> · 별칭 <code>쿠팡-자꾸가게</code> → <b>30,450원</b><br>
+        💡 별칭을 비우면 코드가 맞는 모든 주문에 적용돼요. 판매자상품코드는 <b>정확히 일치</b>해야 합니다.
+      </div>
+      <div style="display:grid;grid-template-columns:1.8fr 1fr 0.9fr auto;gap:8px;align-items:end;margin-bottom:10px">
+        <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">판매자상품코드 (정확히)</label><input class="inp" id="soCode" placeholder="예: 그린캠]제로습습기제거제/300g 24p-2" style="font-size:12px"></div>
+        <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">별칭 조건 (선택)</label><input class="inp" id="soAlias" placeholder="예: 쿠팡-자꾸가게" style="font-size:12px"></div>
+        <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">매출금액(원)</label><input class="inp" id="soAmt" type="number" placeholder="30450" style="font-size:12px"></div>
+        <button class="btn btn-primary" onclick="srAddSalesOverride()" style="height:36px">+ 추가</button>
+      </div>
+      <div id="soErr" style="color:var(--danger);font-size:12px;margin-bottom:8px"></div>
+      <div id="soList"></div>
+    </div>
+  </div>
   <div id="srReport"></div>
   </div><!-- /srsub-sales -->
   <!-- 매입 보고 패널 -->
@@ -12507,6 +12545,68 @@ function srNormalize(name){
   }
   return n.slice(0,8) || '미분류';
 }
+// ── 매출금액 직접 지정 (판매자상품코드 + 선택 별칭 → 지정 매출금액) ──
+const LS_SALES_OVERRIDE = 'yb_sales_amt_override';
+function srLoadSalesOverride(){ try{ return JSON.parse(localStorage.getItem(LS_SALES_OVERRIDE)||'[]'); }catch{ return []; } }
+function srSaveSalesOverride(a){ localStorage.setItem(LS_SALES_OVERRIDE, JSON.stringify(a)); _sbSaveKV('sales_amt_override', a).catch(()=>{}); }
+// 한 주문의 매출금액 — 지정 규칙이 있으면 그 값(×수량), 없으면 원래 order_amt
+function _srSalesAmt(o){
+  const base = Number(o.order_amt)||0;
+  const list = srLoadSalesOverride();
+  if(!list.length) return base;
+  const code = String(o.vendor_code||'').trim();
+  const aliasRaw = String(o.alias_raw||o.alias||'');
+  for(const ov of list){
+    if(!ov || ov.amount==null || !ov.code) continue;
+    if(String(ov.code).trim() !== code) continue;
+    if(ov.alias && !aliasRaw.includes(ov.alias)) continue;
+    return (Number(ov.amount)||0) * (Number(o.qty)||1);
+  }
+  return base;
+}
+function srRenderSalesOverride(){
+  const el = document.getElementById('soList');
+  if(!el) return;
+  const list = srLoadSalesOverride();
+  if(!list.length){ el.innerHTML='<p style="font-size:12px;color:var(--text3)">지정된 매출금액이 없습니다.</p>'; return; }
+  el.innerHTML = list.map((ov,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12px;flex-wrap:wrap">
+      <span class="code-tag" style="font-size:11px;word-break:break-all">${escHtml(ov.code)}</span>
+      ${ov.alias?`<span style="font-size:10px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:10px;padding:1px 7px">별칭: ${escHtml(ov.alias)}</span>`:'<span style="font-size:10px;color:var(--text3)">모든 별칭</span>'}
+      <span style="color:var(--text3)">→</span>
+      <span style="font-weight:700;color:var(--accent)">${(Number(ov.amount)||0).toLocaleString()}원</span>
+      <button class="btn btn-danger btn-sm" style="margin-left:auto;font-size:11px" onclick="srRemoveSalesOverride(${i})">삭제</button>
+    </div>`).join('');
+}
+function srAddSalesOverride(){
+  const code = (document.getElementById('soCode').value||'').trim();
+  const alias = (document.getElementById('soAlias').value||'').trim();
+  const amount = parseInt((document.getElementById('soAmt').value||'').replace(/,/g,''));
+  const err = document.getElementById('soErr');
+  err.textContent='';
+  if(!code){ err.textContent='판매자상품코드를 입력하세요.'; return; }
+  if(isNaN(amount)){ err.textContent='매출금액을 숫자로 입력하세요.'; return; }
+  let list = srLoadSalesOverride();
+  // 같은 코드+별칭이면 덮어쓰기
+  list = list.filter(ov => !(ov && String(ov.code).trim()===code && String(ov.alias||'')===alias));
+  list.push({code, alias, amount});
+  srSaveSalesOverride(list);
+  document.getElementById('soCode').value='';
+  document.getElementById('soAlias').value='';
+  document.getElementById('soAmt').value='';
+  srRenderSalesOverride();
+  try { if (typeof srRender === 'function' && Array.isArray(allOrders) && allOrders.length) srRender(); } catch(e){}
+  _poShowToast('✅ 매출금액 지정 추가됨');
+}
+function srRemoveSalesOverride(i){
+  if(!confirm('이 매출금액 지정을 삭제할까요?')) return;
+  const list = srLoadSalesOverride();
+  list.splice(i,1);
+  srSaveSalesOverride(list);
+  srRenderSalesOverride();
+  try { if (typeof srRender === 'function' && Array.isArray(allOrders) && allOrders.length) srRender(); } catch(e){}
+}
+
 function srAddProductAlias(){
   const kwEl = document.getElementById('paKw');
   const lbEl = document.getElementById('paLabel');
@@ -13640,7 +13740,7 @@ function srBuildProfitRows(orders){
       };
     }
     const r = map[key];
-    const amt = Number(o.order_amt)||0;
+    const amt = _srSalesAmt(o);
     const units = srPurchaseUnits(o);
     // 리뷰 주문 여부 — 깐마늘(srReviewSet) / 그린캠(srGrincamReviewSet) 발주서 기반
     const _brand = srBrand(o.alias);
