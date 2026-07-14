@@ -5187,10 +5187,12 @@ function _applyTimeVendorRule(o, defaultVk){
   const rules = loadTimeVendorRules();
   if (!rules.length) return defaultVk;
   const t = _orderTimeMinutes(o);
-  const code = String(o.vendor_code||'');
+  // 판매자상품코드(원본)·변환코드·상품명·옵션 어디에든 키워드가 있으면 매칭 (사용자가 뭘 넣든 걸리게)
+  const hay = [o.vendor_code, o.mapped_code, o.product, o.item_name, o.option_name, o.select_opt, o.disp_opt]
+    .map(x => String(x||'')).join(' | ');
   for (const r of rules) {
     if (!r || r.enabled === false || !r.codeKw || !r.vendor) continue;
-    if (!code.includes(r.codeKw)) continue;
+    if (!hay.includes(r.codeKw)) continue;
     if (_inTimeWindow(t, r.startMin, r.endMin)) return r.vendor;
   }
   return defaultVk;
@@ -5203,7 +5205,22 @@ function renderTimeVendorRules(){
   if(!el) return;
   const rules=loadTimeVendorRules();
   if(!rules.length){ el.innerHTML='<p style="font-size:12px;color:var(--text3)">등록된 시간 규칙이 없습니다.</p>'; return; }
-  el.innerHTML=rules.map((r,i)=>`
+  const orders = Array.isArray(allOrders) ? allOrders : [];
+  el.innerHTML=rules.map((r,i)=>{
+    // 현재 불러온 주문 기준 진단: 코드 매칭 수 / 그중 시간대에 들어 발주처 바뀐 수
+    let matchCnt=0, routedCnt=0, noTimeCnt=0;
+    for(const o of orders){
+      const hay=[o.vendor_code,o.mapped_code,o.product,o.item_name,o.option_name,o.select_opt,o.disp_opt].map(x=>String(x||'')).join(' | ');
+      if(!r.codeKw || !hay.includes(r.codeKw)) continue;
+      matchCnt++;
+      const t=_orderTimeMinutes(o);
+      if(t==null){ noTimeCnt++; continue; }
+      if(_inTimeWindow(t,r.startMin,r.endMin)) routedCnt++;
+    }
+    const diag = orders.length
+      ? `<div style="width:100%;font-size:11px;color:var(--text2);margin-top:4px">📊 현재 파일: 코드 매칭 <b>${matchCnt}건</b>${matchCnt?` · 그중 <b style="color:var(--accent)">${routedCnt}건</b>이 이 시간대라 <b>${escHtml(r.vendor)}</b>로 배정`:''}${noTimeCnt?` · ⚠ 주문시각 못 읽음 ${noTimeCnt}건`:''}</div>`
+      : '';
+    return `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12px;flex-wrap:wrap">
       <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
         <input type="checkbox" ${r.enabled===false?'':'checked'} onchange="toggleTimeVendorRule(${i},this.checked)" style="width:14px;height:14px"> 사용
@@ -5214,7 +5231,9 @@ function renderTimeVendorRules(){
       <span style="color:var(--text3)">→</span>
       <span style="font-weight:700">🏭 ${escHtml(r.vendor)}</span>
       <button class="btn btn-danger btn-sm" style="margin-left:auto;font-size:11px" onclick="removeTimeVendorRule(${i})">삭제</button>
-    </div>`).join('');
+      ${diag}
+    </div>`;
+  }).join('');
 }
 function addTimeVendorRule(){
   const codeKw=(document.getElementById('trCodeKw').value||'').trim();
