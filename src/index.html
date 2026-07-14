@@ -487,12 +487,16 @@
       </div>
       <div id="bulkCodeBody" style="display:none">
         <div class="alert alert-info" style="font-size:12px;margin-bottom:12px">
-          💡 여러 코드의 <b>변경된 상품코드</b>를 한 번에 바꿔요. 예: <code>일비]박대</code> → <code>일비]민어</code><br>
-          "찾을 문자"가 포함된 코드만 바뀝니다. (부분 문자열 치환 — 예: <code>박대</code>만 넣으면 박대가 든 모든 코드의 그 부분이 바뀜)
+          💡 <b>변경된 상품코드</b>를 바꿔요.<br>
+          • <b>정확히 일치</b>(기본): 입력한 코드와 <u>완전히 똑같은</u> 코드만 통째로 바뀜 — <code>일비]박대/3P-2</code> → <code>해담별]반건조 박대…</code> (딱 그 코드만)<br>
+          • <b>부분 일치</b>: 찾을 문자가 든 모든 코드에서 그 부분만 치환 — <code>박대</code>→<code>민어</code> (여러 개 한꺼번에)
         </div>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:10px;font-weight:600">
+          <input type="checkbox" id="bulkCodeExact" checked onchange="if(document.getElementById('bulkCodeFind').value)bulkCodeReplacePreview()" style="width:15px;height:15px"> ✅ 정확히 일치하는 코드만 (전체가 똑같을 때만)
+        </label>
         <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:end;margin-bottom:8px">
-          <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">찾을 문자 (변경코드 안에서)</label><input class="inp" id="bulkCodeFind" placeholder="예: 박대" style="font-size:13px"></div>
-          <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">바꿀 문자</label><input class="inp" id="bulkCodeReplace" placeholder="예: 민어" style="font-size:13px"></div>
+          <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">찾을 코드/문자</label><input class="inp" id="bulkCodeFind" placeholder="예: 일비]박대/3P-2" style="font-size:13px"></div>
+          <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">바꿀 코드/문자</label><input class="inp" id="bulkCodeReplace" placeholder="예: 해담별]반건조 박대…" style="font-size:13px"></div>
           <button class="btn btn-sm" onclick="bulkCodeReplacePreview()" style="height:36px">🔍 미리보기</button>
           <button class="btn btn-sm btn-primary" onclick="bulkCodeReplaceApply()" style="height:36px">💾 일괄 변경</button>
         </div>
@@ -4718,12 +4722,22 @@ function renderCodeList(){
   document.getElementById('codeList').innerHTML=html;
 }
 // ── 변경된 상품코드 일괄 찾기·바꾸기 ──
-function _bulkCodeMatches(find){
+function _bulkCodeExact(){ return !!(document.getElementById('bulkCodeExact')||{}).checked; }
+// 각 매치에 대해 {i, before, after} 계산
+function _bulkCodeMatches(find, repl){
   if(!find) return [];
+  const exact=_bulkCodeExact();
   const codes=loadCodes();
   const out=[];
   codes.forEach((cc,i)=>{
-    if(cc && typeof cc.code==='string' && cc.code.includes(find)) out.push({i, cc});
+    if(!cc || typeof cc.code!=='string') return;
+    if(exact){
+      // 코드 전체가 정확히 일치할 때만 통째로 교체
+      if(cc.code===find) out.push({i, before:cc.code, after:repl});
+    }else{
+      // 부분 문자열 치환
+      if(cc.code.includes(find)) out.push({i, before:cc.code, after:cc.code.split(find).join(repl)});
+    }
   });
   return out;
 }
@@ -4731,14 +4745,13 @@ function bulkCodeReplacePreview(){
   const find=(document.getElementById('bulkCodeFind').value||'').trim();
   const repl=(document.getElementById('bulkCodeReplace').value||'');
   const el=document.getElementById('bulkCodeResult');
-  if(!find){ el.innerHTML='<p style="font-size:12px;color:var(--danger)">찾을 문자를 입력하세요.</p>'; return; }
-  const matches=_bulkCodeMatches(find);
-  if(!matches.length){ el.innerHTML=`<p style="font-size:12px;color:var(--text3)">"${escHtml(find)}"이(가) 든 변경코드가 없어요.</p>`; return; }
-  let html=`<div style="font-size:12px;color:var(--text2);margin:6px 0 8px">🔍 ${matches.length}건 변경 예정:</div>`;
+  if(!find){ el.innerHTML='<p style="font-size:12px;color:var(--danger)">찾을 코드/문자를 입력하세요.</p>'; return; }
+  const matches=_bulkCodeMatches(find, repl);
+  const modeLabel=_bulkCodeExact()?'정확히 일치':'부분 일치';
+  if(!matches.length){ el.innerHTML=`<p style="font-size:12px;color:var(--text3)">[${modeLabel}] "${escHtml(find)}"와(과) 맞는 변경코드가 없어요.</p>`; return; }
+  let html=`<div style="font-size:12px;color:var(--text2);margin:6px 0 8px">🔍 [${modeLabel}] ${matches.length}건 변경 예정:</div>`;
   html+='<div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">';
-  matches.forEach(({cc})=>{
-    const before=cc.code;
-    const after=cc.code.split(find).join(repl);
+  matches.forEach(({before, after})=>{
     html+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">
       <span class="code-tag" style="font-size:11px;word-break:break-all;color:var(--text3)">${escHtml(before)}</span>
       <span style="color:var(--text3)">→</span>
@@ -4751,17 +4764,15 @@ function bulkCodeReplacePreview(){
 function bulkCodeReplaceApply(){
   const find=(document.getElementById('bulkCodeFind').value||'').trim();
   const repl=(document.getElementById('bulkCodeReplace').value||'');
-  if(!find){ alert('찾을 문자를 입력하세요.'); return; }
-  const matches=_bulkCodeMatches(find);
-  if(!matches.length){ alert(`"${find}"이(가) 든 변경코드가 없어요.`); return; }
-  if(!confirm(`${matches.length}건의 변경코드에서\n"${find}" → "${repl}" 로 바꿀까요?`)) return;
+  if(!find){ alert('찾을 코드/문자를 입력하세요.'); return; }
+  const matches=_bulkCodeMatches(find, repl);
+  const modeLabel=_bulkCodeExact()?'정확히 일치':'부분 일치';
+  if(!matches.length){ alert(`[${modeLabel}] "${find}"와(과) 맞는 변경코드가 없어요.`); return; }
+  if(!confirm(`[${modeLabel}] ${matches.length}건을\n"${find}" → "${repl}" 로 바꿀까요?`)) return;
   const codes=loadCodes();
   let changed=0;
-  matches.forEach(({i})=>{
-    if(codes[i] && typeof codes[i].code==='string'){
-      const nv=codes[i].code.split(find).join(repl);
-      if(nv!==codes[i].code){ codes[i].code=nv; changed++; }
-    }
+  matches.forEach(({i, after})=>{
+    if(codes[i] && typeof codes[i].code==='string' && codes[i].code!==after){ codes[i].code=after; changed++; }
   });
   saveCodes(codes);
   renderCodeList();
