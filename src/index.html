@@ -12346,11 +12346,12 @@ function asstAnswer(q){
     const week  = /이번주|주간|일주일/.test(q);
     if (today || /지금|현재/.test(q) || !week) {
       if (!Array.isArray(allOrders) || !allOrders.length) return '오늘 발주서 파일을 먼저 올려주세요.';
-      const total = allOrders.reduce((s,o)=>s+(Number(o.order_amt)||0),0);
+      const _amt=o=>(typeof _srSalesAmt==='function')?_srSalesAmt(o):(Number(o.order_amt)||0);
+      const total = allOrders.reduce((s,o)=>s+_amt(o),0);
       const gr = allOrders.filter(o=>String(o.alias||'').includes('로또상회'));
       const yb = allOrders.filter(o=>String(o.alias||'').includes('자꾸가게'));
-      const grSum = gr.reduce((s,o)=>s+(Number(o.order_amt)||0),0);
-      const ybSum = yb.reduce((s,o)=>s+(Number(o.order_amt)||0),0);
+      const grSum = gr.reduce((s,o)=>s+_amt(o),0);
+      const ybSum = yb.reduce((s,o)=>s+_amt(o),0);
       return `오늘 자사 매출\n• 총 ${allOrders.length}건 · ${_fmt(total)}원\n• 로또상회 ${gr.length}건 · ${_fmt(grSum)}원\n• 자꾸가게 ${yb.length}건 · ${_fmt(ybSum)}원`;
     }
     if (week && typeof srLoadHistory === 'function') {
@@ -12657,7 +12658,7 @@ function srAggregate(orders){
   // 깐마늘 전용 상세: 플랫폼 × 옵션 단위 집계
   const garlicMap = {};  // key = platform + '||' + option
   for(const o of orders){
-    const amt=Number(o.order_amt)||0;totalSales+=amt;
+    const amt=(typeof _srSalesAmt==='function')?_srSalesAmt(o):(Number(o.order_amt)||0);totalSales+=amt;
     const p=srPlatform(o);
     if(!platMap[p])platMap[p]={count:0,sales:0};
     platMap[p].count++;platMap[p].sales+=amt;
@@ -15757,11 +15758,110 @@ function wrShowHistory(){
     box.style.display = 'block';
   } else { box.style.display = 'none'; }
 }
-function wrEditSnap(date){
+// 파일 재업로드 방식 (전체 재생성)
+function wrEditSnapReupload(date){
   switchTab('salesreport');
   const di = document.getElementById('srReportDate'); if (di) di.value = date;
   const status = document.getElementById('srStatus');
   if (status) status.innerHTML = `<span style="color:var(--warn)">✏️ 수정 모드: ${date}</span> <span style="color:var(--text3);font-size:12px">— 발주서 생성에서 그 날 파일 다시 올리고, (디네트 있으면 같이 올린 뒤) 📊 보고서 생성 → 💾 이력에 저장 누르면 덮어써집니다</span>`;
+}
+// 저장된 날짜의 매입/순이익 숫자를 파일 없이 직접 수정 (인라인 편집기)
+function wrEditSnap(date){
+  const snap = srLoadHistory().find(s=>s.date===date);
+  if(!snap){ alert('해당 날짜 데이터가 없어요.'); return; }
+  const rows = Array.isArray(snap.profitRows) ? snap.profitRows : [];
+  const won = n => (Math.round(Number(n)||0)).toLocaleString();
+  let bodyHtml;
+  if(!rows.length){
+    bodyHtml = `<div style="padding:14px;font-size:13px;color:var(--text2)">이 날짜는 저장된 <b>발주처별 매입/순이익 상세</b>가 없어요.<br>아래 <b>파일로 다시 생성</b>을 눌러 그 날 파일을 올려 재생성해 주세요.</div>`;
+  } else {
+    const trs = rows.map((r,i)=>`
+      <tr data-i="${i}">
+        <td style="padding:5px 6px;font-size:12px;white-space:nowrap">${escHtml(r.vendor||'-')}${r.item?` <span style="color:var(--text3);font-size:10px">${escHtml(r.item)}${r.option?'/'+escHtml(r.option):''}</span>`:''}</td>
+        <td style="padding:3px 4px"><input type="number" class="inp wrE" data-f="sales"    value="${Math.round(r.sales||0)}"    oninput="wrRecalcEditRow(this)" style="width:88px;font-size:11px;text-align:right;padding:3px 5px"></td>
+        <td style="padding:3px 4px"><input type="number" class="inp wrE" data-f="purchase" value="${Math.round(r.purchase||0)}" oninput="wrRecalcEditRow(this)" style="width:88px;font-size:11px;text-align:right;padding:3px 5px"></td>
+        <td style="padding:3px 4px"><input type="number" class="inp wrE" data-f="fee"      value="${Math.round(r.fee||0)}"      oninput="wrRecalcEditRow(this)" style="width:78px;font-size:11px;text-align:right;padding:3px 5px"></td>
+        <td style="padding:3px 4px"><input type="number" class="inp wrE" data-f="vat"      value="${Math.round(r.vat||0)}"      oninput="wrRecalcEditRow(this)" style="width:70px;font-size:11px;text-align:right;padding:3px 5px"></td>
+        <td class="wrProfitCell" style="padding:5px 6px;text-align:right;font-weight:700;font-size:12px;color:${(r.profit||0)>=0?'#16a34a':'#dc2626'};white-space:nowrap">${won(r.profit)}</td>
+        <td style="padding:3px 4px"><input type="number" class="inp wrE" data-f="count" value="${Math.round(r.count||0)}" style="width:56px;font-size:11px;text-align:right;padding:3px 5px"></td>
+      </tr>`).join('');
+    bodyHtml = `
+      <div style="overflow-x:auto">
+      <table id="wrEditTable" style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="background:var(--bg2);color:var(--text2)">
+          <th style="padding:6px;text-align:left">발주처</th>
+          <th style="padding:6px;text-align:right">매출</th>
+          <th style="padding:6px;text-align:right">매입</th>
+          <th style="padding:6px;text-align:right">수수료</th>
+          <th style="padding:6px;text-align:right" title="옐로우브릿지 과세분">부가세</th>
+          <th style="padding:6px;text-align:right;color:#16a34a">순이익</th>
+          <th style="padding:6px;text-align:right">건수</th>
+        </tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+      </div>
+      <div id="wrEditTotals" style="margin-top:8px;font-size:12px;font-weight:700;text-align:right;color:var(--text2)"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">💡 순이익은 자동 계산돼요 (매출 − 매입 − 수수료 − 부가세). 숫자만 고치고 저장하세요.</div>`;
+  }
+  const modal = document.createElement('div');
+  modal.id = 'wrEditModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:12px;max-width:760px;width:100%;max-height:88vh;overflow:auto;padding:20px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="font-size:16px;font-weight:700">✏️ ${escHtml(date)} 매입/순이익 수정</div>
+        <button class="btn btn-sm" style="margin-left:auto" onclick="document.getElementById('wrEditModal').remove()">닫기</button>
+      </div>
+      ${bodyHtml}
+      <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="document.getElementById('wrEditModal').remove();wrEditSnapReupload('${escHtml(date)}')">📂 파일로 다시 생성</button>
+        ${rows.length?`<button class="btn btn-primary" onclick="wrSaveSnapEdit('${escHtml(date)}')">💾 수정 저장</button>`:''}
+      </div>
+    </div>`;
+  modal.addEventListener('click', e=>{ if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+  wrUpdateEditTotals();
+}
+function wrRecalcEditRow(inp){
+  const tr = inp.closest('tr'); if(!tr) return;
+  const val = f => { const el = tr.querySelector(`.wrE[data-f="${f}"]`); return el ? (parseFloat(el.value)||0) : 0; };
+  const profit = val('sales') - val('purchase') - val('fee') - val('vat');
+  const cell = tr.querySelector('.wrProfitCell');
+  if(cell){ cell.textContent = Math.round(profit).toLocaleString(); cell.style.color = profit>=0?'#16a34a':'#dc2626'; }
+  wrUpdateEditTotals();
+}
+function wrUpdateEditTotals(){
+  const table = document.getElementById('wrEditTable'); if(!table) return;
+  let sales=0,purchase=0,fee=0,vat=0,count=0;
+  table.querySelectorAll('tbody tr').forEach(tr=>{
+    const val = f => { const el = tr.querySelector(`.wrE[data-f="${f}"]`); return el ? (parseFloat(el.value)||0) : 0; };
+    sales+=val('sales'); purchase+=val('purchase'); fee+=val('fee'); vat+=val('vat'); count+=val('count');
+  });
+  const profit = sales-purchase-fee-vat;
+  const el = document.getElementById('wrEditTotals');
+  if(el) el.innerHTML = `합계 · 매출 ${Math.round(sales).toLocaleString()} · 매입 ${Math.round(purchase).toLocaleString()} · 수수료 ${Math.round(fee).toLocaleString()} · 부가세 ${Math.round(vat).toLocaleString()} · <span style="color:${profit>=0?'#16a34a':'#dc2626'}">순이익 ${Math.round(profit).toLocaleString()}</span>`;
+}
+function wrSaveSnapEdit(date){
+  const hist = srLoadHistory();
+  const snap = hist.find(s=>s.date===date);
+  if(!snap || !Array.isArray(snap.profitRows)){ alert('저장할 데이터가 없어요.'); return; }
+  const table = document.getElementById('wrEditTable'); if(!table) return;
+  table.querySelectorAll('tbody tr').forEach(tr=>{
+    const i = parseInt(tr.dataset.i);
+    const r = snap.profitRows[i]; if(!r) return;
+    const val = f => { const el = tr.querySelector(`.wrE[data-f="${f}"]`); return el ? (parseFloat(el.value)||0) : 0; };
+    r.sales = val('sales'); r.purchase = val('purchase'); r.fee = val('fee'); r.vat = val('vat'); r.count = val('count');
+    r.profit = r.sales - r.purchase - r.fee - r.vat;
+  });
+  // 요약 재계산
+  const sum = snap.profitRows.reduce((s,r)=>{s.sales+=r.sales||0;s.purchase+=r.purchase||0;s.fee+=r.fee||0;s.vat+=r.vat||0;s.profit+=r.profit||0;s.count+=r.count||0;return s;},{sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
+  const prevAd = (snap.profitSummary && snap.profitSummary.adTotal) || 0;
+  const prevAdByBiz = (snap.profitSummary && snap.profitSummary.adByBiz) || undefined;
+  snap.profitSummary = {...sum, adTotal: prevAd, adByBiz: prevAdByBiz};
+  try { localStorage.setItem(SR_HISTORY_KEY, JSON.stringify(hist)); } catch(e){}
+  _poShowToast('✅ '+date+' 매입/순이익 수정 저장됨');
+  const modal = document.getElementById('wrEditModal'); if(modal) modal.remove();
+  try { wrRender(); } catch(e){}
 }
 function wrDeleteSnap(date){
   if (!confirm(date+' 의 누적 데이터를 삭제할까요?')) return;
