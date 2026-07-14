@@ -504,6 +504,28 @@
       </div>
     </div>
     <div class="card">
+      <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('timeRuleBody');var t=document.getElementById('timeRuleToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';renderTimeVendorRules();}else{b.style.display='none';t.textContent='▼ 펼치기';}">
+        ⏰ 시간대별 발주처 규칙
+        <span id="timeRuleToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
+      </div>
+      <div id="timeRuleBody" style="display:none">
+        <div class="alert alert-info" style="font-size:12px;margin-bottom:12px">
+          💡 특정 코드가 <b>정해진 시간대에 주문</b>되면 다른 발주처로 자동 배정해요. (샵마인 <b>주문일시</b> 기준)<br>
+          예: <code>일비]박대/3P-2</code> 코드가 <b>09:00~13:30</b>에 주문 → <b>일비</b>로. 그 외 시간엔 코드에 등록된 발주처(최고집/해담별)로.<br>
+          ⚠️ 판매자상품코드(원본)에 든 문자로 매칭해요. 마감 여유를 위해 시작 시각을 넉넉히 잡으세요.
+        </div>
+        <div style="display:grid;grid-template-columns:1.6fr auto auto 1fr auto;gap:8px;align-items:end;margin-bottom:8px">
+          <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">코드에 포함된 문자</label><input class="inp" id="trCodeKw" placeholder="예: 일비]박대/3P-2 또는 박대" style="font-size:13px"></div>
+          <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">시작</label><input class="inp" id="trStart" type="time" value="09:00" style="font-size:13px"></div>
+          <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">종료</label><input class="inp" id="trEnd" type="time" value="13:30" style="font-size:13px"></div>
+          <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">이 시간대 발주처</label><input class="inp" id="trVendor" placeholder="예: 일비" style="font-size:13px"></div>
+          <button class="btn btn-sm btn-primary" onclick="addTimeVendorRule()" style="height:36px">+ 추가</button>
+        </div>
+        <div id="trError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
+        <div id="timeRuleList"></div>
+      </div>
+    </div>
+    <div class="card">
       <div class="card-title">📋 등록된 코드 목록 <span id="codeCountText" style="font-weight:400;font-size:12px;color:var(--text3)"></span></div>
       <div id="codeList"><p style="font-size:13px;color:var(--text3)">등록된 코드가 없습니다.</p></div>
     </div>
@@ -2322,6 +2344,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   _sbSyncCodes().catch(()=>{});
   _sbSyncOptMaps().catch(()=>{});
   _sbSyncBankInfo().catch(()=>{});
+  // 시간대별 발주처 규칙 동기화 (원격이 있으면 로컬에 반영)
+  _sbLoadKV('time_vendor_rules').then(remote=>{
+    if(Array.isArray(remote)) localStorage.setItem(LS_TIME_VENDOR_RULES, JSON.stringify(remote));
+  }).catch(()=>{});
 });
 
 function setSt(msg,err){const el=document.getElementById('status');el.textContent=msg;el.className=err?'error':'';}
@@ -2592,8 +2618,11 @@ function handleFile(file, onDone) {
         const order_amt=Math.round(_ab - _ai + _ah + _bcHalf);
         const order_date_raw = (C.od>=0?r[C.od]:'') || '';
         const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
+        // 시간대별 발주처 규칙 적용
+        const vkFinal=_applyTimeVendorRule(order, vk);
+        order.vendor_key=vkFinal; order.unmatched=!vkFinal;
         allOrders.push(order);
-        if(vk){const gk=vk+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
+        if(vkFinal){const gk=vkFinal+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
         else unmatchedList.push(order);
       }
       // 발주처]품목명 형태 자동 등록 후 재매칭
@@ -5122,11 +5151,110 @@ function autoRegisterBracketCodes(orders){
   if(added>0) saveCodes(codes);
   return added;
 }
+// ── 시간대별 발주처 규칙 (특정 코드가 특정 시간대 주문이면 다른 발주처로) ──
+const LS_TIME_VENDOR_RULES = 'yb_time_vendor_rules';
+function loadTimeVendorRules(){ try{ return JSON.parse(localStorage.getItem(LS_TIME_VENDOR_RULES)||'[]'); }catch{ return []; } }
+function saveTimeVendorRules(a){ localStorage.setItem(LS_TIME_VENDOR_RULES, JSON.stringify(a)); _sbSaveKV('time_vendor_rules', a).catch(()=>{}); }
+// 주문의 시각을 '자정 이후 분(0~1439)'으로 반환 (Date/엑셀시리얼/문자열 모두 지원). 없으면 null
+function _orderTimeMinutes(o){
+  const v = o && o.order_date;
+  if (v == null || v === '') return null;
+  if (v instanceof Date && !isNaN(v)) return v.getHours()*60 + v.getMinutes();
+  if (typeof v === 'number' && isFinite(v)) {
+    const frac = v - Math.floor(v);
+    return Math.round(frac*1440) % 1440;
+  }
+  const s = String(v);
+  // 오전/오후 처리
+  let m = s.match(/(오전|오후|am|pm)?\s*(\d{1,2}):(\d{2})/i);
+  if (!m) return null;
+  let h = parseInt(m[2]), min = parseInt(m[3]);
+  const ap = (m[1]||'').toLowerCase();
+  if (ap === '오후' || ap === 'pm') { if (h < 12) h += 12; }
+  else if (ap === '오전' || ap === 'am') { if (h === 12) h = 0; }
+  if (h > 23 || min > 59) return null;
+  return h*60 + min;
+}
+// 시각(분)이 [start,end) 구간에 드는지 — 자정 넘김(start>end)도 지원
+function _inTimeWindow(t, start, end){
+  if (t == null) return false;
+  if (start === end) return true;         // 24시간
+  if (start < end) return t >= start && t < end;
+  return t >= start || t < end;           // 자정 넘김
+}
+// 코드+시간 규칙을 적용해 최종 발주처 반환 (규칙 없으면 defaultVk 그대로)
+function _applyTimeVendorRule(o, defaultVk){
+  const rules = loadTimeVendorRules();
+  if (!rules.length) return defaultVk;
+  const t = _orderTimeMinutes(o);
+  const code = String(o.vendor_code||'');
+  for (const r of rules) {
+    if (!r || r.enabled === false || !r.codeKw || !r.vendor) continue;
+    if (!code.includes(r.codeKw)) continue;
+    if (_inTimeWindow(t, r.startMin, r.endMin)) return r.vendor;
+  }
+  return defaultVk;
+}
+
+function _minToHHMM(m){ const h=Math.floor(m/60), mm=m%60; return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
+function _hhmmToMin(s){ const m=String(s||'').match(/(\d{1,2}):(\d{2})/); if(!m) return null; return parseInt(m[1])*60+parseInt(m[2]); }
+function renderTimeVendorRules(){
+  const el=document.getElementById('timeRuleList');
+  if(!el) return;
+  const rules=loadTimeVendorRules();
+  if(!rules.length){ el.innerHTML='<p style="font-size:12px;color:var(--text3)">등록된 시간 규칙이 없습니다.</p>'; return; }
+  el.innerHTML=rules.map((r,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="checkbox" ${r.enabled===false?'':'checked'} onchange="toggleTimeVendorRule(${i},this.checked)" style="width:14px;height:14px"> 사용
+      </label>
+      <span class="code-tag" style="font-size:11px;word-break:break-all">${escHtml(r.codeKw)}</span>
+      <span style="color:var(--text3)">·</span>
+      <span style="font-weight:600;color:var(--accent)">${_minToHHMM(r.startMin)}~${_minToHHMM(r.endMin)}</span>
+      <span style="color:var(--text3)">→</span>
+      <span style="font-weight:700">🏭 ${escHtml(r.vendor)}</span>
+      <button class="btn btn-danger btn-sm" style="margin-left:auto;font-size:11px" onclick="removeTimeVendorRule(${i})">삭제</button>
+    </div>`).join('');
+}
+function addTimeVendorRule(){
+  const codeKw=(document.getElementById('trCodeKw').value||'').trim();
+  const startMin=_hhmmToMin(document.getElementById('trStart').value);
+  const endMin=_hhmmToMin(document.getElementById('trEnd').value);
+  const vendor=(document.getElementById('trVendor').value||'').trim();
+  const err=document.getElementById('trError');
+  err.textContent='';
+  if(!codeKw){ err.textContent='코드에 포함된 문자를 입력하세요.'; return; }
+  if(startMin==null||endMin==null){ err.textContent='시작/종료 시각을 확인하세요.'; return; }
+  if(!vendor){ err.textContent='이 시간대에 배정할 발주처를 입력하세요.'; return; }
+  const rules=loadTimeVendorRules();
+  rules.push({codeKw, startMin, endMin, vendor, enabled:true});
+  saveTimeVendorRules(rules);
+  document.getElementById('trCodeKw').value='';
+  document.getElementById('trVendor').value='';
+  renderTimeVendorRules();
+  if(allOrders.length>0){ rematchAllOrders(); renderStep2(); renderUnmatchedHints(); if(typeof renderVerifyArea==='function') renderVerifyArea(); }
+  _poShowToast('✅ 시간 규칙 추가됨');
+}
+function toggleTimeVendorRule(i, on){
+  const rules=loadTimeVendorRules();
+  if(rules[i]){ rules[i].enabled=on; saveTimeVendorRules(rules); }
+  if(allOrders.length>0){ rematchAllOrders(); renderStep2(); renderUnmatchedHints(); if(typeof renderVerifyArea==='function') renderVerifyArea(); }
+}
+function removeTimeVendorRule(i){
+  if(!confirm('이 시간 규칙을 삭제할까요?')) return;
+  const rules=loadTimeVendorRules();
+  rules.splice(i,1);
+  saveTimeVendorRules(rules);
+  renderTimeVendorRules();
+  if(allOrders.length>0){ rematchAllOrders(); renderStep2(); renderUnmatchedHints(); if(typeof renderVerifyArea==='function') renderVerifyArea(); }
+}
+
 function rematchAllOrders(){
   groupedOrders={};unmatchedList=[];
   for(const o of allOrders){
-    const vk=detectVendor(o.vendor_code, o.product);
+    let vk=detectVendor(o.vendor_code, o.product);
     const parsed=parseParts(o.vendor_code, o.vendor_opt||'', o.product, o.select_opt, '');
+    vk=_applyTimeVendorRule(o, vk);
     o.vendor_key=vk;
     o.item_name=parsed.itemName;
     o.option_name=parsed.optionName;
@@ -8410,8 +8538,10 @@ function handleFileAdd(file, onDone){
         const order_amt=Math.round(_ab - _ai + _ah + _bcHalf);
         const order_date_raw = (C.od>=0?r[C.od]:'') || '';
         const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
+        const vkFinal=_applyTimeVendorRule(order, vk);
+        order.vendor_key=vkFinal; order.unmatched=!vkFinal;
         allOrders.push(order);
-        if(vk){const gk=vk+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
+        if(vkFinal){const gk=vkFinal+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
         else unmatchedList.push(order);
       }
       const autoAdded=autoRegisterBracketCodes(allOrders);
