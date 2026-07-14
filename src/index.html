@@ -12839,41 +12839,7 @@ function srGarlicDetailHtml(agg, color){
         <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalSales.toLocaleString()}원</td>
       </tr></tfoot>
     </table>`;
-  // Block 2 — 플랫폼별 실주문 / 리뷰주문 분리 (리뷰가 있을 때만)
-  let block2 = '';
-  if (hasReview) {
-    const splitRowsHtml = platOrder.map((plat, pi) => {
-      const s = platSplit[plat];
-      return `<tr style="background:${pi%2===0?'#FAF8F2':'#F2EDDE'}">
-        <td style="padding:8px 14px;border-bottom:1px solid #EDE7D8;font-weight:600;color:#5B4A33">${escHtml(plat)}</td>
-        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#6B5840">${s.realCount.toLocaleString()}건</td>
-        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#6B5840;font-weight:600">${s.realSales.toLocaleString()}원</td>
-        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#92400E">${s.reviewCount.toLocaleString()}건</td>
-        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#92400E;font-weight:600">${s.reviewSales.toLocaleString()}원</td>
-      </tr>`;
-    }).join('');
-    block2 = `
-    <div style="background:#F5F1E8;color:#6B5840;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #C9B68A">🧄 깐마늘 실주문 / 리뷰주문 분리 (발주처별)</div>
-    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FAF8F2">
-      <colgroup><col style="width:18%"><col style="width:18%"><col style="width:23%"><col style="width:18%"><col style="width:23%"></colgroup>
-      <thead><tr style="background:#EDE7D8">
-        <th style="padding:8px 10px;text-align:left;color:#6B5840;font-weight:700;white-space:nowrap">발주처</th>
-        <th style="padding:8px 10px;text-align:right;color:#6B5840;font-weight:700;white-space:nowrap">실주문 건수</th>
-        <th style="padding:8px 10px;text-align:right;color:#6B5840;font-weight:700;white-space:nowrap">실주문 매출</th>
-        <th style="padding:8px 10px;text-align:right;color:#92400E;font-weight:700;white-space:nowrap">리뷰 건수</th>
-        <th style="padding:8px 10px;text-align:right;color:#92400E;font-weight:700;white-space:nowrap">리뷰 매출</th>
-      </tr></thead>
-      <tbody>${splitRowsHtml}</tbody>
-      <tfoot><tr style="background:#E1D9C4;font-weight:700">
-        <td style="padding:8px 14px;color:#5B4A33">합계</td>
-        <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalRealCnt.toLocaleString()}건</td>
-        <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalRealSales.toLocaleString()}원</td>
-        <td style="padding:8px 14px;text-align:right;color:#7C2D12">${totalReviewCnt.toLocaleString()}건</td>
-        <td style="padding:8px 14px;text-align:right;color:#7C2D12">${totalReviewSales.toLocaleString()}원</td>
-      </tr></tfoot>
-    </table>`;
-  }
-  return block1 + block2;
+  return block1;
 }
 // ─ 디네트 박대 ─
 // 평시(기본) 단가
