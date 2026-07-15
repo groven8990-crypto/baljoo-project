@@ -509,6 +509,16 @@
           <div style="font-size:12px;color:var(--text2);margin-bottom:6px">⚠ 예전에 코드만 바꾸고 발주처는 그대로 남아있는 항목이 있을 수 있어요 (코드는 해담별인데 발주처는 일비로 뜨는 경우). 아래 버튼으로 한 번에 점검·정리하세요.</div>
           <button class="btn btn-sm" onclick="fixCodeVendorMismatches()">🔧 코드-발주처 불일치 자동 정리</button>
         </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:6px">📋 <b>대체 코드 여러 개 한번에 붙여넣기</b> — 한 줄에 하나씩, <code>대체코드(일비 등) &gt; 기존 등록 코드</code> 형식으로 붙여넣으세요.</div>
+          <textarea id="altCodeBulkInput" rows="4" class="inp" style="font-family:monospace;font-size:12px" placeholder="일비]박대/4p-1 > 해담별]반건조 박대/중 26-28cm 5미 진공-1
+일비]박대/4p-2 > 해담별]반건조 박대/중 26-28cm 5미 진공-2"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-sm" onclick="bulkAltCodePreview()">🔍 미리보기</button>
+            <button class="btn btn-sm btn-primary" onclick="bulkAltCodeApply()">💾 일괄 등록</button>
+          </div>
+          <div id="altCodeBulkResult" style="margin-top:8px"></div>
+        </div>
       </div>
     </div>
     <div class="card">
@@ -4884,6 +4894,58 @@ function fixCodeVendorMismatches(){
   if(allOrders.length>0){ rematchAllOrders(); renderStep2(); renderUnmatchedHints(); if(typeof renderVerifyArea==='function') renderVerifyArea(); }
   document.getElementById('bulkCodeResult').innerHTML=`<p style="font-size:13px;color:var(--success);font-weight:600">✅ 발주처 불일치 ${mismatches.length}건 정리 완료!</p>`;
   _poShowToast(`✅ 발주처 불일치 ${mismatches.length}건 정리됨`);
+}
+// "대체코드 > 기존등록코드" 형식 여러 줄을 파싱해 {alt, base} 배열로
+function _parseAltCodeBulkLines(){
+  const raw = document.getElementById('altCodeBulkInput').value||'';
+  return raw.split('\n').map(l=>l.trim()).filter(Boolean).map(line=>{
+    const parts = line.split(/\s*(?:>|->|→)\s*/);
+    if (parts.length < 2) return {line, alt:null, base:null};
+    return {line, alt:parts[0].trim(), base:parts.slice(1).join('>').trim()};
+  });
+}
+function _bulkAltCodeMatch(){
+  const lines = _parseAltCodeBulkLines();
+  const codes = loadCodes();
+  return lines.map(l=>{
+    if(!l.alt || !l.base) return {...l, idx:-1};
+    const idx = codes.findIndex(cc => cc && cc.code === l.base);
+    return {...l, idx};
+  });
+}
+function bulkAltCodePreview(){
+  const results = _bulkAltCodeMatch();
+  const el = document.getElementById('altCodeBulkResult');
+  if(!results.length){ el.innerHTML='<p style="font-size:12px;color:var(--danger)">붙여넣은 내용이 없어요.</p>'; return; }
+  el.innerHTML = '<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">' +
+    results.map(r=>{
+      if(!r.alt || !r.base) return `<div style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;color:var(--danger)">⚠ 형식을 못 읽음: ${escHtml(r.line)}</div>`;
+      const ok = r.idx>=0;
+      return `<div style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">
+        ${ok?'✅':'❌ 기존 코드 못 찾음'}
+        <span class="code-tag" style="font-size:11px">${escHtml(r.base)}</span>
+        <span style="color:var(--text3)">← 대체:</span>
+        <span class="code-tag" style="font-size:11px;color:var(--accent)">${escHtml(r.alt)}</span>
+      </div>`;
+    }).join('') + '</div>';
+}
+function bulkAltCodeApply(){
+  const results = _bulkAltCodeMatch();
+  const valid = results.filter(r=>r.alt && r.base);
+  const notFound = valid.filter(r=>r.idx<0);
+  const found = valid.filter(r=>r.idx>=0);
+  if(!valid.length){ alert('붙여넣은 내용을 확인해주세요. 형식: 대체코드 > 기존등록코드'); return; }
+  if(!confirm(`${found.length}건 등록${notFound.length?`, ${notFound.length}건은 기존 코드를 못 찾아 건너뜀`:''}\n계속할까요?`)) return;
+  const codes = loadCodes();
+  found.forEach(r=>{ if(codes[r.idx]) codes[r.idx].altCode = r.alt; });
+  saveCodes(codes);
+  renderCodeList();
+  if(typeof renderCodeMappingList==='function') renderCodeMappingList();
+  if(allOrders.length>0){ rematchAllOrders(); renderStep2(); renderUnmatchedHints(); if(typeof renderVerifyArea==='function') renderVerifyArea(); }
+  document.getElementById('altCodeBulkResult').innerHTML = `<p style="font-size:13px;color:var(--success);font-weight:600">✅ ${found.length}건 대체 코드 등록 완료!${notFound.length?` (${notFound.length}건은 기존 코드를 못 찾음)`:''}</p>`;
+  if(notFound.length) document.getElementById('altCodeBulkResult').innerHTML += '<div style="font-size:12px;color:var(--danger);margin-top:4px">' + notFound.map(r=>'• 못 찾음: '+escHtml(r.base)).join('<br>') + '</div>';
+  document.getElementById('altCodeBulkInput').value='';
+  _poShowToast(`✅ 대체 코드 ${found.length}건 등록됨`);
 }
 function bulkCodeReplaceApply(){
   const find=(document.getElementById('bulkCodeFind').value||'').trim();
