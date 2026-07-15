@@ -2017,23 +2017,24 @@ function detectVendor(vc, productName, selectOpt) {
   const so = String(selectOpt||'').toLowerCase();
   if (!c && !pn) return null;
   const codes = loadCodes();
-  // 1) 정확한 코드 등록(원본코드/변경코드) 최우선 — 사용자가 명시적으로 등록한 건
-  //    판매자상품코드 접두사로 추정한 발주처보다 항상 우선해야 함
+  // 접두사로 발주처를 '추측'해 자동 등록된 항목(auto:true)은 사람이 등록한 게 아니라
+  // 그냥 추측을 그대로 박제해둔 것 — 사람이 등록한 것보다 우선순위가 낮아야 함
+  const _codeMatchExact = cc => {
+    const codeBase = (cc.code||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
+    const origBase = (cc.originalCode||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
+    if (c === cc.code) return true;
+    if (codeBase && c.startsWith(codeBase)) return true;
+    if (cc.originalCode && (c === cc.originalCode || (origBase && c.startsWith(origBase)))) return true;
+    if (cc.code && cc.code.includes(']') && cc.code.split(']')[1].trim() === c) return true;
+    return false;
+  };
+  // 1) 사람이 직접 등록한(auto가 아닌) 정확한 코드 등록 최우선
   //    (예: 원본 코드가 '일비]...'로 시작해도, 이 코드를 해담별로 등록해뒀으면 해담별이 이김)
   if (c) {
-    const exact = codes.find(cc => {
-      const codeBase = (cc.code||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
-      const origBase = (cc.originalCode||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
-      if (c === cc.code) return true;
-      if (codeBase && c.startsWith(codeBase)) return true;
-      if (cc.originalCode && (c === cc.originalCode || (origBase && c.startsWith(origBase)))) return true;
-      if (cc.code && cc.code.includes(']') && cc.code.split(']')[1].trim() === c) return true;
-      return false;
-    });
+    const exact = codes.find(cc => !cc.auto && _codeMatchExact(cc));
     if (exact) return exact.vendor;
   }
-  // 2) 상품명 키워드 + 옵션 키워드가 둘 다 정확히 맞는 '구체적인' 등록 — 이것도 접두사 추정보다 우선
-  //    (예: 원본코드가 '일비]...'로 시작해도, 상품명·옵션이 특정 등록과 정확히 맞으면 그 발주처가 이김)
+  // 2) 상품명 키워드 + 옵션 키워드가 둘 다 정확히 맞는 '구체적인' 등록 — 접두사 추정보다 우선
   if (pn) {
     const specific = codes.find(cc => cc.productKw && pn.includes(String(cc.productKw).toLowerCase())
       && cc.optKw && so.includes(String(cc.optKw).toLowerCase()));
@@ -2045,7 +2046,12 @@ function detectVendor(vc, productName, selectOpt) {
       for (const p of prefixes)
         if (c.toLowerCase().startsWith(p.toLowerCase())) return v;
   }
-  // 4) 상품명 키워드만 있는 일반 등록 (최후순위) — 코드가 비표준이어도 상품명으로 발주처 결정
+  // 4) 자동 등록된(auto:true) 코드의 정확 일치 — 접두사 추정과 사실상 동급이라 이 순위로 내림
+  if (c) {
+    const autoExact = codes.find(cc => cc.auto && _codeMatchExact(cc));
+    if (autoExact) return autoExact.vendor;
+  }
+  // 5) 상품명 키워드만 있는 일반 등록 (최후순위) — 코드가 비표준이어도 상품명으로 발주처 결정
   const found = codes.find(cc => cc.productKw && pn && pn.includes(String(cc.productKw).toLowerCase()));
   return found ? found.vendor : null;
 }
