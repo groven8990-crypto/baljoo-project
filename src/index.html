@@ -2011,15 +2011,17 @@ function applyOverride(vc, so){
 // ══════════════════════════════════════════════════════════
 // 발주처 감지
 // ══════════════════════════════════════════════════════════
-function detectVendor(vc, productName) {
+function detectVendor(vc, productName, selectOpt) {
   const c = String(vc||'').trim();
   const pn = String(productName||'').toLowerCase();
+  const so = String(selectOpt||'').toLowerCase();
   if (!c && !pn) return null;
+  const codes = loadCodes();
   // 1) 정확한 코드 등록(원본코드/변경코드) 최우선 — 사용자가 명시적으로 등록한 건
   //    판매자상품코드 접두사로 추정한 발주처보다 항상 우선해야 함
   //    (예: 원본 코드가 '일비]...'로 시작해도, 이 코드를 해담별로 등록해뒀으면 해담별이 이김)
   if (c) {
-    const exact = loadCodes().find(cc => {
+    const exact = codes.find(cc => {
       const codeBase = (cc.code||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
       const origBase = (cc.originalCode||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
       if (c === cc.code) return true;
@@ -2030,14 +2032,21 @@ function detectVendor(vc, productName) {
     });
     if (exact) return exact.vendor;
   }
-  // 2) 판매자상품코드 접두사로 발주처 추정
+  // 2) 상품명 키워드 + 옵션 키워드가 둘 다 정확히 맞는 '구체적인' 등록 — 이것도 접두사 추정보다 우선
+  //    (예: 원본코드가 '일비]...'로 시작해도, 상품명·옵션이 특정 등록과 정확히 맞으면 그 발주처가 이김)
+  if (pn) {
+    const specific = codes.find(cc => cc.productKw && pn.includes(String(cc.productKw).toLowerCase())
+      && cc.optKw && so.includes(String(cc.optKw).toLowerCase()));
+    if (specific) return specific.vendor;
+  }
+  // 3) 판매자상품코드 접두사로 발주처 추정
   if (c) {
     for (const [v, prefixes] of Object.entries(VENDOR_PREFIXES))
       for (const p of prefixes)
         if (c.toLowerCase().startsWith(p.toLowerCase())) return v;
   }
-  // 3) 상품명 키워드 매칭 (최후순위) — 코드가 비표준이어도 상품명으로 발주처 결정
-  const found = loadCodes().find(cc => cc.productKw && pn && pn.includes(String(cc.productKw).toLowerCase()));
+  // 4) 상품명 키워드만 있는 일반 등록 (최후순위) — 코드가 비표준이어도 상품명으로 발주처 결정
+  const found = codes.find(cc => cc.productKw && pn && pn.includes(String(cc.productKw).toLowerCase()));
   return found ? found.vendor : null;
 }
 
@@ -2167,7 +2176,7 @@ function _parsePartsRaw(vc, voc, productName, selectOpt, displayOpt) {
   const bracketIdx = vendorCode.indexOf(']');
   if (bracketIdx >= 0) {
     const after     = vendorCode.slice(bracketIdx + 1);
-    const vendorKey = detectVendor(vendorCode);
+    const vendorKey = detectVendor(vendorCode, productName, selectOpt);
 
     // 일비 예외 — 슬래시 파싱 + 옵션 없으면 S&T(선택사항) 폴백
     if (vendorKey === '일비') {
@@ -2224,7 +2233,7 @@ function _parsePartsRaw(vc, voc, productName, selectOpt, displayOpt) {
   }
 
   // ] 없는 경우 — prefix 감지 후 슬래시 파싱 (일비 괄호형과 동일 로직)
-  const vendorKey2 = detectVendor(vendorCode);
+  const vendorKey2 = detectVendor(vendorCode, productName, selectOpt);
   const plainPfxs  = vendorKey2
     ? (VENDOR_PREFIXES[vendorKey2] || []).filter(p => !p.endsWith(']'))
     : [];
@@ -2649,7 +2658,7 @@ function handleFile(file, onDone) {
       for(let i=hr+1;i<rows.length;i++){
         const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
-        const vk=detectVendor(vc,pn),alias=extractAlias(r[C.al]);
+        const vk=detectVendor(vc,pn,so),alias=extractAlias(r[C.al]);
         const parsed=parseParts(vc,vo,pn,so,dop);
         // 주문금액 = AB - AI + AH + 구매쿠폰적용금액/2 (지마켓/옥션만)
         const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
@@ -5490,7 +5499,7 @@ function removeTimeVendorRule(i){
 function rematchAllOrders(){
   groupedOrders={};unmatchedList=[];
   for(const o of allOrders){
-    let vk=detectVendor(o.vendor_code, o.product);
+    let vk=detectVendor(o.vendor_code, o.product, o.select_opt);
     const parsed=parseParts(o.vendor_code, o.vendor_opt||'', o.product, o.select_opt, '');
     vk=_applyTimeVendorRule(o, vk);
     o.vendor_key=vk;
@@ -8765,7 +8774,7 @@ function handleFileAdd(file, onDone){
         if (onVal) existingOrderNos.add(onVal);
         totalCount++;added++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
-        const vk=detectVendor(vc,pn),alias=extractAlias(r[C.al]);
+        const vk=detectVendor(vc,pn,so),alias=extractAlias(r[C.al]);
         const parsed=parseParts(vc,vo,pn,so,dop);
         // 주문금액 = AB - AI + AH + 구매쿠폰적용금액/2 (지마켓/옥션만)
         const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
