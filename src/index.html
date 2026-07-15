@@ -378,7 +378,10 @@
         </div>
       </div>
       <!-- 변경할 상품코드 입력 -->
-      <input type="hidden" id="newOriginalCode">
+      <div style="margin-bottom:10px">
+        <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">원본 판매자상품코드 <span style="font-weight:400;color:var(--text3)">(샵마인에 실제 찍히는 코드 — 다르면 입력, 변경할 상품코드와 같으면 비워두세요)</span></label>
+        <input class="inp" id="newOriginalCode" placeholder="예: 일비]박대/3p-2  ← 이 원본코드가 들어오면 아래 발주처/코드로 등록" style="font-size:12px">
+      </div>
       <div style="margin-bottom:10px">
         <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">발주처(공급처) <span style="color:var(--danger)">★</span></label>
         <div style="display:flex;gap:8px">
@@ -2012,26 +2015,29 @@ function detectVendor(vc, productName) {
   const c = String(vc||'').trim();
   const pn = String(productName||'').toLowerCase();
   if (!c && !pn) return null;
+  // 1) 정확한 코드 등록(원본코드/변경코드) 최우선 — 사용자가 명시적으로 등록한 건
+  //    판매자상품코드 접두사로 추정한 발주처보다 항상 우선해야 함
+  //    (예: 원본 코드가 '일비]...'로 시작해도, 이 코드를 해담별로 등록해뒀으면 해담별이 이김)
   if (c) {
-    for (const [v, prefixes] of Object.entries(VENDOR_PREFIXES))
-      for (const p of prefixes)
-        if (c.toLowerCase().startsWith(p.toLowerCase())) return v;
-  }
-  // 등록 코드 매칭: code/originalCode 또는 productKw(상품명 키워드)
-  const found = loadCodes().find(cc => {
-    if (c) {
+    const exact = loadCodes().find(cc => {
       const codeBase = (cc.code||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
       const origBase = (cc.originalCode||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
       if (c === cc.code) return true;
       if (codeBase && c.startsWith(codeBase)) return true;
       if (cc.originalCode && (c === cc.originalCode || (origBase && c.startsWith(origBase)))) return true;
-      // 발주처]코드 형식에서 ]뒤 부분만으로도 매칭 (예: 63781045 → 도매꾹]63781045)
       if (cc.code && cc.code.includes(']') && cc.code.split(']')[1].trim() === c) return true;
-    }
-    // 상품명 키워드 매칭 — 코드가 비표준이어도 상품명으로 발주처 결정
-    if (cc.productKw && pn && pn.includes(String(cc.productKw).toLowerCase())) return true;
-    return false;
-  });
+      return false;
+    });
+    if (exact) return exact.vendor;
+  }
+  // 2) 판매자상품코드 접두사로 발주처 추정
+  if (c) {
+    for (const [v, prefixes] of Object.entries(VENDOR_PREFIXES))
+      for (const p of prefixes)
+        if (c.toLowerCase().startsWith(p.toLowerCase())) return v;
+  }
+  // 3) 상품명 키워드 매칭 (최후순위) — 코드가 비표준이어도 상품명으로 발주처 결정
+  const found = loadCodes().find(cc => cc.productKw && pn && pn.includes(String(cc.productKw).toLowerCase()));
   return found ? found.vendor : null;
 }
 
