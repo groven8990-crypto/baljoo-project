@@ -501,6 +501,10 @@
           <button class="btn btn-sm btn-primary" onclick="bulkCodeReplaceApply()" style="height:36px">💾 일괄 변경</button>
         </div>
         <div id="bulkCodeResult"></div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:6px">⚠ 예전에 코드만 바꾸고 발주처는 그대로 남아있는 항목이 있을 수 있어요 (코드는 해담별인데 발주처는 일비로 뜨는 경우). 아래 버튼으로 한 번에 점검·정리하세요.</div>
+          <button class="btn btn-sm" onclick="fixCodeVendorMismatches()">🔧 코드-발주처 불일치 자동 정리</button>
+        </div>
       </div>
     </div>
     <div class="card">
@@ -4843,6 +4847,38 @@ function bulkCodeReplacePreview(){
   html+='</div>';
   el.innerHTML=html;
 }
+// 코드 문자열의 대괄호(]) 앞부분이 등록된 발주처명과 일치하면 그 발주처 반환
+function _vendorFromBracketCode(code){
+  const s = String(code||'');
+  const idx = s.indexOf(']');
+  if (idx < 0) return null;
+  const prefix = s.slice(0, idx).trim();
+  if (!prefix) return null;
+  if (VENDOR_PREFIXES[prefix]) return prefix;
+  try { const cv=loadCustomVendors(); if (cv[prefix]) return prefix; } catch(e){}
+  return null;
+}
+// 전체 코드 중 "코드 텍스트의 대괄호 앞부분"과 "등록된 발주처"가 어긋난 항목을 찾아 한 번에 정리
+function fixCodeVendorMismatches(){
+  const codes=loadCodes();
+  const mismatches=[];
+  codes.forEach((cc,i)=>{
+    if(!cc || typeof cc.code!=='string') return;
+    const detected=_vendorFromBracketCode(cc.code);
+    if(detected && cc.vendor && detected!==cc.vendor) mismatches.push({i, code:cc.code, from:cc.vendor, to:detected});
+  });
+  if(!mismatches.length){ alert('불일치하는 코드가 없어요. 모두 정상이에요!'); return; }
+  const preview = mismatches.slice(0,15).map(m=>`• ${m.code}\n  ${m.from} → ${m.to}`).join('\n');
+  const more = mismatches.length>15 ? `\n… 외 ${mismatches.length-15}건` : '';
+  if(!confirm(`${mismatches.length}건의 코드-발주처 불일치를 발견했어요. 코드에 맞춰 발주처를 정리할까요?\n\n${preview}${more}`)) return;
+  mismatches.forEach(m=>{ codes[m.i].vendor = m.to; });
+  saveCodes(codes);
+  renderCodeList();
+  if(typeof renderCodeMappingList==='function') renderCodeMappingList();
+  if(allOrders.length>0){ rematchAllOrders(); renderStep2(); renderUnmatchedHints(); if(typeof renderVerifyArea==='function') renderVerifyArea(); }
+  document.getElementById('bulkCodeResult').innerHTML=`<p style="font-size:13px;color:var(--success);font-weight:600">✅ 발주처 불일치 ${mismatches.length}건 정리 완료!</p>`;
+  _poShowToast(`✅ 발주처 불일치 ${mismatches.length}건 정리됨`);
+}
 function bulkCodeReplaceApply(){
   const find=(document.getElementById('bulkCodeFind').value||'').trim();
   const repl=(document.getElementById('bulkCodeReplace').value||'');
@@ -4850,19 +4886,24 @@ function bulkCodeReplaceApply(){
   const matches=_bulkCodeMatches(find, repl);
   const modeLabel=_bulkCodeExact()?'정확히 일치':'부분 일치';
   if(!matches.length){ alert(`[${modeLabel}] "${find}"와(과) 맞는 변경코드가 없어요.`); return; }
-  if(!confirm(`[${modeLabel}] ${matches.length}건을\n"${find}" → "${repl}" 로 바꿀까요?`)) return;
+  if(!confirm(`[${modeLabel}] ${matches.length}건을\n"${find}" → "${repl}" 로 바꿀까요?\n(코드에 맞춰 발주처도 자동으로 정리돼요)`)) return;
   const codes=loadCodes();
-  let changed=0;
+  let changed=0, vendorFixed=0;
   matches.forEach(({i, after})=>{
-    if(codes[i] && typeof codes[i].code==='string' && codes[i].code!==after){ codes[i].code=after; changed++; }
+    if(!codes[i]) return;
+    if(typeof codes[i].code==='string' && codes[i].code!==after){ codes[i].code=after; changed++; }
+    // 바뀐 코드의 대괄호 앞부분이 등록된 발주처면 vendor 필드도 맞춰 정리 (안 하면 코드만 바뀌고 실제 발주처는 그대로 남음)
+    const detected = _vendorFromBracketCode(after);
+    if(detected && codes[i].vendor !== detected){ codes[i].vendor = detected; vendorFixed++; }
   });
   saveCodes(codes);
   renderCodeList();
   if(typeof renderCodeMappingList==='function') renderCodeMappingList();
-  document.getElementById('bulkCodeResult').innerHTML=`<p style="font-size:13px;color:var(--success);font-weight:600">✅ ${changed}건 변경 완료!</p>`;
+  if(allOrders.length>0){ rematchAllOrders(); renderStep2(); renderUnmatchedHints(); if(typeof renderVerifyArea==='function') renderVerifyArea(); }
+  document.getElementById('bulkCodeResult').innerHTML=`<p style="font-size:13px;color:var(--success);font-weight:600">✅ ${changed}건 변경 완료!${vendorFixed?` (발주처도 ${vendorFixed}건 자동 정리됨)`:''}</p>`;
   document.getElementById('bulkCodeFind').value='';
   document.getElementById('bulkCodeReplace').value='';
-  _poShowToast(`✅ 변경코드 ${changed}건 일괄 변경됨`);
+  _poShowToast(`✅ 변경코드 ${changed}건 일괄 변경됨${vendorFixed?`, 발주처 ${vendorFixed}건 정리됨`:''}`);
 }
 function editCode(i){
   const codes=loadCodes();
