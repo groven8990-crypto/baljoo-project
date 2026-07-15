@@ -512,6 +512,10 @@
           <div style="font-size:12px;color:var(--text2);margin-bottom:6px">⚠ 예전에 코드만 바꾸고 발주처는 그대로 남아있는 항목이 있을 수 있어요 (코드는 해담별인데 발주처는 일비로 뜨는 경우). 아래 버튼으로 한 번에 점검·정리하세요.</div>
           <button class="btn btn-sm" onclick="fixCodeVendorMismatches()">🔧 코드-발주처 불일치 자동 정리</button>
         </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);background:#fef2f2;margin-left:-22px;margin-right:-22px;padding-left:22px;padding-right:22px;padding-bottom:4px">
+          <div style="font-size:12px;color:#991b1b;margin-bottom:6px">🔙 <b>박대: 해담별 → 일비 전체 되돌리기</b> — "해담별]반건조 박대"로 시작하는 코드를 전부 "일비]반건조 박대"로 되돌리고(발주처도 자동 정리), 박대 관련 시간대 규칙도 전부 삭제해요.</div>
+          <button class="btn btn-sm" style="background:#dc2626;color:#fff;border:none" onclick="undoBakdaeHaedambyeol()">🔙 지금 바로 되돌리기</button>
+        </div>
         <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
           <div style="font-size:12px;color:var(--text2);margin-bottom:6px">📋 <b>대체 코드 여러 개 한번에 붙여넣기</b> — 한 줄에 하나씩, <code>대체코드(일비 등) &gt; 기존 등록 코드</code> 형식으로 붙여넣으세요.</div>
           <textarea id="altCodeBulkInput" rows="4" class="inp" style="font-family:monospace;font-size:12px" placeholder="일비]박대/4p-1 > 해담별]반건조 박대/중 26-28cm 5미 진공-1
@@ -4915,6 +4919,38 @@ function fixCodeVendorMismatches(){
   if(allOrders.length>0){ rematchAllOrders(); renderStep2(); renderUnmatchedHints(); if(typeof renderVerifyArea==='function') renderVerifyArea(); }
   document.getElementById('bulkCodeResult').innerHTML=`<p style="font-size:13px;color:var(--success);font-weight:600">✅ 발주처 불일치 ${mismatches.length}건 정리 완료!</p>`;
   _poShowToast(`✅ 발주처 불일치 ${mismatches.length}건 정리됨`);
+}
+// 박대: 해담별]반건조 박대... 코드를 전부 일비]반건조 박대...로 되돌리고(발주처 자동 정리),
+// 박대 관련 시간대별 발주처 규칙도 전부 삭제 (사용자 요청에 따른 일괄 되돌리기)
+function undoBakdaeHaedambyeol(){
+  const OLD_PREFIX = '해담별]반건조 박대';
+  const NEW_PREFIX = '일비]반건조 박대';
+  const codes = loadCodes();
+  const targets = codes.filter(cc => cc && typeof cc.code === 'string' && cc.code.startsWith(OLD_PREFIX));
+  const rules = loadTimeVendorRules();
+  const bakdaeRules = rules.filter(r => r && String(r.codeKw||'').includes('박대'));
+  if(!targets.length && !bakdaeRules.length){ alert('되돌릴 박대/해담별 코드나 시간대 규칙이 없어요.'); return; }
+  const preview = targets.slice(0,10).map(cc=>`• ${cc.code}`).join('\n');
+  const more = targets.length>10 ? `\n… 외 ${targets.length-10}건` : '';
+  if(!confirm(`코드 ${targets.length}건을 "${OLD_PREFIX}" → "${NEW_PREFIX}"로 되돌리고(발주처도 일비로 자동 정리),\n박대 시간대 규칙 ${bakdaeRules.length}건을 삭제할까요?\n\n${preview}${more}`)) return;
+  let changed=0, vendorFixed=0;
+  codes.forEach(cc=>{
+    if(cc && typeof cc.code==='string' && cc.code.startsWith(OLD_PREFIX)){
+      cc.code = NEW_PREFIX + cc.code.slice(OLD_PREFIX.length);
+      changed++;
+      const detected = _vendorFromBracketCode(cc.code);
+      if(detected && cc.vendor !== detected){ cc.vendor = detected; vendorFixed++; }
+    }
+  });
+  saveCodes(codes);
+  const remainingRules = rules.filter(r => !(r && String(r.codeKw||'').includes('박대')));
+  saveTimeVendorRules(remainingRules);
+  renderCodeList();
+  if(typeof renderCodeMappingList==='function') renderCodeMappingList();
+  if(typeof renderTimeVendorRules==='function') renderTimeVendorRules();
+  if(allOrders.length>0){ rematchAllOrders(); renderStep2(); renderUnmatchedHints(); if(typeof renderVerifyArea==='function') renderVerifyArea(); }
+  document.getElementById('bulkCodeResult').innerHTML=`<p style="font-size:13px;color:var(--success);font-weight:600">✅ 코드 ${changed}건 일비로 되돌림(발주처 ${vendorFixed}건 정리) + 시간대 규칙 ${bakdaeRules.length}건 삭제 완료!</p>`;
+  _poShowToast(`✅ 박대 전체 일비로 되돌림 (${changed}건)`);
 }
 // "대체코드 > 기존등록코드" 형식 여러 줄을 파싱해 {alt, base} 배열로
 function _parseAltCodeBulkLines(){
