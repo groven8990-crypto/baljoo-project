@@ -401,6 +401,10 @@
         </div>
         <div><button class="btn btn-primary" id="addCodeBtn" onclick="addCode()" style="height:36px">+ 추가</button></div>
       </div>
+      <div style="margin-top:10px">
+        <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">🔀 대체 코드 (선택 — ⏰ 시간대별 발주처 규칙으로 다른 발주처로 갈 때만 사용)</label>
+        <input class="inp" id="newAltCode" placeholder="예: 일비]박대/4P-1  ← 시간대 규칙으로 일비로 갈 때 이 코드로 품목/옵션을 다시 계산해요" style="font-size:12px">
+      </div>
       <div id="addError" style="font-size:12px;color:var(--danger);margin-top:8px"></div>
     </div>
 
@@ -515,8 +519,9 @@
       <div id="timeRuleBody" style="display:none">
         <div class="alert alert-info" style="font-size:12px;margin-bottom:12px">
           💡 특정 코드가 <b>정해진 시간대에 주문</b>되면 다른 발주처로 자동 배정해요. (샵마인 <b>주문일시</b> 기준)<br>
-          예: <code>일비]박대/3P-2</code> 코드가 <b>09:00~13:30</b>에 주문 → <b>일비</b>로. 그 외 시간엔 코드에 등록된 발주처(최고집/해담별)로.<br>
-          ⚠️ 판매자상품코드(원본)에 든 문자로 매칭해요. 마감 여유를 위해 시작 시각을 넉넉히 잡으세요.
+          예: <code>박대</code> 코드가 <b>10:00~14:00</b>에 주문 → <b>일비</b>로. 그 외 시간엔 코드에 등록된 발주처(해담별/최고집)로.<br>
+          ⚠️ 판매자상품코드(원본)·상품명·옵션 어디든 든 문자로 매칭해요.<br>
+          🔀 <b>일비는 발주서 품목을 "4P/3P" 식으로, 해담별은 "반건조 박대 대 28-30cm…" 식으로 달라야 한다면</b> → 🔑 코드 등록에서 그 코드에 <b>대체 코드</b>(예: <code>일비]박대/4P-1</code>)를 같이 등록해두세요. 이 시간 규칙으로 일비로 갈 때만 자동으로 대체 코드 기준 품목/옵션으로 바뀌고, 그 외엔 원래 등록된(해담별용) 품목/옵션 그대로 나가요.
         </div>
         <div style="display:grid;grid-template-columns:1.6fr auto auto 1fr auto;gap:8px;align-items:end;margin-bottom:8px">
           <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px;font-weight:500">코드에 포함된 문자</label><input class="inp" id="trCodeKw" placeholder="예: 일비]박대/3P-2 또는 박대" style="font-size:13px"></div>
@@ -4798,8 +4803,9 @@ function renderCodeList(){
     const optLine=ooText?`<div style="font-size:11px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(ooText)}">${ooText}</div>`:'';
     const optKwBadge=cc.optKw?`<div style="display:inline-block;margin-top:3px;margin-right:3px;font-size:10px;background:#fef3c7;color:#92400e;border:1px solid #fbbf24;border-radius:10px;padding:1px 7px;white-space:nowrap">🎨 옵션: ${escHtml(cc.optKw)}</div>`:'';
     const productKwBadge=cc.productKw?`<div style="display:inline-block;margin-top:3px;margin-right:3px;font-size:10px;background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd;border-radius:10px;padding:1px 7px;white-space:nowrap">🔎 상품명: ${escHtml(cc.productKw)}</div>`:'';
+    const altCodeBadge=cc.altCode?`<div style="display:inline-block;margin-top:3px;margin-right:3px;font-size:10px;background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;border-radius:10px;padding:1px 7px;white-space:nowrap">🔀 대체: ${escHtml(cc.altCode)}</div>`:'';
     html+=`<div class="code-item" id="codeitem-${i}" style="${G}">
-      <div style="min-width:0"><div class="code-tag" style="font-size:11px;word-break:break-all">${orig}</div>${autoBadge}${productKwBadge}${optKwBadge}</div>
+      <div style="min-width:0"><div class="code-tag" style="font-size:11px;word-break:break-all">${orig}</div>${autoBadge}${productKwBadge}${optKwBadge}${altCodeBadge}</div>
       <div style="min-width:0;padding-top:2px">${productLine}${optLine}</div>
       <div style="min-width:0;padding-top:2px">${changed}</div>
       <div style="display:flex;gap:6px;padding-top:2px;white-space:nowrap"><button class="btn btn-sm" onclick="editCode(${i})">✏️</button><button class="btn btn-danger" onclick="removeCode(${i})">삭제</button></div>
@@ -4915,6 +4921,7 @@ function editCode(i){
   setVendorSelect(cc.vendor||'');
   const okwEl=document.getElementById('newOptKw'); if(okwEl) okwEl.value=cc.optKw||'';
   const pkwEl=document.getElementById('newProductKw'); if(pkwEl) pkwEl.value=cc.productKw||'';
+  const akwEl=document.getElementById('newAltCode'); if(akwEl) akwEl.value=cc.altCode||'';
   // 주문 원본 정보 표시 (있으면)
   let opText=cc.orderProduct||'', ooText=cc.orderOpt||'';
   if(!opText && typeof allOrders!=='undefined'){
@@ -4954,6 +4961,7 @@ function cancelEditCode(){
   setVendorSelect('');
   const okw=document.getElementById('newOptKw'); if(okw) okw.value='';
   const pkw=document.getElementById('newProductKw'); if(pkw) pkw.value='';
+  const akw=document.getElementById('newAltCode'); if(akw) akw.value='';
   document.getElementById('addError').textContent='';
   document.getElementById('prefillInfo').style.display='none';
   document.getElementById('prefillOrigCode').textContent='';
@@ -5045,6 +5053,7 @@ function addCode(){
   const code=document.getElementById('newCode').value.trim();
   const optKw=(document.getElementById('newOptKw')?.value||'').trim();
   const productKw=(document.getElementById('newProductKw')?.value||'').trim();
+  const altCode=(document.getElementById('newAltCode')?.value||'').trim();
   const errEl=document.getElementById('addError');
   if(!code){errEl.textContent='변경할 상품코드를 입력해 주세요.';return;}
   const vendor=getSelectedVendor();
@@ -5058,6 +5067,7 @@ function addCode(){
     const upd={originalCode:originalCode||code, code, vendor, product};
     if(optKw) upd.optKw=optKw;
     if(productKw) upd.productKw=productKw;
+    if(altCode) upd.altCode=altCode;
     codes[_editingCodeIdx]=upd;
     saveCodes(codes);
     cancelEditCode();
@@ -5071,6 +5081,7 @@ function addCode(){
   const entry={originalCode:originalCode||code, code, vendor, product};
   if(optKw) entry.optKw=optKw;
   if(productKw) entry.productKw=productKw;
+  if(altCode) entry.altCode=altCode;
   if(orderProduct&&orderProduct!=='—') entry.orderProduct=orderProduct;
   if(orderOpt&&orderOpt!=='—') entry.orderOpt=orderOpt;
   codes.push(entry);
@@ -5079,6 +5090,7 @@ function addCode(){
   document.getElementById('newCode').value='';
   const okw=document.getElementById('newOptKw'); if(okw) okw.value='';
   const pkw=document.getElementById('newProductKw'); if(pkw) pkw.value='';
+  const akw=document.getElementById('newAltCode'); if(akw) akw.value='';
   setVendorSelect('');
   renderCodeList();renderCodeMappingList();
   if(allOrders.length>0){
@@ -5240,7 +5252,42 @@ function _inTimeWindow(t, start, end){
   if (start < end) return t >= start && t < end;
   return t >= start || t < end;           // 자정 넘김
 }
+// "발주처]품목/옵션-수량" 형태의 코드 텍스트를 일반 규칙으로 파싱 (대체 코드용 — 일비 전용 파싱은 적용 안 함)
+function _parseGenericCodeText(codeText){
+  const s = String(codeText||'');
+  const bi = s.indexOf(']');
+  if (bi < 0) return null;
+  const after = s.slice(bi+1);
+  const si = after.indexOf('/');
+  if (si >= 0) {
+    const itemPart = after.slice(0, si).trim();
+    const afterSlash = after.slice(si+1).trim();
+    const qty = extractCodeQty(afterSlash);
+    const opt = stripCodeQty(afterSlash).replace(/_/g,' ').trim();
+    if (!itemPart) return null;
+    return { itemName: itemPart, optionName: opt, codeQty: qty||1 };
+  }
+  if (after.trim()) return { itemName: after.trim(), optionName: '', codeQty: 1 };
+  return null;
+}
+// 이 주문에 매칭되는 등록 코드 항목 찾기 (parseParts의 _codeMatch와 동일한 규칙)
+function _findMatchedCodeEntry(o){
+  const vendorCode = String(o.vendor_code||'');
+  const productName = String(o.product||'');
+  const _codeMatch = cc => {
+    const codeBase = (cc.code||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
+    const origBase = (cc.originalCode||'').replace(/\/알수없음$/, '').replace(/알수없음$/, '').trim();
+    if (vendorCode === cc.code || (codeBase && vendorCode.startsWith(codeBase))) return true;
+    if (cc.originalCode && (vendorCode === cc.originalCode || (origBase && vendorCode.startsWith(origBase)))) return true;
+    if (cc.productKw && productName && productName.toLowerCase().includes(cc.productKw.toLowerCase())) return true;
+    return false;
+  };
+  const all = loadCodes().filter(_codeMatch);
+  const optSrc = (String(o.select_opt||'')+' '+String(o.vendor_opt||'')).toLowerCase();
+  return all.find(cc => cc.optKw && optSrc.includes(String(cc.optKw).toLowerCase())) || all.find(cc => !cc.optKw) || null;
+}
 // 코드+시간 규칙을 적용해 최종 발주처 반환 (규칙 없으면 defaultVk 그대로)
+// 규칙에 매칭된 코드에 '대체 코드'가 등록돼 있으면 품목명/옵션/수량도 그 대체 코드 기준으로 다시 계산
 function _applyTimeVendorRule(o, defaultVk){
   const rules = loadTimeVendorRules();
   if (!rules.length) return defaultVk;
@@ -5251,7 +5298,14 @@ function _applyTimeVendorRule(o, defaultVk){
   for (const r of rules) {
     if (!r || r.enabled === false || !r.codeKw || !r.vendor) continue;
     if (!hay.includes(r.codeKw)) continue;
-    if (_inTimeWindow(t, r.startMin, r.endMin)) return r.vendor;
+    if (_inTimeWindow(t, r.startMin, r.endMin)) {
+      const matchedCc = _findMatchedCodeEntry(o);
+      if (matchedCc && matchedCc.altCode) {
+        const alt = _parseGenericCodeText(matchedCc.altCode);
+        if (alt) { o.item_name = alt.itemName; o.option_name = alt.optionName; if (alt.codeQty) o.code_qty = alt.codeQty; }
+      }
+      return r.vendor;
+    }
   }
   return defaultVk;
 }
