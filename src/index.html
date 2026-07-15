@@ -4921,12 +4921,20 @@ function _bulkAltCodeMatch(){
       const sb = l.base.replace(/\s/g,'');
       idx = codes.findIndex(cc => cc && String(cc.code||'').replace(/\s/g,'') === sb);
     }
-    // 후보 제안: 못 찾았을 때 앞부분(대괄호 이전 발주처 + 이후 첫 단어)이 비슷한 코드들을 보여줌
+    // 후보 제안: 못 찾았을 때 발주처(대괄호 앞) + 핵심 품목 키워드가 겹치는 코드를 유사도순으로 보여줌
     let suggestions = [];
     if(idx < 0){
       const bi = l.base.indexOf(']');
-      const headKw = bi >= 0 ? l.base.slice(0, bi+1) : l.base.slice(0, 6);
-      suggestions = codes.filter(cc => cc && String(cc.code||'').includes(headKw)).map(cc=>cc.code).slice(0,5);
+      const headKw = bi >= 0 ? l.base.slice(0, bi+1) : '';
+      // 품목 키워드 후보: 2글자 이상 한글/영문 토큰들 (숫자·기호 제외)
+      const tokens = l.base.replace(/[\[\]\/\-]/g,' ').split(/\s+/).filter(t => t.length>=2 && /[가-힣a-zA-Z]/.test(t));
+      const cands = codes.filter(cc => cc && (!headKw || String(cc.code||'').startsWith(headKw)));
+      const scored = cands.map(cc=>{
+        const txt = String(cc.code||'');
+        const score = tokens.reduce((s,t)=> s + (txt.includes(t)?1:0), 0);
+        return {code:txt, score};
+      }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+      suggestions = scored.slice(0,6).map(x=>x.code);
     }
     return {...l, idx, suggestions};
   });
@@ -4935,12 +4943,12 @@ function bulkAltCodePreview(){
   const results = _bulkAltCodeMatch();
   const el = document.getElementById('altCodeBulkResult');
   if(!results.length){ el.innerHTML='<p style="font-size:12px;color:var(--danger)">붙여넣은 내용이 없어요.</p>'; return; }
-  el.innerHTML = '<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">' +
-    results.map(r=>{
+  el.innerHTML = '<div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">' +
+    results.map((r,i)=>{
       if(!r.alt || !r.base) return `<div style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;color:var(--danger)">⚠ 형식을 못 읽음: ${escHtml(r.line)}</div>`;
       const ok = r.idx>=0;
       const suggHtml = (!ok && r.suggestions && r.suggestions.length)
-        ? `<div style="margin-top:4px;font-size:11px;color:var(--text3)">비슷한 등록 코드: ${r.suggestions.map(s=>`<span class="code-tag" style="font-size:10px;margin-right:4px">${escHtml(s)}</span>`).join('')}</div>`
+        ? `<div style="margin-top:4px;font-size:11px;color:var(--text3)">비슷한 등록 코드 (클릭하면 자동으로 채워져요): ${r.suggestions.map(s=>`<span class="code-tag" data-sugg="${escHtml(s)}" onclick="_altCodeUseSuggestion(${i}, this.dataset.sugg)" style="font-size:10px;margin-right:4px;cursor:pointer;background:#eff6ff;border-color:#93c5fd" title="클릭하면 이 코드로 채워요">${escHtml(s)}</span>`).join('')}</div>`
         : '';
       return `<div style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">
         ${ok?'✅':'❌ 기존 코드 못 찾음'}
@@ -4950,6 +4958,15 @@ function bulkAltCodePreview(){
         ${suggHtml}
       </div>`;
     }).join('') + '</div>';
+}
+// 제안 코드 클릭 시 해당 줄의 '기존 등록 코드' 부분을 정확한 텍스트로 자동 교체
+function _altCodeUseSuggestion(idx, suggestion){
+  const results = _bulkAltCodeMatch();
+  if(!results[idx]) return;
+  results[idx].base = suggestion;
+  const newText = results.map(r => (r.alt && r.base) ? `${r.alt} > ${r.base}` : r.line).join('\n');
+  document.getElementById('altCodeBulkInput').value = newText;
+  bulkAltCodePreview();
 }
 function bulkAltCodeApply(){
   const results = _bulkAltCodeMatch();
