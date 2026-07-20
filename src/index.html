@@ -7064,7 +7064,7 @@ function invRenderTrackList() {
     '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">' +
     '<span style="color:var(--success)">✅</span>' +
     '<span>' + escHtml(t.fileName) + '</span>' +
-    '<span style="color:var(--text3)">— ' + (Object.keys(t.map).length || Object.keys(t.orderCodeMap||{}).length) + '건</span>' +
+    '<span style="color:var(--text3)">— ' + (Object.keys(t.map).length || Object.keys(t.orderCodeMap||{}).length || (t.addrEntries||[]).length) + '건</span>' +
     (t.hasOrderCode ? '<span style="color:var(--primary);font-size:11px;margin-left:4px">주문코드매칭</span>' : (t.hasCourier ? '<span style="color:var(--success);font-size:11px;margin-left:4px">택배사자동</span>' : '')) +
     '<button class="btn btn-danger btn-sm" onclick="invRemoveTrack(' + i + ')">✕</button>' +
     '</div>'
@@ -7113,7 +7113,7 @@ function invCheckReady() {
   if (btn) btn.disabled = !ready;
 }
 
-// 주소 정규화 (공백·기호 제거) 및 공통 접두 길이로 유사도 판정 — 동명이인 구분용
+// 주소 정규화 (공백·기호 제거) 및 공통 접두 길이로 유사도 판정 — 동명이인 구분용 (같은 파일 내 비교)
 function invAddrNorm(s) {
   return String(s||'').replace(/\s+/g,'').replace(/[(),.\-_/]/g,'');
 }
@@ -7123,6 +7123,29 @@ function invAddrScore(a, b) {
   let i = 0; const n = Math.min(x.length, y.length);
   while (i < n && x[i] === y[i]) i++;
   return i;
+}
+// 출처가 다른 주소끼리(예: 이메일 vs 샵마인) 비교할 때는 앞부분 표기 차이(대전 vs 대전광역시 등)
+// 때문에 공통 접두 방식이 잘 안 맞음 → 최장 공통 부분문자열(연속 일치) 길이로 판정
+function invAddrNormLoose(s) {
+  return invAddrNorm(s).replace(/(특별자치시|특별자치도|광역시|특별시|자치시|자치도)/g, '');
+}
+function _lcsLen(a, b) {
+  const m = a.length, n = b.length;
+  if (!m || !n) return 0;
+  let prev = new Array(n+1).fill(0), max = 0;
+  for (let i = 1; i <= m; i++) {
+    const cur = new Array(n+1).fill(0);
+    for (let j = 1; j <= n; j++) {
+      if (a[i-1] === b[j-1]) { cur[j] = prev[j-1] + 1; if (cur[j] > max) max = cur[j]; }
+    }
+    prev = cur;
+  }
+  return max;
+}
+function invAddrScoreLoose(a, b) {
+  const x = invAddrNormLoose(a), y = invAddrNormLoose(b);
+  if (!x || !y) return 0;
+  return _lcsLen(x, y);
 }
 
 function invProcess() {
@@ -7184,8 +7207,9 @@ function invProcess() {
         // 주소로만 매칭하는 파일(예: 도매꾹 메일 — 마스킹된 이름은 동명이인 오매칭 위험이 커서 안 씀)
         if (tf.addrOnly) {
           if (!oAddr || !tf.addrEntries || !tf.addrEntries.length) continue;
-          const scored = tf.addrEntries.map(e => ({e, s: invAddrScore(e.addr, oAddr)})).sort((p,q) => q.s - p.s);
-          if (!(scored[0] && scored[0].s >= 8 && (scored.length < 2 || scored[0].s > scored[1].s))) continue; // 확신 없으면 건드리지 않음
+          // 출처가 다른 주소 비교라 표기 차이(대전 vs 대전광역시 등)를 감안해 최장 공통부분문자열로 판정
+          const scored = tf.addrEntries.map(e => ({e, s: invAddrScoreLoose(e.addr, oAddr)})).sort((p,q) => q.s - p.s);
+          if (!(scored[0] && scored[0].s >= 10 && (scored.length < 2 || scored[0].s > scored[1].s))) continue; // 확신 없으면 건드리지 않음
           const entry = scored[0].e;
           const trackNo2 = entry.no;
           const trackCourier2 = entry.courier || '';
