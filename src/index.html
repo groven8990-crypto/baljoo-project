@@ -719,6 +719,15 @@
   </div>
 
   <div class="card">
+    <div class="card-title">🧾 도매꾹 배송알림 메일에서 송장번호 가져오기</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-primary" onclick="invGmailFetchDomeggook()">📬 오늘 배송알림 메일 검색</button>
+      <span id="invDomeggookStatus" style="font-size:12px;color:var(--text3)"></span>
+    </div>
+    <div style="font-size:11px;color:var(--text3)">도매꾹은 첨부파일 없이 <b>"[도매꾹] 배송이 시작되었습니다"</b> 메일 본문에 택배사·송장번호가 적혀 와요. 오늘 온 메일들을 찾아서 본문에서 바로 읽어 매칭해요 (수령인 이름 기준, 마스킹된 이름도 인식).</div>
+  </div>
+
+  <div class="card">
     <div class="card-title">🚚 운송장 파일 업로드 <span style="font-size:12px;font-weight:400;color:var(--text3)">(여러 개 가능)</span></div>
     <div class="upload-zone" id="invTrackZone" onclick="document.getElementById('invTrackFile').click()"
       ondragover="event.preventDefault();this.classList.add('dragover')"
@@ -6951,6 +6960,93 @@ async function invDriveLoadFile(idx) {
   } catch(e) {
     statusEl.textContent = '❌ 오류: ' + e.message;
     console.error('[invDriveLoadFile]', e);
+  }
+}
+
+// ── 도매꾹 "배송이 시작되었습니다" 알림메일 — 첨부 없이 본문에 택배사·송장번호가 텍스트로 있음 ──
+function _gmailFindHtmlBodyParts(payload, out) {
+  out = out || [];
+  if (!payload) return out;
+  if (payload.mimeType === 'text/html' && payload.body && payload.body.data) out.push(payload.body.data);
+  if (!payload.parts && payload.body && payload.body.data && payload.mimeType !== 'text/html' && !out.length && /text/.test(payload.mimeType||'')) out.push(payload.body.data);
+  if (payload.parts) for (const p of payload.parts) _gmailFindHtmlBodyParts(p, out);
+  return out;
+}
+function _gmailB64urlDecode(s) {
+  try {
+    const bin = atob(String(s||'').replace(/-/g,'+').replace(/_/g,'/'));
+    const bytes = new Uint8Array(bin.length);
+    for (let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch(e) { return ''; }
+}
+async function invGmailFetchDomeggook() {
+  const statusEl = document.getElementById('invDomeggookStatus');
+  if (statusEl) statusEl.textContent = '';
+  let token;
+  try { token = await gmailRequestToken(); }
+  catch(e) { if(statusEl) statusEl.textContent = '❌ Gmail 연결 실패: ' + e.message; return; }
+
+  try {
+    const now = new Date();
+    const todayFmt = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}`;
+    const q = `in:inbox subject:"배송이 시작되었습니다" after:${todayFmt}`;
+    if (statusEl) statusEl.textContent = '도매꾹 배송알림 메일 검색 중...';
+    const searchResp = await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=' + encodeURIComponent(q),
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!searchResp.ok) throw new Error('검색 실패 ' + searchResp.status);
+    const searchData = await searchResp.json();
+    const msgs = searchData.messages || [];
+    if (!msgs.length) { if(statusEl) statusEl.textContent = '오늘 도매꾹 배송알림 메일이 없어요.'; return; }
+    if (statusEl) statusEl.textContent = msgs.length + '개 메일 분석 중...';
+
+    const details = await Promise.all(msgs.map(m =>
+      fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + m.id + '?format=full',
+        { headers: { Authorization: 'Bearer ' + token } })
+        .then(r => r.ok ? r.json() : null).catch(() => null)
+    ));
+
+    const nameMap = {};
+    let parsedCount = 0;
+    for (const msg of details) {
+      if (!msg || !msg.payload) continue;
+      const parts = _gmailFindHtmlBodyParts(msg.payload);
+      if (!parts.length) continue;
+      const html = parts.map(_gmailB64urlDecode).join('\n');
+      const text = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+      const courierM = text.match(/택배사\s*:?\s*([^\s]+)/);
+      const trackM   = text.match(/송장번호\s*:?\s*(\d{8,20})/);
+      const nameM    = text.match(/수령인\s*:?\s*([^\s,]+)/);
+      const addrM    = text.match(/배송지\s*:?\s*([^()]{5,80})/);
+      if (!trackM || !nameM) continue;
+      const name = nameM[1].trim();
+      const courier = courierM ? normalizeCourier(courierM[1].trim()) : '';
+      const no = trackM[1].trim();
+      const addr = addrM ? addrM[1].trim() : '';
+      if (!nameMap[name]) nameMap[name] = [];
+      nameMap[name].push({ no, courier, addr });
+      parsedCount++;
+    }
+    if (!parsedCount) { if(statusEl) statusEl.textContent = '메일에서 송장 정보를 못 찾았어요. (양식이 바뀌었을 수 있어요)'; return; }
+
+    invTrackFiles.push({
+      fileName: '도매꾹 배송알림 메일(' + parsedCount + '건)',
+      vendorName: '도매꾹',
+      courierName: '',
+      hasCourier: true,
+      hasOrderCode: false,
+      map: nameMap,
+      orderCodeMap: {}
+    });
+    invRenderTrackList();
+    invRenderVendorCard();
+    invCheckReady();
+    if (statusEl) statusEl.textContent = '✅ 도매꾹 메일 ' + parsedCount + '건 반영됨 — 매칭 미리보기에서 확인하세요';
+  } catch(e) {
+    if (statusEl) statusEl.textContent = '❌ 오류: ' + e.message;
+    console.error('[invGmailFetchDomeggook]', e);
   }
 }
 
