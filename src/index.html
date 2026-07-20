@@ -724,7 +724,7 @@
       <button class="btn btn-sm btn-primary" onclick="invGmailFetchDomeggook()">📬 오늘 배송알림 메일 검색</button>
       <span id="invDomeggookStatus" style="font-size:12px;color:var(--text3)"></span>
     </div>
-    <div style="font-size:11px;color:var(--text3)">도매꾹은 첨부파일 없이 <b>"[도매꾹] 배송이 시작되었습니다"</b> 메일 본문에 택배사·송장번호가 적혀 와요. 오늘 온 메일들을 찾아서 본문에서 바로 읽어 매칭해요 (수령인 이름 기준, 마스킹된 이름도 인식).</div>
+    <div style="font-size:11px;color:var(--text3)">도매꾹은 첨부파일 없이 <b>"[도매꾹] 배송이 시작되었습니다"</b> 메일 본문에 택배사·송장번호가 적혀 와요. 오늘 온 메일들을 찾아서 본문에서 바로 읽어 매칭해요 (<b>배송지 주소 기준</b> — 수령인 이름은 마스킹돼서 동명이인 위험이 있어 안 씀, 주소가 확실히 일치할 때만 자동 채움).</div>
   </div>
 
   <div class="card">
@@ -7008,7 +7008,7 @@ async function invGmailFetchDomeggook() {
         .then(r => r.ok ? r.json() : null).catch(() => null)
     ));
 
-    const nameMap = {};
+    const addrEntries = [];
     let parsedCount = 0;
     for (const msg of details) {
       if (!msg || !msg.payload) continue;
@@ -7020,13 +7020,13 @@ async function invGmailFetchDomeggook() {
       const trackM   = text.match(/송장번호\s*:?\s*(\d{8,20})/);
       const nameM    = text.match(/수령인\s*:?\s*([^\s,]+)/);
       const addrM    = text.match(/배송지\s*:?\s*([^()]{5,80})/);
-      if (!trackM || !nameM) continue;
-      const name = nameM[1].trim();
+      // 마스킹된 이름(예: '최*성')은 동명이인이면 오매칭 위험이 커서 매칭에 안 씀 — 주소로만 매칭
+      if (!trackM || !addrM) continue;
+      const name = nameM ? nameM[1].trim() : '';
       const courier = courierM ? normalizeCourier(courierM[1].trim()) : '';
       const no = trackM[1].trim();
-      const addr = addrM ? addrM[1].trim() : '';
-      if (!nameMap[name]) nameMap[name] = [];
-      nameMap[name].push({ no, courier, addr });
+      const addr = addrM[1].trim();
+      addrEntries.push({ no, courier, addr, name });
       parsedCount++;
     }
     if (!parsedCount) { if(statusEl) statusEl.textContent = '메일에서 송장 정보를 못 찾았어요. (양식이 바뀌었을 수 있어요)'; return; }
@@ -7037,7 +7037,9 @@ async function invGmailFetchDomeggook() {
       courierName: '',
       hasCourier: true,
       hasOrderCode: false,
-      map: nameMap,
+      addrOnly: true,
+      addrEntries: addrEntries,
+      map: {},
       orderCodeMap: {}
     });
     invRenderTrackList();
@@ -7179,6 +7181,23 @@ function invProcess() {
         return cands.length ? cands : null;
       };
       for (const tf of invTrackFiles) {
+        // 주소로만 매칭하는 파일(예: 도매꾹 메일 — 마스킹된 이름은 동명이인 오매칭 위험이 커서 안 씀)
+        if (tf.addrOnly) {
+          if (!oAddr || !tf.addrEntries || !tf.addrEntries.length) continue;
+          const scored = tf.addrEntries.map(e => ({e, s: invAddrScore(e.addr, oAddr)})).sort((p,q) => q.s - p.s);
+          if (!(scored[0] && scored[0].s >= 8 && (scored.length < 2 || scored[0].s > scored[1].s))) continue; // 확신 없으면 건드리지 않음
+          const entry = scored[0].e;
+          const trackNo2 = entry.no;
+          const trackCourier2 = entry.courier || '';
+          const trackCourierNorm2 = trackCourier2 ? normalizeCourier(trackCourier2) : '';
+          const _isKnownCourier2 = c => /^(우체국택배|CJ대한통운|롯데택배|한진택배|로젠택배|경동택배)$/.test(c);
+          const courier2 = (trackCourier2 && _isKnownCourier2(trackCourierNorm2)) ? trackCourierNorm2 : normalizeCourier(tf.courierName || vendorCourierDefault || trackCourier2);
+          newRow[trackCol]   = trackNo2;
+          newRow[courierCol] = courier2;
+          found = true;
+          invPreviewRows.push({rowIdx, name, vendor, courier: courier2, track: trackNo2, prod: String(row[prodCol]||'').slice(0,30), status:'match', oAddr});
+          break;
+        }
         // 주문고유코드 우선 매칭, 없으면 수령인명 매칭
         const codeEntries = (orderCode && tf.orderCodeMap && tf.orderCodeMap[orderCode]) || null;
         const entries = codeEntries || tf.map[name] || _matchMaskedName(name, tf.map);
