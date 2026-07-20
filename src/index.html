@@ -3009,8 +3009,8 @@ function verifyVendorBuild(vendor, alias, orders){
     // 토큰 누락 검사
     const tokens = _extractSpecTokens(o);
     for (const tk of tokens) {
-      if (vendor === '동일' && tk.type === 'kg') {
-        // 동일은 옵션을 1kg으로 고정 + 수량에 kg 곱함. → 수량으로 검증
+      if ((vendor === '동일' || vendor === '에이팩') && tk.type === 'kg') {
+        // 동일·에이팩(3PL)은 옵션을 1kg으로 고정 + 수량에 kg 곱함. → 텍스트가 아니라 수량으로 검증
         const kgN = parseInt(tk.value);
         const baseQty = Number(o.qty)||1;
         const expected = kgN > 1 ? baseQty * kgN : baseQty * (Number(o.code_qty)||1);
@@ -6832,7 +6832,7 @@ function invGuessVendor(fname) {
 }
 
 // ── 구글 드라이브 06.발주관리 폴더에서 오늘 회신파일 검색 ──
-const INV_DRIVE_FOLDER_NAME = '06.발주관리';
+const INV_DRIVE_FOLDER_NAME = '발주관리'; // 폴더명 앞자리 표기가 제각각이라(06.발주관리 / 6. 발주관리 등) 핵심 단어만 검색
 window._invDriveItems = [];
 async function invDriveFetch() {
   const statusEl = document.getElementById('invDriveStatus');
@@ -6847,7 +6847,7 @@ async function invDriveFetch() {
   statusEl.textContent = `"${INV_DRIVE_FOLDER_NAME}" 폴더 찾는 중...`;
   try {
     // 1) 폴더 이름으로 검색 (내 드라이브 + 공유 드라이브 포함)
-    const fq = encodeURIComponent(`name='${INV_DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const fq = encodeURIComponent(`name contains '${INV_DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
     const fResp = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=${fq}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
       { headers: { Authorization: 'Bearer ' + token } }
