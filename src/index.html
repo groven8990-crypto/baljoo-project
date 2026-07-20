@@ -552,7 +552,10 @@
       </div>
     </div>
     <div class="card">
-      <div class="card-title">📋 등록된 코드 목록 <span id="codeCountText" style="font-weight:400;font-size:12px;color:var(--text3)"></span></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:0">📋 등록된 코드 목록 <span id="codeCountText" style="font-weight:400;font-size:12px;color:var(--text3)"></span></div>
+        <input class="inp" id="codeListSearch" type="text" placeholder="🔍 발주처·코드·상품명·옵션 검색... (예: 에이팩)" oninput="renderCodeList()" style="max-width:280px;font-size:13px">
+      </div>
       <div id="codeList"><p style="font-size:13px;color:var(--text3)">등록된 코드가 없습니다.</p></div>
     </div>
     <div class="alert alert-info" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
@@ -657,6 +660,7 @@
     <div style="font-size:12px;color:#1E3A8A;line-height:1.7">
       ① <b>샵마인 발송대기 파일</b> 업로드 (주문 정보 들어옴)<br>
       ② <b>택배사 회신 파일</b>(운송장번호 든 엑셀)을 업로드 — 거래처별로 여러 개 가능<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;📧 Gmail 받은메일함 검색 또는 📁 구글 드라이브 06.발주관리 폴더 검색으로도 바로 불러올 수 있어요<br>
       ③ <b>매칭 미리보기</b> 확인 → 동명이인 의심 건은 송장번호 직접 선택<br>
       ④ <b>⬇️ 완성 파일 다운로드</b> → 매칭된 행만 송장번호+택배사 채워서 저장<br>
       ※ 택배사 이름은 자동 정규화됩니다 (우체국 → 우체국택배 등).
@@ -702,6 +706,16 @@
       <button class="btn btn-sm" onclick="invGmailAddSenderRow()" style="margin-top:6px;font-size:11px">+ 거래처 추가</button>
     </div>
     <div id="invGmailList"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📁 구글 드라이브 06.발주관리 폴더에서 회신파일 가져오기</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-primary" onclick="invDriveFetch()">📂 오늘 회신파일 검색</button>
+      <span id="invDriveStatus" style="font-size:12px;color:var(--text3)"></span>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px">드라이브에서 <b>06.발주관리</b> 폴더를 찾아, 그 안에서 <b>오늘 날짜</b>로 수정되었거나 파일명에 오늘 날짜가 들어간 파일을 보여줘요.</div>
+    <div id="invDriveList"></div>
   </div>
 
   <div class="card">
@@ -3299,7 +3313,7 @@ const LS_GMAIL_TPL         = 'yb_gmail_tpl';
 const LS_GMAIL_BCC         = 'yb_gmail_bcc';
 const LS_SEND_HISTORY      = 'yb_send_history';
 const LS_INV_GMAIL_SENDER  = 'yb_inv_gmail_sender';
-const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/spreadsheets';
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly';
 const LS_EXP_SHEET_ID = 'yb_exp_sheet_id';
 const LS_EXP_DELETED  = 'yb_exp_deleted_keys'; // 삭제된 항목 키 블랙리스트
 let _gmailTokenClient = null;
@@ -3309,7 +3323,8 @@ function gmailGetToken(){ try{ return JSON.parse(localStorage.getItem(LS_GMAIL_T
 function gmailSetToken(t){ if(t) localStorage.setItem(LS_GMAIL_TOKEN, JSON.stringify(t)); else localStorage.removeItem(LS_GMAIL_TOKEN); }
 function gmailTokenValid(){
   const t = gmailGetToken();
-  return t && t.access_token && t.expires_at && Date.now() < t.expires_at - 30000;
+  // scope가 이전에 발급된 토큰과 다르면(예: 드라이브 권한 새로 추가) 무효 처리 → 재동의 요청
+  return t && t.access_token && t.expires_at && Date.now() < t.expires_at - 30000 && t.scope === GMAIL_SCOPES;
 }
 function gmailGetTemplate(){
   const def = {
@@ -3362,7 +3377,8 @@ function gmailRequestToken(){
       if (resp.error) { reject(new Error('OAuth 오류: '+resp.error)); return; }
       const tok = {
         access_token: resp.access_token,
-        expires_at: Date.now() + (Number(resp.expires_in)||3600) * 1000
+        expires_at: Date.now() + (Number(resp.expires_in)||3600) * 1000,
+        scope: GMAIL_SCOPES
       };
       gmailSetToken(tok);
       resolve(tok.access_token);
@@ -4818,11 +4834,22 @@ function renderCodeList(){
   const b=document.getElementById('codeCountBadge');
   b.textContent=(codes.length+loadOptMap().length)>0?` (${codes.length+loadOptMap().length})`:'';
   if(codes.length===0){document.getElementById('codeList').innerHTML='<p style="font-size:13px;color:var(--text3)">등록된 코드가 없습니다.</p>';return;}
+  const q=(document.getElementById('codeListSearch')?.value||'').trim().toLowerCase();
+  const shownEntries = codes.map((cc,i)=>({cc,i})).filter(({cc})=>{
+    if(!q) return true;
+    return [cc.vendor,cc.code,cc.originalCode,cc.product,cc.productKw,cc.optKw,cc.altCode,cc.orderProduct,cc.orderOpt]
+      .some(v=>String(v||'').toLowerCase().includes(q));
+  });
   const G='display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,2fr) minmax(0,1.3fr) auto;gap:12px;align-items:start';
   let html=`<div style="${G};padding-bottom:8px;border-bottom:2px solid var(--border);font-size:11px;font-weight:500;color:var(--text2)">
     <span>변경코드 (기존 원본)</span><span>상품명 / 옵션명</span><span>변경된 상품코드</span><span></span>
   </div>`;
-  codes.forEach((cc,i)=>{
+  if(shownEntries.length===0){
+    html += `<p style="font-size:13px;color:var(--text3);padding:10px 0">"${escHtml(q)}" 검색 결과가 없어요.</p>`;
+    document.getElementById('codeList').innerHTML=html;
+    return;
+  }
+  shownEntries.forEach(({cc,i})=>{
     const orig=cc.originalCode||cc.code;
     const vendorBadge=cc.vendor?`<div style="display:inline-block;margin-top:4px;font-size:10px;background:#ecfdf5;color:#047857;border:1px solid #6ee7b7;border-radius:10px;padding:1px 7px;white-space:nowrap">🏭 ${escHtml(cc.vendor)}</div>`:'';
     const changed=`<div class="code-tag" style="font-size:11px;color:var(--accent);word-break:break-all">${cc.code}</div>${vendorBadge}`;
@@ -6802,6 +6829,129 @@ function invGuessVendor(fname) {
   for (const v of known) { if (fname.includes(v)) return v; }
   const m = fname.match(/[가-힣]+/g);
   return m ? m[0] : '미확인';
+}
+
+// ── 구글 드라이브 06.발주관리 폴더에서 오늘 회신파일 검색 ──
+const INV_DRIVE_FOLDER_NAME = '06.발주관리';
+window._invDriveItems = [];
+async function invDriveFetch() {
+  const statusEl = document.getElementById('invDriveStatus');
+  const listEl   = document.getElementById('invDriveList');
+  listEl.innerHTML = '';
+  window._invDriveItems = [];
+
+  let token;
+  try { token = await gmailRequestToken(); }
+  catch(e) { statusEl.textContent = '❌ 구글 연결 실패: ' + e.message; return; }
+
+  statusEl.textContent = `"${INV_DRIVE_FOLDER_NAME}" 폴더 찾는 중...`;
+  try {
+    // 1) 폴더 이름으로 검색 (내 드라이브 + 공유 드라이브 포함)
+    const fq = encodeURIComponent(`name='${INV_DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const fResp = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${fq}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!fResp.ok) throw new Error('폴더 검색 실패 ' + fResp.status);
+    const fData = await fResp.json();
+    const folders = fData.files || [];
+    if (!folders.length) { statusEl.textContent = `❌ "${INV_DRIVE_FOLDER_NAME}" 폴더를 찾을 수 없어요.`; return; }
+
+    // 2) 오늘 날짜 문자열 후보 (파일명에 다양한 형식으로 들어있을 수 있어 여러 패턴 준비)
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(2);
+    const mm = String(now.getMonth()+1).padStart(2,'0');
+    const dd = String(now.getDate()).padStart(2,'0');
+    const dateNeedles = [`${yy}${mm}${dd}`, `${yy}-${mm}-${dd}`, `${mm}${dd}`, `${mm}-${dd}`, `${now.getFullYear()}-${mm}-${dd}`];
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+
+    statusEl.textContent = `${folders.length}개 폴더에서 파일 검색 중...`;
+
+    // 3) 각 폴더 안의 파일 목록 (오늘 수정된 것만 API 단에서 1차 필터링)
+    let allFiles = [];
+    for (const folder of folders) {
+      const qq = encodeURIComponent(`'${folder.id}' in parents and mimeType!='application/vnd.google-apps.folder' and trashed=false and modifiedTime >= '${todayStart}'`);
+      const dResp = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${qq}&orderBy=modifiedTime desc&pageSize=50&fields=files(id,name,modifiedTime,size,webViewLink)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+        { headers: { Authorization: 'Bearer ' + token } }
+      );
+      if (!dResp.ok) continue;
+      const dData = await dResp.json();
+      allFiles = allFiles.concat((dData.files||[]).map(f => ({...f, _folderName: folder.name})));
+    }
+
+    // 4) 오늘 수정본 외에, 파일명에 오늘 날짜가 박혀있는 파일도 추가로 (수정일이 today가 아니어도) 훑기
+    if (allFiles.length < 30) {
+      for (const folder of folders) {
+        const qq2 = encodeURIComponent(`'${folder.id}' in parents and mimeType!='application/vnd.google-apps.folder' and trashed=false`);
+        const dResp2 = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${qq2}&orderBy=modifiedTime desc&pageSize=50&fields=files(id,name,modifiedTime,size,webViewLink)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+          { headers: { Authorization: 'Bearer ' + token } }
+        );
+        if (!dResp2.ok) continue;
+        const dData2 = await dResp2.json();
+        for (const f of (dData2.files||[])) {
+          if (allFiles.some(x=>x.id===f.id)) continue;
+          if (dateNeedles.some(n => f.name.includes(n))) allFiles.push({...f, _folderName: folder.name});
+        }
+      }
+    }
+
+    // 확장자 필터 (엑셀류만)
+    allFiles = allFiles.filter(f => /\.(xlsx|xls|csv)$/i.test(f.name));
+
+    if (!allFiles.length) { statusEl.textContent = `오늘(${mm}/${dd}) 회신파일을 찾지 못했어요. (수정일 또는 파일명 기준)`; return; }
+    window._invDriveItems = allFiles;
+    window._invDriveToken = token;
+    statusEl.textContent = `${allFiles.length}개 파일 발견`;
+    invRenderDriveList();
+  } catch(e) {
+    statusEl.textContent = '❌ 오류: ' + e.message;
+    console.error('[invDriveFetch]', e);
+  }
+}
+function invRenderDriveList() {
+  const items = window._invDriveItems || [];
+  const listEl = document.getElementById('invDriveList');
+  if (!listEl || !items.length) return;
+  listEl.innerHTML = items.map((f, i) => {
+    const vendorGuess = invGuessVendor(f.name);
+    const modTime = f.modifiedTime ? new Date(f.modifiedTime).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+    return `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--card)">
+      <span style="font-size:18px;flex-shrink:0">📎</span>
+      <div style="flex:1;min-width:0;overflow:hidden">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(f.name)}</div>
+        <div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📁 ${escHtml(f._folderName||'')} · ${modTime}${vendorGuess&&vendorGuess!=='미확인'?' · 추정: '+escHtml(vendorGuess):''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+        <button class="btn btn-sm btn-primary" onclick="invDriveLoadFile(${i})">업로드</button>
+        <button class="btn btn-sm" style="background:var(--bg2);border:1px solid var(--border);font-size:11px" onclick="window.open('${f.webViewLink||('https://drive.google.com/file/d/'+f.id+'/view')}','_blank')">드라이브에서 보기</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function invDriveLoadFile(idx) {
+  const item  = (window._invDriveItems || [])[idx];
+  const token = window._invDriveToken;
+  if (!item || !token) { alert('먼저 검색을 눌러 주세요.'); return; }
+  const statusEl = document.getElementById('invDriveStatus');
+  statusEl.textContent = '"' + item.name + '" 다운로드 중...';
+  try {
+    const resp = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${item.id}?alt=media&supportsAllDrives=true`,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!resp.ok) throw new Error('파일 다운로드 실패 ' + resp.status);
+    const buf = await resp.arrayBuffer();
+    const vendorGuess = invGuessVendor(item.name);
+    const file = new File([buf], item.name, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    invLoadTracks([file], (vendorGuess && vendorGuess !== '미확인') ? vendorGuess : undefined);
+    statusEl.textContent = '✅ "' + item.name + '" 업로드 완료';
+  } catch(e) {
+    statusEl.textContent = '❌ 오류: ' + e.message;
+    console.error('[invDriveLoadFile]', e);
+  }
 }
 
 function invShowTrackError(fname, msg) {
