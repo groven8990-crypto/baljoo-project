@@ -2432,6 +2432,9 @@ document.addEventListener('DOMContentLoaded',()=>{
   _sbLoadKV('sales_amt_override').then(remote=>{
     if(Array.isArray(remote)) localStorage.setItem(LS_SALES_OVERRIDE, JSON.stringify(remote));
   }).catch(()=>{});
+  _sbLoadKV('kakao_room_names').then(remote=>{
+    if(remote && typeof remote==='object') localStorage.setItem(LS_KAKAO_ROOM_NAMES, JSON.stringify(remote));
+  }).catch(()=>{});
 });
 
 function setSt(msg,err){const el=document.getElementById('status');el.textContent=msg;el.className=err?'error':'';}
@@ -3287,23 +3290,34 @@ function kakaoSendOne(gk){
   const text = lines.join('\n');
   // 1) 발주서 엑셀 파일 먼저 다운로드 (카톡에 첨부할 수 있도록)
   try { dlOne(gk); } catch(e) { console.warn('카카오 발주서 다운로드 실패:', e); }
-  // 2) 카카오 SDK 사용 가능하면 공유 다이얼로그 (선택적)
-  if (kakaoEnsureInit()) {
-    try {
-      Kakao.Share.sendDefault({ objectType:'text', text, link:{ mobileWebUrl:location.href, webUrl:location.href } });
-      return;
-    } catch(e) { console.warn('Kakao.Share 실패, 클립보드로 대체:', e); }
-  }
-  // 3) 클립보드 복사 + 카카오톡 앱 열기
-  const doOpen = () => { setTimeout(_kakaoOpenApp, 500); };
+  // 2) 텍스트 클립보드 복사 + 카카오톡 앱(PC) 창 열기 — 항상 실행
+  //    ※ 브라우저에서 카톡의 '특정 채팅방'까지 자동으로 열 수는 없음(OS 권한 밖).
+  //       여기까지가 웹에서 할 수 있는 최대치이고, 채팅방까지 자동 지정하려면
+  //       tools/kakao-auto-send 의 PC 자동화 스크립트를 써야 함.
+  const roomName = kakaoGetRoomName(v);
+  const doOpen = () => { setTimeout(_kakaoOpenApp, 400); };
+  const toastMsg = '✅ 발주서 다운로드됨! 📋 내용 복사됨\n카카오톡 창이 열리면'
+    + (roomName ? ` "${roomName}" 채팅방 찾아서` : ' 채팅방 찾아서')
+    + ' 파일 첨부 후 붙여넣기 하세요';
   if (navigator.clipboard) {
     navigator.clipboard.writeText(text).then(() => {
-      _poShowToast('✅ 발주서 다운로드됨!\n📋 내용 복사됨 — 카카오톡 열고 파일 첨부 후 붙여넣기 하세요');
+      _poShowToast(toastMsg);
       doOpen();
     }).catch(() => { _kakaoFallbackPrompt(text); doOpen(); });
   } else {
     _kakaoFallbackPrompt(text); doOpen();
   }
+}
+// 발주처별 카톡 채팅방 이름 (자동으로 그 방을 열 수는 없지만, 사용자에게 어느 방인지 힌트로 보여줌)
+const LS_KAKAO_ROOM_NAMES = 'yb_kakao_room_names';
+function kakaoLoadRoomNames(){ try{ return JSON.parse(localStorage.getItem(LS_KAKAO_ROOM_NAMES)||'{}'); }catch{ return {}; } }
+function kakaoSaveRoomNames(m){ localStorage.setItem(LS_KAKAO_ROOM_NAMES, JSON.stringify(m)); _sbSaveKV('kakao_room_names', m).catch(()=>{}); }
+function kakaoGetRoomName(vendor){ return (kakaoLoadRoomNames()[vendor]||'').trim(); }
+function kakaoSetRoomName(vendor, name){
+  const m = kakaoLoadRoomNames();
+  const s = String(name||'').trim();
+  if (s) m[vendor] = s; else delete m[vendor];
+  kakaoSaveRoomNames(m);
 }
 function _kakaoFallbackPrompt(text){
   // 클립보드 API 없는 환경: 텍스트 선택 가능한 팝업
@@ -3912,6 +3926,27 @@ function renderGmailSettingsArea(){
           ${kakaoGetAppKey()?`<button class="btn btn-sm" style="color:var(--text3)" onclick="kakaoSetAppKey('');document.getElementById('kakaoAppKeyInput').value='';_poShowToast('Kakao 앱 키 삭제됨')">삭제</button>`:''}
         </div>
         ${kakaoGetAppKey()?`<div style="margin-top:6px;font-size:11px;color:var(--success)">✅ 앱 키 등록됨 — 발주처 전달방식에서 💬 카톡 선택 시 발주서 카드에 카카오 버튼이 표시됩니다.</div>`:''}
+        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+          <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">📇 발주처별 카톡 채팅방 이름 (선택 — 버튼 누르면 안내 문구에 방 이름을 알려줘요)</div>
+          <div style="margin-bottom:6px">${(() => {
+            const rm = kakaoLoadRoomNames();
+            const keys = Object.keys(rm);
+            if (!keys.length) return '<p style="font-size:11px;color:var(--text3);margin:0">등록된 채팅방 이름이 없습니다.</p>';
+            return keys.map(v => `
+              <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px">
+                <span style="font-weight:600">${escHtml(v)}</span>
+                <span style="color:var(--text3)">→</span>
+                <span>${escHtml(rm[v])}</span>
+                <button class="btn btn-sm" style="margin-left:auto;font-size:10px;padding:1px 6px" onclick="kakaoSetRoomName('${esc(v)}','');renderGmailSettingsArea()">삭제</button>
+              </div>`).join('');
+          })()}</div>
+          <div style="display:flex;gap:6px">
+            <input class="inp" id="kakaoRoomVendor" placeholder="발주처 (예: 일비)" style="flex:1;font-size:12px">
+            <input class="inp" id="kakaoRoomName" placeholder="카톡 채팅방 이름 (예: 일비 발주방)" style="flex:1.5;font-size:12px">
+            <button class="btn btn-sm" onclick="kakaoSetRoomName(document.getElementById('kakaoRoomVendor').value.trim(),document.getElementById('kakaoRoomName').value);document.getElementById('kakaoRoomVendor').value='';document.getElementById('kakaoRoomName').value='';renderGmailSettingsArea()">+ 저장</button>
+          </div>
+          <div style="font-size:10px;color:var(--text3);margin-top:4px">⚠ 브라우저 보안 정책상 특정 채팅방을 자동으로 열 수는 없어요. 여기 등록해두면 버튼 누를 때 "○○ 채팅방 찾아서"라고 안내만 해줘요. 완전 자동으로 그 방까지 열고 파일까지 보내려면 PC에 <code>tools/kakao-auto-send</code> 스크립트를 설치해야 해요.</div>
+        </div>
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">🐟 디네트 발주서 자동첨부</div>
