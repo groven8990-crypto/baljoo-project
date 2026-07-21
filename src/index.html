@@ -885,7 +885,7 @@
       <div style="margin-bottom:14px">
         <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">송금처</label>
         <div style="position:relative">
-          <input class="inp" id="expVendor" placeholder="송금처 입력 (등록된 곳은 자동완성)" autocomplete="off" oninput="onExpVendorInput()" onfocus="onExpVendorInput()" onblur="setTimeout(()=>hideVendorList(),200)">
+          <input class="inp" id="expVendor" placeholder="송금처 입력 (등록된 곳은 자동완성)" autocomplete="off" oninput="onExpVendorInput()" onfocus="onExpVendorInput()" onblur="setTimeout(()=>hideVendorList(),200)" onkeydown="onExpVendorKeydown(event)">
           <div id="vendorDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border2);border-radius:var(--radius-sm);box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:100;max-height:200px;overflow-y:auto"></div>
         </div>
       </div>
@@ -9785,33 +9785,70 @@ function updateVendorSelect() { /* 자동완성 방식으로 대체 */ }
 function onExpVendorChange() { onExpVendorInput(); }
 
 // 자동완성 — 입력할 때마다 부분 검색
+let _expVendorFiltered = [];
+let _expVendorActiveIdx = -1;
 function onExpVendorInput() {
   const val = document.getElementById('expVendor').value.trim();
   const banks = loadBankInfo();
   const filtered = val
     ? banks.filter(b => b.name.toLowerCase().includes(val.toLowerCase()))
     : banks;
+  _expVendorFiltered = filtered;
+  _expVendorActiveIdx = -1;
   const dd = document.getElementById('vendorDropdown');
   if (filtered.length === 0) {
     dd.style.display = 'none';
     return;
   }
-  dd.innerHTML = filtered.map((b,idx2) => {
+  _expVendorRenderDropdown();
+  dd.style.display = 'block';
+  // 정확 일치 시 바로 템플릿 적용
+  const exact = banks.find(b => b.name === val);
+  if (exact) applyBankTemplate(exact);
+}
+function _expVendorRenderDropdown() {
+  const dd = document.getElementById('vendorDropdown');
+  if (!dd) return;
+  dd.innerHTML = _expVendorFiltered.map((b, idx2) => {
     const safeId = 'vitem_' + idx2;
-    return '<div class="vendor-item" id="' + safeId + '">' +
+    const activeStyle = idx2 === _expVendorActiveIdx ? ' style="background:var(--accent-bg)"' : '';
+    return '<div class="vendor-item" id="' + safeId + '"' + activeStyle + '>' +
       '<div class="vendor-item-name">' + b.name + '</div>' +
       '<div class="vendor-item-sub">' + b.bank + ' · ' + b.acct + '</div>' +
       '</div>';
   }).join('');
-  // 클릭 이벤트 안전하게 등록
-  filtered.forEach((b, idx2) => {
+  _expVendorFiltered.forEach((b, idx2) => {
     const el = document.getElementById('vitem_' + idx2);
     if (el) el.addEventListener('mousedown', () => selectVendorItem(b.name));
   });
-    dd.style.display = 'block';
-  // 정확 일치 시 바로 템플릿 적용
-  const exact = banks.find(b => b.name === val);
-  if (exact) applyBankTemplate(exact);
+  // 활성 항목이 보이도록 스크롤
+  if (_expVendorActiveIdx >= 0) {
+    const activeEl = document.getElementById('vitem_' + _expVendorActiveIdx);
+    if (activeEl && activeEl.scrollIntoView) activeEl.scrollIntoView({ block: 'nearest' });
+  }
+}
+// 방향키(위/아래)로 이동, Enter로 선택, Esc로 닫기
+function onExpVendorKeydown(ev) {
+  const dd = document.getElementById('vendorDropdown');
+  const isOpen = dd && dd.style.display !== 'none' && _expVendorFiltered.length > 0;
+  if (!isOpen) return;
+  if (ev.key === 'ArrowDown') {
+    ev.preventDefault();
+    _expVendorActiveIdx = (_expVendorActiveIdx + 1) % _expVendorFiltered.length;
+    _expVendorRenderDropdown();
+  } else if (ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    _expVendorActiveIdx = (_expVendorActiveIdx - 1 + _expVendorFiltered.length) % _expVendorFiltered.length;
+    _expVendorRenderDropdown();
+  } else if (ev.key === 'Enter') {
+    if (_expVendorActiveIdx >= 0 && _expVendorFiltered[_expVendorActiveIdx]) {
+      ev.preventDefault();
+      selectVendorItem(_expVendorFiltered[_expVendorActiveIdx].name);
+    }
+    // 활성 선택이 없으면(직접 입력 중) 기본 동작(폼 제출 없음) 그대로 둠
+  } else if (ev.key === 'Escape') {
+    hideVendorList();
+  }
 }
 
 function selectVendorItem(name) {
@@ -9824,6 +9861,7 @@ function selectVendorItem(name) {
 function hideVendorList() {
   const dd = document.getElementById('vendorDropdown');
   if (dd) dd.style.display = 'none';
+  _expVendorActiveIdx = -1;
 }
 
 // 결제조건 라디오 그룹에 해당 값의 라디오가 없으면 동적으로 추가
