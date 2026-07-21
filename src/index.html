@@ -7257,6 +7257,9 @@ function invProcess() {
           invPreviewRows.push({rowIdx, name, vendor, courier: courier2, track: trackNo2, prod: String(row[prodCol]||'').slice(0,30), status:'match', oAddr});
           break;
         }
+        // 이 회신파일이 특정 발주처용으로 지정돼 있으면, 그 발주처가 아닌 주문 행에는 적용하지 않음
+        // (같은 사람이 서로 다른 발주처에 각각 주문한 경우 송장번호가 엉뚱한 곳에 잘못 매칭되는 것 방지)
+        if (tf.vendorName && tf.vendorName !== '미확인' && vendor && tf.vendorName !== vendor) continue;
         // 주문고유코드 우선 매칭, 없으면 수령인명 매칭
         const codeEntries = (orderCode && tf.orderCodeMap && tf.orderCodeMap[orderCode]) || null;
         const entries = codeEntries || tf.map[name] || _matchMaskedName(name, tf.map);
