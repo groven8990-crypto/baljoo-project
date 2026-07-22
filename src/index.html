@@ -3301,15 +3301,6 @@ function logKakaoSent(vendor, alias){
   saveKakaoSendHistory(hist);
 }
 // 발주처 카드의 💬 카카오 발송 버튼 — 앱 키 없이 클립보드 복사로 동작
-function _kakaoOpenApp(){
-  // 페이지 이탈 없이 앱 스킴 실행
-  const a = document.createElement('a');
-  a.href = 'kakaotalk://';
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
 function kakaoSendOne(gk){
   const [v, a] = gk.split('|');
   const orders = groupedOrders[gk] || [];
@@ -3339,22 +3330,17 @@ function kakaoSendOne(gk){
   }
   // 1) 발주서 엑셀 파일 먼저 다운로드 (카톡에 첨부할 수 있도록)
   try { dlOne(gk); } catch(e) { console.warn('카카오 발주서 다운로드 실패:', e); }
-  // 2) 텍스트 클립보드 복사 + 카카오톡 앱(PC) 창 열기 — 항상 실행
-  //    ※ 브라우저에서 카톡의 '특정 채팅방'까지 자동으로 열 수는 없음(OS 권한 밖).
-  //       여기까지가 웹에서 할 수 있는 최대치이고, 채팅방까지 자동 지정하려면
-  //       tools/kakao-auto-send 의 PC 자동화 스크립트를 써야 함.
+  // 2) 텍스트 클립보드 복사만 수행 (카카오톡 앱 창은 자동으로 열지 않음)
   const roomName = kakaoGetRoomName(v);
-  const doOpen = () => { setTimeout(_kakaoOpenApp, 400); };
-  const toastMsg = '✅ 발주서 다운로드됨! 📋 내용 복사됨\n카카오톡 창이 열리면'
-    + (roomName ? ` "${roomName}" 채팅방 찾아서` : ' 채팅방 찾아서')
+  const toastMsg = '✅ 발주서 다운로드됨! 📋 내용 복사됨\n'
+    + (roomName ? `카카오톡에서 "${roomName}" 채팅방 찾아서` : '카카오톡에서 채팅방 찾아서')
     + ' 파일 첨부 후 붙여넣기 하세요';
   if (navigator.clipboard) {
     navigator.clipboard.writeText(text).then(() => {
       _poShowToast(toastMsg);
-      doOpen();
-    }).catch(() => { _kakaoFallbackPrompt(text); doOpen(); });
+    }).catch(() => { _kakaoFallbackPrompt(text); });
   } else {
-    _kakaoFallbackPrompt(text); doOpen();
+    _kakaoFallbackPrompt(text);
   }
 }
 // 발주처별 카톡 채팅방 이름 (자동으로 그 방을 열 수는 없지만, 사용자에게 어느 방인지 힌트로 보여줌)
