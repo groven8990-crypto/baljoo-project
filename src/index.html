@@ -6898,7 +6898,8 @@ function invLoadTracks(files, vendorHint) {
               if (/전화|연락처|우편|수량|주문/.test(hdr)) continue;
               const vals = dataRows.map(r => String(r[c] == null ? '' : r[c]).replace(/\s/g,'')).filter(v => v !== '');
               if (!vals.length) continue;
-              const hits = vals.filter(v => /^\d{9,15}$/.test(v)).length;
+              // 운송장번호에 하이픈이 섞여 오는 경우(예: 롯데택배 2683-7772-3235)도 인식
+              const hits = vals.filter(v => /^[\d-]{9,20}$/.test(v) && /^\d{9,15}$/.test(v.replace(/-/g,''))).length;
               if (hits >= Math.max(1, Math.ceil(vals.length * 0.5))) {
                 trackIdx = c; nameIdx = ni; hdrRow = ri;
                 courierIdx = row.findIndex(isCourierCol);
