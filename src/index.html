@@ -128,6 +128,16 @@
 <header>
   <div class="logo">🟡 <span>발주 자동화</span></div>
   <div style="display:flex;align-items:center;gap:12px">
+    <div style="position:relative">
+      <button class="btn btn-sm" id="staffBtn" onclick="toggleStaffMenu()" style="font-size:12px;padding:4px 10px;background:var(--bg2);border:1px solid var(--border)">👤 <span id="staffBtnLabel">작성자 선택</span> ▾</button>
+      <div id="staffMenu" style="display:none;position:absolute;top:100%;right:0;margin-top:6px;background:#fff;border:1px solid var(--border2);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:200px;z-index:300;padding:8px">
+        <div id="staffMenuList" style="display:flex;flex-direction:column;gap:2px;margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px;border-top:1px solid var(--border);padding-top:8px">
+          <input id="staffAddInput" class="inp" placeholder="이름 (예: 김수영 사원)" style="flex:1;font-size:12px;padding:5px 8px" onkeydown="if(event.key==='Enter')staffAdd()">
+          <button class="btn btn-sm btn-primary" onclick="staffAdd()">추가</button>
+        </div>
+      </div>
+    </div>
     <span id="syncStatus" style="font-size:11px;color:var(--text3)">⏳ 동기화 중...</span>
     <button class="btn btn-sm" onclick="manualSync()" id="syncBtn" style="font-size:11px;padding:4px 10px">🔄 재동기화</button>
   </div>
@@ -2453,6 +2463,11 @@ document.addEventListener('DOMContentLoaded',()=>{
   }).catch(()=>{});
   _sbLoadKV('kakao_room_names').then(remote=>{
     if(remote && typeof remote==='object') localStorage.setItem(LS_KAKAO_ROOM_NAMES, JSON.stringify(remote));
+  }).catch(()=>{});
+  // 작성자(직원) 목록: 다른 기기에서 추가한 직원도 이 브라우저에 반영 (현재 선택은 기기별 유지)
+  try { renderStaffBtn(); } catch(e) {}
+  _sbLoadKV('staff_list').then(remote=>{
+    if (Array.isArray(remote) && remote.length) localStorage.setItem(LS_STAFF_LIST, JSON.stringify(remote));
   }).catch(()=>{});
 });
 
@@ -9818,9 +9833,88 @@ function initExpenseTab() {
 function saveDefaultWriter() {
   const w = document.getElementById('expWriter').value.trim();
   if (!w) { alert('작성자 이름을 먼저 입력해주세요.'); return; }
-  localStorage.setItem('yb_default_writer', w);
-  alert('✅ 작성자 기본값이 저장됐어요!\n앞으로 페이지를 열 때마다 자동으로 채워져요.');
+  const list = loadStaffList();
+  if (!list.includes(w)) { list.push(w); saveStaffList(list); }
+  setCurrentStaff(w);
+  alert('✅ 작성자 기본값이 저장됐어요!\n앞으로 페이지를 열 때마다 자동으로 채워지고, 상단 "작성자 선택"에도 등록돼요.');
 }
+
+// ══════════════════════════════════════════════════════════
+// 작성자(직원) 전역 선택 — 앱 전체에서 공유되는 "현재 작성자"
+// 직원 목록은 기기 간 공유(Supabase), 현재 선택된 사람은 이 브라우저에만 저장
+// ══════════════════════════════════════════════════════════
+const LS_STAFF_LIST = 'yb_staff_list';
+const LS_STAFF_CURRENT = 'yb_staff_current';
+function loadStaffList() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_STAFF_LIST) || 'null');
+    if (Array.isArray(v) && v.length) return v;
+  } catch(e) {}
+  return ['김수영 사원', '박지수 과장'];
+}
+function saveStaffList(list) {
+  localStorage.setItem(LS_STAFF_LIST, JSON.stringify(list));
+  _sbSaveKV('staff_list', list).catch(() => {});
+}
+function getCurrentStaff() { return localStorage.getItem(LS_STAFF_CURRENT) || ''; }
+function setCurrentStaff(name) {
+  localStorage.setItem(LS_STAFF_CURRENT, name || '');
+  if (name) localStorage.setItem('yb_default_writer', name);
+  const ew = document.getElementById('expWriter'); if (ew) ew.value = name || '';
+  const iw = document.getElementById('incWriter'); if (iw) iw.value = name || '';
+  renderStaffBtn();
+}
+function renderStaffBtn() {
+  const el = document.getElementById('staffBtnLabel');
+  if (el) el.textContent = getCurrentStaff() || '작성자 선택';
+}
+function toggleStaffMenu() {
+  const menu = document.getElementById('staffMenu');
+  if (!menu) return;
+  const opening = menu.style.display === 'none';
+  menu.style.display = opening ? 'block' : 'none';
+  if (opening) renderStaffMenuList();
+}
+function renderStaffMenuList() {
+  const el = document.getElementById('staffMenuList');
+  if (!el) return;
+  const list = loadStaffList();
+  const cur = getCurrentStaff();
+  if (!list.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 4px">등록된 직원이 없어요. 아래에서 추가해주세요.</div>';
+    return;
+  }
+  el.innerHTML = list.map(name => `
+    <div style="display:flex;align-items:center;gap:4px">
+      <button onclick="selectStaff('${esc(name)}')" style="flex:1;text-align:left;background:${name===cur?'var(--accent-bg)':'transparent'};color:${name===cur?'var(--accent)':'var(--text)'};border:none;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:13px;font-weight:${name===cur?'700':'500'}">${name===cur?'✓ ':''}${escHtml(name)}</button>
+      <button onclick="staffDelete('${esc(name)}')" title="삭제" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;padding:4px 6px">✕</button>
+    </div>
+  `).join('');
+}
+function selectStaff(name) { setCurrentStaff(name); toggleStaffMenu(); }
+function staffAdd() {
+  const input = document.getElementById('staffAddInput');
+  const name = (input.value || '').trim();
+  if (!name) return;
+  const list = loadStaffList();
+  if (!list.includes(name)) { list.push(name); saveStaffList(list); }
+  input.value = '';
+  renderStaffMenuList();
+}
+function staffDelete(name) {
+  if (!confirm(`"${name}" 을(를) 직원 목록에서 삭제할까요?`)) return;
+  const list = loadStaffList().filter(n => n !== name);
+  saveStaffList(list);
+  if (getCurrentStaff() === name) setCurrentStaff('');
+  renderStaffMenuList();
+}
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('staffMenu');
+  const btn = document.getElementById('staffBtn');
+  if (!menu || menu.style.display === 'none') return;
+  if (menu.contains(e.target) || (btn && btn.contains(e.target))) return;
+  menu.style.display = 'none';
+});
 
 function selectExpCo(co) {
   curExpCo = co;
