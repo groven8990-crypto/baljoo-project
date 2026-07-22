@@ -2897,6 +2897,23 @@ function renderStep3(){
       if (!dlMap[key] || h.ts > dlMap[key]) dlMap[key] = h.ts;
     }
   });
+  // 오늘 이메일 자동발송 성공 매핑 (vendor|alias → 가장 최근 시각)
+  const todayStartTs = new Date(new Date().setHours(0,0,0,0)).getTime();
+  const sendMap = {};
+  loadSendHistory().forEach(h => {
+    if (h.status === 'sent' && h.ts >= todayStartTs) {
+      const key = (h.vendor||'') + '|' + (h.alias||'');
+      if (!sendMap[key] || h.ts > sendMap[key]) sendMap[key] = h.ts;
+    }
+  });
+  // 오늘 카카오 발송(버튼 클릭) 매핑 (vendor|alias → 가장 최근 시각)
+  const kakaoMap = {};
+  loadKakaoSendHistory().forEach(h => {
+    if (h.ts >= todayStartTs) {
+      const key = (h.vendor||'') + '|' + (h.alias||'');
+      if (!kakaoMap[key] || h.ts > kakaoMap[key]) kakaoMap[key] = h.ts;
+    }
+  });
   for(const gk of sortVendorKeys(Object.keys(groupedOrders))){
     const [v,a]=gk.split('|'),cnt=groupedOrders[gk].length;
     const savedEmail=emails[v]||'';
@@ -2906,6 +2923,16 @@ function renderStep3(){
     const dlTime = dlTs ? new Date(dlTs).toTimeString().slice(0,5) : '';
     const dlMarkStyle = dlTs ? '' : 'display:none';
     const dlMark = `<span class="dl-mark" id="dlm_${ekey(gk)}" title="오늘 ${dlTime} 다운로드 완료" style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#dcfce7;color:#16a34a;border:1px solid #86efac;border-radius:6px;font-size:12px;font-weight:700;${dlMarkStyle}">✅ 다운로드</span>`;
+    const sendTs = sendMap[gk];
+    const sendTime = sendTs ? new Date(sendTs).toTimeString().slice(0,5) : '';
+    const sendMark = sendTs
+      ? `<span class="send-mark" id="sdm_${ekey(gk)}" title="오늘 ${sendTime} 이메일 발송 완료" style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;border-radius:6px;font-size:12px;font-weight:700">✅ 발송완료 ${sendTime}</span>`
+      : '';
+    const kakaoTs = kakaoMap[gk];
+    const kakaoTime = kakaoTs ? new Date(kakaoTs).toTimeString().slice(0,5) : '';
+    const kakaoMark = kakaoTs
+      ? `<span class="kakao-mark" id="kkm_${ekey(gk)}" title="오늘 ${kakaoTime} 카카오톡 전송" style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#FEF3C7;color:#78350F;border:1px solid #FDE68A;border-radius:6px;font-size:12px;font-weight:700">✅ 전송완료 ${kakaoTime}</span>`
+      : '';
     const doneCls = dlTs ? ' done' : '';
     html+=`<div class="gen-card${doneCls}" id="gc_${ekey(gk)}">
       <div style="min-width:0;flex:1">
@@ -2920,8 +2947,8 @@ function renderStep3(){
         ${dlMark}
         ${dvChip}
         ${v==='동일'?`<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border-color:#86efac" onclick="dlDongilSettlement('${esc(gk)}')" title="발주정산내역서 다운로드">📋 정산내역서</button>`:''}
-        ${(Array.isArray(delivery[v])&&delivery[v].includes('kakao'))?`<button class="btn btn-sm" style="background:#FEF3C7;color:#78350F;border-color:#FDE68A" onclick="kakaoSendOne('${esc(gk)}')" title="카카오톡으로 발주 내용 발송">💬 카카오</button>`:''}
-        <button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>
+        ${(Array.isArray(delivery[v])&&delivery[v].includes('kakao'))?(kakaoMark || `<button class="btn btn-sm" style="background:#FEF3C7;color:#78350F;border-color:#FDE68A" onclick="kakaoSendOne('${esc(gk)}')" title="카카오톡으로 발주 내용 발송">💬 카카오</button>`):''}
+        ${sendMark || `<button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>`}
       </div>
     </div>`;
   }
@@ -3264,6 +3291,15 @@ function kakaoEnsureInit(){
   try { if (!_kakaoInited || !Kakao.isInitialized()) { Kakao.init(k); _kakaoInited = true; } } catch(e) { console.warn('Kakao init:', e); }
   return Kakao.isInitialized();
 }
+// ── 카카오 발송 이력 (버튼 클릭 = 발송 의사로 간주해 기록) ──
+const LS_KAKAO_SEND_HISTORY = 'yb_kakao_send_history';
+function loadKakaoSendHistory(){ try{ return JSON.parse(localStorage.getItem(LS_KAKAO_SEND_HISTORY)||'[]'); }catch{ return []; } }
+function saveKakaoSendHistory(arr){ try{ localStorage.setItem(LS_KAKAO_SEND_HISTORY, JSON.stringify(arr.slice(-500))); }catch(e){} }
+function logKakaoSent(vendor, alias){
+  const hist = loadKakaoSendHistory();
+  hist.push({ vendor, alias, ts: Date.now() });
+  saveKakaoSendHistory(hist);
+}
 // 발주처 카드의 💬 카카오 발송 버튼 — 앱 키 없이 클립보드 복사로 동작
 function _kakaoOpenApp(){
   // 페이지 이탈 없이 앱 스킴 실행
@@ -3288,6 +3324,19 @@ function kakaoSendOne(gk){
     lines.push(`   ${o.addr}`);
   });
   const text = lines.join('\n');
+  // 버튼 누른 시점 = 카톡 발송 의사로 간주해 기록 + 버튼을 완료 뱃지로 교체
+  logKakaoSent(v, a);
+  const card = document.getElementById('gc_'+ekey(gk));
+  const kkBtn = card?.querySelector('button[onclick^="kakaoSendOne"]');
+  if (kkBtn) {
+    const nowTime = new Date().toTimeString().slice(0,5);
+    const badge = document.createElement('span');
+    badge.id = 'kkm_'+ekey(gk);
+    badge.title = `오늘 ${nowTime} 카카오톡 전송`;
+    badge.style.cssText = 'display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#FEF3C7;color:#78350F;border:1px solid #FDE68A;border-radius:6px;font-size:12px;font-weight:700';
+    badge.textContent = `✅ 전송완료 ${nowTime}`;
+    kkBtn.replaceWith(badge);
+  }
   // 1) 발주서 엑셀 파일 먼저 다운로드 (카톡에 첨부할 수 있도록)
   try { dlOne(gk); } catch(e) { console.warn('카카오 발주서 다운로드 실패:', e); }
   // 2) 텍스트 클립보드 복사 + 카카오톡 앱(PC) 창 열기 — 항상 실행
