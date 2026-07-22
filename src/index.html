@@ -700,7 +700,13 @@
     </div>
   </div>
   <div id="invImportMethodsBody" style="display:none">
-    <div class="card">
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-primary" id="invImportTabBtn-gmail" onclick="invSwitchImportTab('gmail')">📧 Gmail</button>
+      <button class="btn btn-sm" id="invImportTabBtn-drive" onclick="invSwitchImportTab('drive')" style="background:var(--bg2);border:1px solid var(--border)">📁 구글 드라이브</button>
+      <button class="btn btn-sm" id="invImportTabBtn-domeggook" onclick="invSwitchImportTab('domeggook')" style="background:var(--bg2);border:1px solid var(--border)">🧾 도매꾹</button>
+    </div>
+
+    <div class="card" id="invImportPane-gmail">
       <div class="card-title">📧 Gmail 받은메일함에서 운송장 가져오기</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
         <button class="btn btn-sm btn-primary" onclick="invGmailFetch()">📬 받은메일함 검색</button>
@@ -718,7 +724,7 @@
       <div id="invGmailList"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="invImportPane-drive" style="display:none">
       <div class="card-title">📁 구글 드라이브 06.발주관리 폴더에서 회신파일 가져오기</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
         <button class="btn btn-sm btn-primary" onclick="invDriveFetch()">📂 오늘 회신파일 검색</button>
@@ -728,7 +734,7 @@
       <div id="invDriveList"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="invImportPane-domeggook" style="display:none">
       <div class="card-title">🧾 도매꾹 배송알림 메일에서 송장번호 가져오기</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
         <button class="btn btn-sm btn-primary" onclick="invGmailFetchDomeggook()">📬 오늘 배송알림 메일 검색</button>
@@ -6174,6 +6180,17 @@ function invLookupCourier(fname, vendorHint) {
     }
   }
   return {courier: '롯데택배', matchedKey: null};
+}
+function invSwitchImportTab(name) {
+  ['gmail','drive','domeggook'].forEach(n => {
+    const pane = document.getElementById('invImportPane-' + n);
+    const btn = document.getElementById('invImportTabBtn-' + n);
+    if (pane) pane.style.display = (n === name) ? '' : 'none';
+    if (btn) {
+      if (n === name) { btn.classList.add('btn-primary'); btn.style.background=''; btn.style.border=''; }
+      else { btn.classList.remove('btn-primary'); btn.style.background='var(--bg2)'; btn.style.border='1px solid var(--border)'; }
+    }
+  });
 }
 function invToggleSection(bodyId, toggleId) {
   const body = document.getElementById(bodyId);
