@@ -7744,7 +7744,12 @@ function switchExpSubTab(name) {
   const btn = document.getElementById('stab-exp' + name);
   if (content) { content.classList.add('active'); content.style.display = ''; }
   if (btn) btn.classList.add('active');
-  if (name === 'list')  { renderExpHistList(); expSheetsLoad(false); _sbSyncExpHist().catch(()=>{}); }
+  if (name === 'list')  {
+    renderExpHistList();
+    // Supabase(전체 항목·송금완료/증빙 상태 포함)를 먼저 반영한 뒤, 구글시트(상태 정보 없음)는 나중에
+    // 보충하도록 순서를 강제 — 동시에 실행하면 시트 쪽이 먼저 끝나 "미송금" 상태로 선점해버릴 수 있음
+    _sbSyncExpHist().catch(()=>{}).then(() => expSheetsLoad(false));
+  }
   if (name === 'bank')  { _sbSyncBankInfo().then(()=>renderBankList()).catch(()=>renderBankList()); }
   if (name === 'write') expSheetInitUi();
 }
