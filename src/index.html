@@ -303,6 +303,8 @@
         <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
           <span id="poSaveFolderName" style="font-size:11px;font-weight:400;color:var(--text3);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
           <button class="btn btn-sm" onclick="pickPoSaveFolder()" title="발주서 저장할 폴더 선택 (선택한 폴더에 바로 저장)">📁 폴더 설정</button>
+          <span id="dongilSettleFolderName" style="font-size:11px;font-weight:400;color:var(--text3);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">정산내역서 폴더 미설정</span>
+          <button class="btn btn-sm" onclick="pickDongilSettleFolder()" title="동일 발주정산내역서 저장할 폴더 선택 (선택한 폴더에 바로 저장)">📁 정산내역서 폴더</button>
         </div>
       </div>
       <div id="vendorRegistryArea"></div>
@@ -4608,11 +4610,74 @@ function _splitDongilKg(totalKg) {
   return Array.from({length: numBoxes}, (_, i) => i < extra ? base + 1 : base);
 }
 // 동일 발주정산내역서 다운로드
-function dlDongilSettlement(gk){
+// ── 동일 발주정산내역서 저장 폴더 (예: G:\내 드라이브\...\[동일] 발주정산내역서) ──
+let _dongilSettleDirHandle = null;
+async function _updateDongilSettleFolderLabel(){
+  const nameEl = document.getElementById('dongilSettleFolderName');
+  if (!nameEl) return;
+  if (_dongilSettleDirHandle) {
+    nameEl.textContent = '📂 ' + _dongilSettleDirHandle.name + ' (선택 폴더에 바로 저장)';
+    nameEl.style.color = 'var(--primary)';
+  } else {
+    nameEl.textContent = '정산내역서 폴더 미설정';
+    nameEl.style.color = '';
+  }
+}
+async function _restoreDongilSettleFolder(){
+  try {
+    const handle = await _idbGet('dongilSettleDirHandle');
+    if (!handle) return;
+    const perm = await handle.queryPermission({mode:'readwrite'});
+    _dongilSettleDirHandle = handle;
+    const nameEl = document.getElementById('dongilSettleFolderName');
+    if (nameEl) {
+      if (perm === 'granted') {
+        nameEl.textContent = '📂 ' + handle.name + ' (선택 폴더에 바로 저장)';
+        nameEl.style.color = 'var(--success)';
+      } else {
+        nameEl.textContent = '📂 ' + handle.name + ' (재실행 시 승인 필요 — 다운로드 시 자동 요청)';
+        nameEl.style.color = 'var(--warn)';
+      }
+    }
+  } catch(e) { /* 무시 */ }
+}
+async function pickDongilSettleFolder(){
+  try {
+    if (!window.showDirectoryPicker) {
+      alert('이 브라우저는 폴더 직접 저장을 지원하지 않습니다.\n정산내역서가 Downloads 폴더에 저장됩니다.');
+      return;
+    }
+    const handle = await window.showDirectoryPicker({mode:'readwrite', startIn:'desktop'});
+    _dongilSettleDirHandle = handle;
+    await _idbPut('dongilSettleDirHandle', handle);
+    await _updateDongilSettleFolderLabel();
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('폴더 선택 오류: ' + e.message);
+  }
+}
+async function dlDongilSettlement(gk){
   const [,a] = gk.split('|');
   const orders = groupedOrders[gk] || [];
   if (!orders.length) { alert('주문이 없어요.'); return; }
   const result = buildDongilSettlementXlsx(orders, a, _localISO());
+  const safeName = String(result.fname||'').replace(/[\\/:*?"<>|]/g, '_');
+  // 지정된 폴더가 있으면 그 폴더에 바로 저장 시도
+  if (_dongilSettleDirHandle) {
+    try {
+      let perm = await _dongilSettleDirHandle.queryPermission({mode:'readwrite'});
+      if (perm === 'prompt') perm = await _dongilSettleDirHandle.requestPermission({mode:'readwrite'});
+      if (perm === 'granted') {
+        const bin = atob(result.b64), u8 = new Uint8Array(bin.length);
+        for (let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+        const blob = new Blob([u8], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        const fh = await _dongilSettleDirHandle.getFileHandle(safeName, {create:true});
+        const w = await fh.createWritable();
+        await w.write(blob); await w.close();
+        _poShowToast('✅ 정산내역서 저장: ' + _dongilSettleDirHandle.name + '/' + safeName);
+        return;
+      }
+    } catch(e) { console.warn('정산내역서 폴더 저장 실패, 다운로드로 폴백:', e); }
+  }
   // wb를 두 번 write하면 SheetJS 내부 스타일 인덱스가 초기화되어 스타일 소실 가능
   // → _wbToBase64로 이미 생성된 b64를 직접 다운로드
   const link = document.createElement('a');
@@ -13453,6 +13518,8 @@ window.addEventListener('load', ()=>{
   _restoreWrSaveFolder();
   // 발주서 저장 폴더 복원
   _restorePoSaveFolder();
+  // 동일 발주정산내역서 저장 폴더 복원
+  _restoreDongilSettleFolder();
 });
 
 // ══════════════════════════════════════════════════════════
