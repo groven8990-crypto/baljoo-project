@@ -7923,6 +7923,7 @@ function deleteExpHist(i) {
   if (item && item.id) {
     if (item.hasAttach) { _idbDelAttach(item.id); _sbDeleteAttach(item.id).catch(()=>{}); }
     _sbDeleteExp(item.id).catch(()=>{});
+    expSheetsDeleteRow(item.id).catch(()=>{});
   }
   renderExpHistList();
 }
@@ -10563,7 +10564,7 @@ function _parseSheetId(url){
   return m ? m[1] : null;
 }
 function _expSheetRow(d){
-  // 컬럼 순서: A날짜|B증빙|C분류|D내용|E업체명|F공급가|G세액|H합계|I주문건수|J결제일|K결제여부|L사업자명|M비고
+  // 컬럼 순서: A날짜|B증빙|C분류|D내용|E업체명|F공급가|G세액|H합계|I주문건수|J결제일|K결제여부|L사업자명|M비고|N앱내부ID(수정·삭제 동기화용, 화면엔 안 씀)
   const dt = d.date ? new Date(d.date + 'T00:00:00') : new Date();
   const evList = [d.ev1&&'세금계산서', d.ev2&&'계산서', d.ev3&&'현금영수증', d.ev4&&'고지서', d.ev5&&'기타', d.ev6&&'사후첨부'].filter(Boolean).join(', ');
   const dateStr = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
@@ -10573,8 +10574,66 @@ function _expSheetRow(d){
     d.desc||'', d.vendor||'',
     Number(d.supply)||0, Number(d.vat)||0, Number(d.total)||0,
     '', '',
-    d.payType||'', d.co||'', d.note||''
+    d.payType||'', d.co||'', d.note||'',
+    d.id||''
   ];
+}
+// N열(id)로 해당 항목의 시트 행 번호(1-based) 찾기 — 없으면 -1
+async function _expSheetsFindRowById(sheetId, token, id) {
+  if (!id) return -1;
+  try {
+    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/N:N`, { headers: { Authorization: 'Bearer ' + token } });
+    if (!r.ok) return -1;
+    const rows = (await r.json()).values || [];
+    const idStr = String(id);
+    for (let i = 0; i < rows.length; i++) {
+      if (String(rows[i][0]||'') === idStr) return i + 1;
+    }
+    return -1;
+  } catch(e) { return -1; }
+}
+async function _expSheetsGetGid(sheetId, token) {
+  try {
+    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties`, { headers: { Authorization: 'Bearer ' + token } });
+    if (!r.ok) return 0;
+    const data = await r.json();
+    return (data.sheets && data.sheets[0] && data.sheets[0].properties && data.sheets[0].properties.sheetId) || 0;
+  } catch(e) { return 0; }
+}
+// 수정 저장 시: id로 시트 행을 찾아 그 행만 덮어씀 (옛 항목처럼 id가 시트에 없으면 새로 추가)
+async function expSheetsUpdateRow(record){
+  const sheetId = localStorage.getItem(LS_EXP_SHEET_ID);
+  if (!sheetId || !record) return;
+  let token;
+  try { token = await gmailRequestToken(); } catch(e) { return; }
+  try {
+    const rowNum = await _expSheetsFindRowById(sheetId, token, record.id);
+    if (rowNum < 0) { await expSheetsAppend(record); return; }
+    const resp = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A${rowNum}:N${rowNum}?valueInputOption=USER_ENTERED`,
+      { method:'PUT', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
+        body: JSON.stringify({ values:[_expSheetRow(record)] }) }
+    );
+    _poShowToast(resp.ok ? '📊 구글 시트도 수정됐어요' : '⚠️ 구글 시트 수정 실패');
+  } catch(e) { console.warn('[Sheets] update 오류:', e); }
+}
+// 삭제 시: id로 시트 행을 찾아 그 행을 통째로 제거 (옛 항목처럼 id가 시트에 없으면 아무 것도 안 함)
+async function expSheetsDeleteRow(id){
+  const sheetId = localStorage.getItem(LS_EXP_SHEET_ID);
+  if (!sheetId || !id) return;
+  let token;
+  try { token = await gmailRequestToken(); } catch(e) { return; }
+  try {
+    const rowNum = await _expSheetsFindRowById(sheetId, token, id);
+    if (rowNum < 0) return;
+    const gid = await _expSheetsGetGid(sheetId, token);
+    const resp = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}:batchUpdate`,
+      { method:'POST', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
+        body: JSON.stringify({ requests:[{ deleteDimension:{ range:{ sheetId:gid, dimension:'ROWS', startIndex:rowNum-1, endIndex:rowNum } } }] }) }
+    );
+    _poShowToast(resp.ok ? '📊 구글 시트에서도 삭제됐어요' : '⚠️ 구글 시트 삭제 실패');
+  } catch(e) { console.warn('[Sheets] delete 오류:', e); }
 }
 async function expSheetsAppend(d){
   const sheetId = localStorage.getItem(LS_EXP_SHEET_ID);
@@ -10625,7 +10684,7 @@ async function expSheetsExportAll(){
     for (const row of sheetRows) {
       const col0 = String(row[0]||'').trim();
       if (!col0) continue;
-      let date, evStr, desc, vendor, supply, vat, total, payType, note, co;
+      let date, evStr, desc, vendor, supply, vat, total, payType, note, co, id;
       if (_isNewFmt(row)) {
         date    = col0;
         evStr   = String(row[1]||'');
@@ -10635,6 +10694,7 @@ async function expSheetsExportAll(){
         vat     = Number(String(row[6]||'0').replace(/,/g,'')) || 0;
         total   = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
         payType = String(row[10]||'').trim() || '즉시결제';
+        id      = String(row[13]||'').trim() || undefined;
         // 구형(12열, L=비고) vs 신형(13열, L=사업자명, M=비고) 구분
         if (row.length >= 13 && row[11] && !/^\d/.test(String(row[11]))) {
           // 이미 사업자명이 L에 있는 신형
@@ -10669,7 +10729,7 @@ async function expSheetsExportAll(){
       const ev1=evStr.includes('세금계산서'), ev2=evStr.includes('계산서')&&!ev1,
             ev3=evStr.includes('현금영수증'), ev4=evStr.includes('고지서'),
             ev5=evStr.includes('기타'),       ev6=evStr.includes('사후첨부');
-      parsedFromSheet.push({ date, ev1, ev2, ev3, ev4, ev5, ev6, desc, vendor, supply, vat, total, payType, note, co });
+      parsedFromSheet.push({ date, ev1, ev2, ev3, ev4, ev5, ev6, desc, vendor, supply, vat, total, payType, note, co, id });
     }
 
     // 4. 로컬에만 있는 항목 추가
@@ -10850,6 +10910,7 @@ function saveExpense() {
     hist[targetIdx] = updated;
     saveExpHist(hist);
     _sbUpsertExp(updated).catch(()=>{});
+    expSheetsUpdateRow(updated).catch(()=>{});
     if (pending.length && existing.id) {
       (async () => {
         const prev = await _expGetAttachAnywhere(existing.id).catch(()=>null);
