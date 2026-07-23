@@ -1091,6 +1091,7 @@
           <button class="sub-tab-btn active" id="expCoFilter-all"   onclick="setExpCoFilter('all')">전체</button>
           <button class="sub-tab-btn"        id="expCoFilter-yb"    onclick="setExpCoFilter('옐로우브릿지')">옐로우브릿지</button>
           <button class="sub-tab-btn"        id="expCoFilter-gr"    onclick="setExpCoFilter('그로븐')">그로븐</button>
+          <button class="sub-tab-btn" style="border-color:var(--danger);color:var(--danger)" id="expCoFilter-none" onclick="setExpCoFilter('__none__')">⚠ 회사 미지정</button>
         </div>
         <div style="display:flex;gap:4px;margin-left:4px">
           <button class="btn btn-sm active" id="expPaidFilter-all"    onclick="setExpPaidFilter('all')"    style="white-space:nowrap">전체</button>
@@ -1114,6 +1115,10 @@
         <button class="btn btn-sm" style="background:#0ea5e9;color:#fff;border:none" onclick="buildStatement()">📋 거래내역서 만들기</button>
         <button class="btn btn-sm" style="background:#16a34a;color:#fff;border:none" onclick="document.getElementById('poStmtFile').click()">📦 발주서로 거래내역서</button>
         <input type="file" id="poStmtFile" accept=".xlsx,.xls" multiple style="display:none" onchange="poStmtUpload(this)">
+        <span style="width:1px;height:20px;background:var(--border2);margin:0 2px"></span>
+        <span style="font-size:12px;color:var(--text3)">선택 항목 회사 지정:</span>
+        <button class="btn btn-sm" style="background:#3b82f6;color:#fff;border:none" onclick="bulkAssignExpCo('그로븐')">그로븐으로</button>
+        <button class="btn btn-sm" style="background:#EAB308;color:#1F2937;border:none" onclick="bulkAssignExpCo('옐로우브릿지')">옐로우브릿지로</button>
         <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
           <span id="expSaveFolderName" style="font-size:11px;color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
           <button class="btn btn-sm" onclick="pickExpSaveFolder()" title="저장할 폴더를 선택합니다">📁 폴더 설정</button>
@@ -7828,11 +7833,11 @@ function setExpCoFilter(co) {
   _expTodayOnly = false;
   const tb = document.getElementById('expTodayBtn');
   if (tb) { tb.style.background = ''; tb.style.color = ''; }
-  ['all','yb','gr'].forEach(k => {
+  ['all','yb','gr','none'].forEach(k => {
     const el = document.getElementById('expCoFilter-' + k);
     if (el) el.classList.remove('active');
   });
-  const keyMap = {'all':'all','옐로우브릿지':'yb','그로븐':'gr'};
+  const keyMap = {'all':'all','옐로우브릿지':'yb','그로븐':'gr','__none__':'none'};
   const btn = document.getElementById('expCoFilter-' + (keyMap[co]||'all'));
   if (btn) btn.classList.add('active');
   renderExpHistList();
@@ -7877,7 +7882,7 @@ function renderExpHistList() {
 
   // 필터
   let filtered = hist.filter(d => {
-    if (_expCoFilter !== 'all' && d.co !== _expCoFilter) return false;
+    if (_expCoFilter === '__none__') { if (d.co) return false; } else if (_expCoFilter !== 'all' && d.co !== _expCoFilter) return false;
     if (_expTodayOnly && (d.date||'') !== todayIso) return false;
     if (!_expTodayOnly && dateFrom && (d.date||'') < dateFrom) return false;
     if (!_expTodayOnly && dateTo   && (d.date||'') > dateTo)   return false;
@@ -7924,10 +7929,11 @@ function renderExpHistList() {
 
   let html = '';
   Object.values(groups).forEach(g => {
-    const coColor = g.co === '옐로우브릿지' ? '#f59e0b' : '#3b82f6';
+    const coColor = !g.co ? '#DC2626' : (g.co === '옐로우브릿지' ? '#f59e0b' : '#3b82f6');
+    const coLabel = g.co || '⚠ 회사 미지정';
     html += '<div style="margin-bottom:18px">' +
       '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:2px solid var(--border2);margin-bottom:8px">' +
-        '<span style="font-size:11px;font-weight:700;color:#fff;background:' + coColor + ';padding:2px 8px;border-radius:10px">' + escHtml(g.co) + '</span>' +
+        '<span style="font-size:11px;font-weight:700;color:#fff;background:' + coColor + ';padding:2px 8px;border-radius:10px">' + escHtml(coLabel) + '</span>' +
         '<span style="font-size:14px;font-weight:700">' + escHtml(g.vendor) + '</span>' +
         '<span style="font-size:12px;color:var(--text3)">(' + g.items.length + '건)</span>' +
       '</div>';
@@ -8070,7 +8076,7 @@ function exportExpHistXlsx() {
 
   const todayIso2 = _localISO();
   let filtered = hist.filter(d => {
-    if (_expCoFilter !== 'all' && d.co !== _expCoFilter) return false;
+    if (_expCoFilter === '__none__') { if (d.co) return false; } else if (_expCoFilter !== 'all' && d.co !== _expCoFilter) return false;
     if (_expTodayOnly && (d.date||'') !== todayIso2) return false;
     if (!_expTodayOnly && dateFrom && (d.date||'') < dateFrom) return false;
     if (!_expTodayOnly && dateTo   && (d.date||'') > dateTo)   return false;
@@ -8479,6 +8485,23 @@ function updateExpHistSelCount() {
 function toggleAllExpHist(checked) {
   document.querySelectorAll('.exp-hist-chk').forEach(c => c.checked = checked);
   updateExpHistSelCount();
+}
+
+// 선택한 이력 여러 건의 사업자(그로븐/옐로우브릿지)를 한 번에 지정 — 클라우드/시트도 같이 반영
+function bulkAssignExpCo(co) {
+  const checked = [...document.querySelectorAll('.exp-hist-chk:checked')];
+  if (!checked.length) { alert('먼저 항목을 선택해주세요.'); return; }
+  if (!confirm(`선택한 ${checked.length}건을 "${co}"(으)로 지정할까요?`)) return;
+  const hist = loadExpHist();
+  const idxs = checked.map(c => parseInt(c.dataset.idx)).filter(i => hist[i]);
+  idxs.forEach(i => { hist[i].co = co; });
+  saveExpHist(hist);
+  renderExpHistList();
+  idxs.forEach(i => {
+    _sbUpsertExp(hist[i]).catch(()=>{});
+    expSheetsUpdateRow(hist[i]).catch(()=>{});
+  });
+  _poShowToast(`✅ ${idxs.length}건 → ${co}(으)로 지정 완료`);
 }
 
 // ── 거래내역서 (statement) ──
