@@ -879,7 +879,7 @@
           oninput="expSheetUrlInput(this.value)">
         <button class="btn btn-sm" onclick="expSheetSave()" style="background:#16A34A;color:#fff;border:none;white-space:nowrap">저장</button>
         <button class="btn btn-sm" onclick="expSheetClear()" style="color:#DC2626;border-color:#DC2626;white-space:nowrap">해제</button>
-        <button id="expExportAllBtn" class="btn btn-sm" onclick="expSheetsExportAll()" style="background:#2563EB;color:#fff;border:none;white-space:nowrap">📤 기존 이력 전체 내보내기</button>
+        <button class="btn btn-sm expExportAllBtn" onclick="expSheetsExportAll()" style="background:#2563EB;color:#fff;border:none;white-space:nowrap">📤 기존 이력 전체 내보내기</button>
         <button id="expImportBtn" class="btn btn-sm" onclick="expSheetsLoad(true)" style="background:#7C3AED;color:#fff;border:none;white-space:nowrap">📥 시트에서 불러오기</button>
         <span id="expSheetStatus" style="font-size:11px;color:#15803D"></span>
       </div>
@@ -1109,6 +1109,7 @@
         <button class="btn btn-sm" onclick="document.getElementById('expHistJsonFile').click()" title="다른 컴퓨터에서 받은 JSON 백업을 불러오기">📤 JSON 가져오기</button>
         <input type="file" id="expHistJsonFile" accept=".json" style="display:none" onchange="importExpHistJson(this)">
         <button id="sbUploadBtn" class="btn btn-sm" onclick="_sbUploadAllExp()" style="background:#0f766e;color:#fff;border:none" title="현재 기기 이력을 Supabase에 업로드해서 다른 직원과 공유">☁️ Supabase 업로드</button>
+        <button class="btn btn-sm expExportAllBtn" onclick="expSheetsExportAll()" style="background:#2563EB;color:#fff;border:none;white-space:nowrap" title="구글 시트를 로컬 이력 기준으로 통째로 다시 써서 중복·누락 정리">📤 시트 전체 내보내기</button>
         <button class="btn btn-sm" onclick="if(confirm('전체 이력을 삭제할까요?')){localStorage.removeItem('yb_exphist');renderExpHistList();}">🗑 전체삭제</button>
         <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
           <span id="expSaveFolderName" style="font-size:11px;color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
@@ -10766,8 +10767,9 @@ async function expSheetsExportAll(){
   if (!confirm('구글 시트 기존 데이터를 읽어서 사업자명을 자동으로 채우고 다시 씁니다.\n로컬에만 있는 항목도 추가됩니다. (기존 시트 내용은 교체됨)\n계속할까요?')) return;
   let token;
   try { token = await gmailRequestToken(); } catch(e) { alert('구글 로그인이 필요해요.'); return; }
-  const btn = document.getElementById('expExportAllBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ 처리 중...'; }
+  const btns = document.querySelectorAll('.expExportAllBtn');
+  const prevLabels = [...btns].map(b => b.textContent);
+  btns.forEach(b => { b.disabled = true; b.textContent = '⏳ 처리 중...'; });
   try {
     // 1. 기존 시트 전체 읽기
     const getResp = await fetch(
@@ -10871,7 +10873,7 @@ async function expSheetsExportAll(){
       _poShowToast(`✅ ${allRows.length}건 완료 — 사업자명 자동 채움`);
     }
   } catch(e) { _poShowToast('⚠️ 오류: ' + e.message); }
-  finally { if (btn) { btn.disabled = false; btn.textContent = '📤 기존 이력 전체 내보내기'; } }
+  finally { btns.forEach((b, i) => { b.disabled = false; b.textContent = prevLabels[i]; }); }
 }
 async function expSheetsLoad(showAlert){
   const sheetId = localStorage.getItem(LS_EXP_SHEET_ID);
