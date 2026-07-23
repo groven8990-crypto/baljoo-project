@@ -708,10 +708,10 @@
   <div class="card" style="padding:10px 16px">
     <div style="cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600" onclick="invToggleSection('invImportMethodsBody','invImportMethodsToggle')">
       <span>📥 메일 / 드라이브에서 회신파일 자동으로 가져오기 <span style="font-size:12px;font-weight:400;color:var(--text3)">(선택 — 안 써도 아래 직접 업로드로 진행 가능)</span></span>
-      <span id="invImportMethodsToggle" style="font-size:12px;color:var(--text3);font-weight:400;white-space:nowrap;margin-left:8px">▶ 펼치기</span>
+      <span id="invImportMethodsToggle" style="font-size:12px;color:var(--text3);font-weight:400;white-space:nowrap;margin-left:8px">▲ 접기</span>
     </div>
   </div>
-  <div id="invImportMethodsBody" style="display:none">
+  <div id="invImportMethodsBody" style="display:block">
     <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
       <button class="btn btn-sm btn-primary" id="invImportTabBtn-gmail" onclick="invSwitchImportTab('gmail')">📧 Gmail</button>
       <button class="btn btn-sm" id="invImportTabBtn-drive" onclick="invSwitchImportTab('drive')" style="background:var(--bg2);border:1px solid var(--border)">📁 구글 드라이브</button>
