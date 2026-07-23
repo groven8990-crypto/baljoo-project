@@ -7722,6 +7722,8 @@ function toggleExpPaid(i) {
   else delete hist[i].paidAt;
   saveExpHist(hist);
   renderExpHistList();
+  _sbUpsertExp(hist[i]).catch(()=>{});
+  expSheetsUpdateRow(hist[i]).catch(()=>{});
 }
 
 function toggleExpProof(i) {
@@ -7732,6 +7734,8 @@ function toggleExpProof(i) {
   else delete hist[i].proofAt;
   saveExpHist(hist);
   renderExpHistList();
+  _sbUpsertExp(hist[i]).catch(()=>{});
+  expSheetsUpdateRow(hist[i]).catch(()=>{});
 }
 
 function switchExpSubTab(name) {
@@ -10569,7 +10573,7 @@ function _parseSheetId(url){
   return m ? m[1] : null;
 }
 function _expSheetRow(d){
-  // 컬럼 순서: A날짜|B증빙|C분류|D내용|E업체명|F공급가|G세액|H합계|I주문건수|J결제일|K결제여부|L사업자명|M비고|N앱내부ID(수정·삭제 동기화용, 화면엔 안 씀)
+  // 컬럼 순서: A날짜|B증빙|C분류|D내용|E업체명|F공급가|G세액|H합계|I주문건수|J결제일(송금완료일)|K결제여부|L사업자명|M비고|N앱내부ID(수정·삭제 동기화용, 화면엔 안 씀)|O증빙확인일
   const dt = d.date ? new Date(d.date + 'T00:00:00') : new Date();
   const evList = [d.ev1&&'세금계산서', d.ev2&&'계산서', d.ev3&&'현금영수증', d.ev4&&'고지서', d.ev5&&'기타', d.ev6&&'사후첨부'].filter(Boolean).join(', ');
   const dateStr = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
@@ -10578,9 +10582,9 @@ function _expSheetRow(d){
     evList, '',
     d.desc||'', d.vendor||'',
     Number(d.supply)||0, Number(d.vat)||0, Number(d.total)||0,
-    '', '',
+    '', d.paidAt||'',
     d.payType||'', d.co||'', d.note||'',
-    d.id||''
+    d.id||'', d.proofAt||''
   ];
 }
 // N열(id)로 해당 항목의 시트 행 번호(1-based) 찾기 — 없으면 -1
@@ -10615,7 +10619,7 @@ async function expSheetsUpdateRow(record){
     const rowNum = await _expSheetsFindRowById(sheetId, token, record.id);
     if (rowNum < 0) { await expSheetsAppend(record); return; }
     const resp = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A${rowNum}:N${rowNum}?valueInputOption=USER_ENTERED`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A${rowNum}:O${rowNum}?valueInputOption=USER_ENTERED`,
       { method:'PUT', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
         body: JSON.stringify({ values:[_expSheetRow(record)] }) }
     );
@@ -10670,7 +10674,7 @@ async function expSheetsExportAll(){
   try {
     // 1. 기존 시트 전체 읽기
     const getResp = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:N`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:O`,
       { headers: { Authorization: 'Bearer ' + token } }
     );
     if (!getResp.ok) { _poShowToast('⚠️ 시트 읽기 실패'); return; }
@@ -10689,7 +10693,7 @@ async function expSheetsExportAll(){
     for (const row of sheetRows) {
       const col0 = String(row[0]||'').trim();
       if (!col0) continue;
-      let date, evStr, desc, vendor, supply, vat, total, payType, note, co, id;
+      let date, evStr, desc, vendor, supply, vat, total, payType, note, co, id, paidAt, proofAt;
       if (_isNewFmt(row)) {
         date    = col0;
         evStr   = String(row[1]||'');
@@ -10698,8 +10702,10 @@ async function expSheetsExportAll(){
         supply  = Number(String(row[5]||'0').replace(/,/g,'')) || 0;
         vat     = Number(String(row[6]||'0').replace(/,/g,'')) || 0;
         total   = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
+        paidAt  = String(row[9]||'').trim() || undefined;
         payType = String(row[10]||'').trim() || '즉시결제';
         id      = String(row[13]||'').trim() || undefined;
+        proofAt = String(row[14]||'').trim() || undefined;
         // 구형(12열, L=비고) vs 신형(13열, L=사업자명, M=비고) 구분
         if (row.length >= 13 && row[11] && !/^\d/.test(String(row[11]))) {
           // 이미 사업자명이 L에 있는 신형
@@ -10734,7 +10740,8 @@ async function expSheetsExportAll(){
       const ev1=evStr.includes('세금계산서'), ev2=evStr.includes('계산서')&&!ev1,
             ev3=evStr.includes('현금영수증'), ev4=evStr.includes('고지서'),
             ev5=evStr.includes('기타'),       ev6=evStr.includes('사후첨부');
-      parsedFromSheet.push({ date, ev1, ev2, ev3, ev4, ev5, ev6, desc, vendor, supply, vat, total, payType, note, co, id });
+      parsedFromSheet.push({ date, ev1, ev2, ev3, ev4, ev5, ev6, desc, vendor, supply, vat, total, payType, note, co, id,
+        paid: !!paidAt, paidAt, proof: !!proofAt, proofAt });
     }
 
     // 4. 로컬에만 있는 항목 추가
@@ -10781,7 +10788,7 @@ async function expSheetsLoad(showAlert){
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 불러오는 중...'; }
   try {
     const resp = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:N`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:O`,
       { headers: { Authorization: 'Bearer ' + token } }
     );
     if (!resp.ok) {
@@ -10799,7 +10806,7 @@ async function expSheetsLoad(showAlert){
     for (const row of rows) {
       const col0 = String(row[0]||'').trim();
       if (!col0) continue;
-      let date, evStr, desc, vendor, supply, vat, total, payType, note;
+      let date, evStr, desc, vendor, supply, vat, total, payType, note, paidAt, proofAt;
       if (_isNewFmt(row)) {
         // 신형식 (날짜 문자열)
         date    = col0;
@@ -10809,8 +10816,10 @@ async function expSheetsLoad(showAlert){
         supply  = Number(String(row[5]||'0').replace(/,/g,'')) || 0;
         vat     = Number(String(row[6]||'0').replace(/,/g,'')) || 0;
         total   = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
+        paidAt  = String(row[9]||'').trim() || undefined;
         payType = String(row[10]||'').trim() || '즉시결제';
         note    = String(row[11]||'').trim();
+        proofAt = String(row[14]||'').trim() || undefined;
       } else {
         // 구형식 (년/월/일 숫자 3열) — col0이 순수 4자리 숫자여야 함 (날짜문자열 오인 방지)
         if (!/^\d{4}$/.test(col0)) continue;
@@ -10835,7 +10844,8 @@ async function expSheetsLoad(showAlert){
       const ev5 = evStr.includes('기타');
       const ev6 = evStr.includes('사후첨부');
       if (!vendor && !total) continue;
-      parsed.push({ date, ev1, ev2, ev3, ev4, ev5, ev6, desc, vendor, supply, vat, total, payType, note });
+      parsed.push({ date, ev1, ev2, ev3, ev4, ev5, ev6, desc, vendor, supply, vat, total, payType, note,
+        paid: !!paidAt, paidAt, proof: !!proofAt, proofAt });
     }
     if (!parsed.length) {
       if (showAlert) _poShowToast('시트에 불러올 데이터가 없어요 (헤더 행 제외)');
