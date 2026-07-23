@@ -1080,48 +1080,57 @@
   <div class="sub-content" id="expsubtab-list">
     <div class="card">
       <div class="card-title">📋 지출결의서 작성 이력</div>
-      <!-- 필터/검색 -->
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <!-- 검색/기간 -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
         <input id="expHistSearch" class="inp" type="text" placeholder="거래처·송금내역 검색..." oninput="renderExpHistList()" style="flex:1;min-width:160px;max-width:260px">
         <input id="expHistDateFrom" class="inp" type="date" oninput="setExpDateRangeFilter()" style="width:140px" title="시작일">
         <span style="font-size:12px;color:var(--text3)">~</span>
         <input id="expHistDateTo" class="inp" type="date" oninput="setExpDateRangeFilter()" style="width:140px" title="종료일">
         <button class="btn btn-sm" id="expTodayBtn" onclick="setExpTodayFilter()" style="white-space:nowrap">📅 금일</button>
-        <div style="display:flex;gap:6px">
+      </div>
+      <!-- 필터 -->
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="sub-tab-btn active" id="expCoFilter-all"   onclick="setExpCoFilter('all')">전체</button>
           <button class="sub-tab-btn"        id="expCoFilter-yb"    onclick="setExpCoFilter('옐로우브릿지')">옐로우브릿지</button>
           <button class="sub-tab-btn"        id="expCoFilter-gr"    onclick="setExpCoFilter('그로븐')">그로븐</button>
           <button class="sub-tab-btn" style="border-color:var(--danger);color:var(--danger)" id="expCoFilter-none" onclick="setExpCoFilter('__none__')">⚠ 회사 미지정</button>
         </div>
-        <div style="display:flex;gap:4px;margin-left:4px">
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
           <button class="btn btn-sm active" id="expPaidFilter-all"    onclick="setExpPaidFilter('all')"    style="white-space:nowrap">전체</button>
           <button class="btn btn-sm"        id="expPaidFilter-unpaid" onclick="setExpPaidFilter('unpaid')" style="white-space:nowrap">⏳ 미송금</button>
           <button class="btn btn-sm"        id="expPaidFilter-paid"   onclick="setExpPaidFilter('paid')"   style="white-space:nowrap">✅ 송금완료</button>
         </div>
-        <button class="btn btn-green btn-sm" style="margin-left:auto" onclick="exportExpHistXlsx()">📥 Excel 내보내기</button>
+      </div>
+      <!-- 내보내기/백업/관리 -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+        <button class="btn btn-green btn-sm" onclick="exportExpHistXlsx()">📥 Excel 내보내기</button>
         <button class="btn btn-sm" style="background:#1A56DB;color:#fff;border:none" onclick="exportExpHistJson()" title="이 컴퓨터의 지출결의서 작성이력을 JSON 백업 파일로 받기">📦 JSON 백업</button>
         <button class="btn btn-sm" onclick="document.getElementById('expHistJsonFile').click()" title="다른 컴퓨터에서 받은 JSON 백업을 불러오기">📤 JSON 가져오기</button>
         <input type="file" id="expHistJsonFile" accept=".json" style="display:none" onchange="importExpHistJson(this)">
         <button id="sbUploadBtn" class="btn btn-sm" onclick="_sbUploadAllExp()" style="background:#0f766e;color:#fff;border:none" title="현재 기기 이력을 Supabase에 업로드해서 다른 직원과 공유">☁️ Supabase 업로드</button>
         <button class="btn btn-sm" onclick="if(confirm('전체 이력을 삭제할까요?')){localStorage.removeItem('yb_exphist');renderExpHistList();}">🗑 전체삭제</button>
-      </div>
-      <!-- 선택 다운로드 툴바 -->
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;font-weight:600">
-          <input type="checkbox" id="expHistSelectAll" onchange="toggleAllExpHist(this.checked)" style="width:15px;height:15px"> 전체선택
-        </label>
-        <span id="expHistSelCount" style="font-size:12px;color:var(--text3)">0건 선택됨</span>
-        <button class="btn btn-sm" style="background:#7c3aed;color:#fff;border:none" onclick="downloadSelectedExpImg()">📷 선택 다운로드</button>
-        <button class="btn btn-sm" style="background:#0ea5e9;color:#fff;border:none" onclick="buildStatement()">📋 거래내역서 만들기</button>
-        <button class="btn btn-sm" style="background:#16a34a;color:#fff;border:none" onclick="document.getElementById('poStmtFile').click()">📦 발주서로 거래내역서</button>
-        <input type="file" id="poStmtFile" accept=".xlsx,.xls" multiple style="display:none" onchange="poStmtUpload(this)">
-        <span style="width:1px;height:20px;background:var(--border2);margin:0 2px"></span>
-        <span style="font-size:12px;color:var(--text3)">선택 항목 회사 지정:</span>
-        <button class="btn btn-sm" style="background:#3b82f6;color:#fff;border:none" onclick="bulkAssignExpCo('그로븐')">그로븐으로</button>
-        <button class="btn btn-sm" style="background:#EAB308;color:#1F2937;border:none" onclick="bulkAssignExpCo('옐로우브릿지')">옐로우브릿지로</button>
         <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
           <span id="expSaveFolderName" style="font-size:11px;color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
           <button class="btn btn-sm" onclick="pickExpSaveFolder()" title="저장할 폴더를 선택합니다">📁 폴더 설정</button>
+        </div>
+      </div>
+      <!-- 선택 항목 액션 툴바 -->
+      <div style="margin-bottom:10px;padding:10px 12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;font-weight:600">
+            <input type="checkbox" id="expHistSelectAll" onchange="toggleAllExpHist(this.checked)" style="width:15px;height:15px"> 전체선택
+          </label>
+          <span id="expHistSelCount" style="font-size:12px;color:var(--text3)">0건 선택됨</span>
+          <button class="btn btn-sm" style="background:#7c3aed;color:#fff;border:none" onclick="downloadSelectedExpImg()">📷 선택 다운로드</button>
+          <button class="btn btn-sm" style="background:#0ea5e9;color:#fff;border:none" onclick="buildStatement()">📋 거래내역서 만들기</button>
+          <button class="btn btn-sm" style="background:#16a34a;color:#fff;border:none" onclick="document.getElementById('poStmtFile').click()">📦 발주서로 거래내역서</button>
+          <input type="file" id="poStmtFile" accept=".xlsx,.xls" multiple style="display:none" onchange="poStmtUpload(this)">
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border2)">
+          <span style="font-size:12px;color:var(--text3);white-space:nowrap">🏢 선택 항목 회사 지정</span>
+          <button class="btn btn-sm" style="background:#3b82f6;color:#fff;border:none" onclick="bulkAssignExpCo('그로븐')">그로븐으로</button>
+          <button class="btn btn-sm" style="background:#EAB308;color:#1F2937;border:none" onclick="bulkAssignExpCo('옐로우브릿지')">옐로우브릿지로</button>
         </div>
       </div>
       <!-- 합계 요약 -->
