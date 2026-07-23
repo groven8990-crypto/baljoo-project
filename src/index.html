@@ -927,15 +927,15 @@
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
         <div>
           <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">공급가액 (원) <span style="font-weight:400;color:var(--text3)">(직접입력 가능)</span></label>
-          <input class="inp" type="number" id="expSupply" placeholder="자동계산 또는 직접입력" oninput="calcTotalFromParts()">
+          <input class="inp" type="number" id="expSupply" placeholder="자동계산 또는 직접입력" autocomplete="off" oninput="calcTotalFromParts()">
         </div>
         <div>
           <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">세액 (원) <span style="font-weight:400;color:var(--text3)">(직접입력 가능)</span></label>
-          <input class="inp" type="number" id="expVat" placeholder="자동계산 또는 직접입력" oninput="calcTotalFromParts()">
+          <input class="inp" type="number" id="expVat" placeholder="자동계산 또는 직접입력" autocomplete="off" oninput="calcTotalFromParts()">
         </div>
         <div>
           <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">합계 / 송금금액 (원) ★</label>
-          <input class="inp" type="number" id="expTotal" placeholder="합계 입력하세요" oninput="calcFromTotal()">
+          <input class="inp" type="number" id="expTotal" placeholder="합계 입력하세요" autocomplete="off" oninput="calcFromTotal()">
         </div>
       </div>
 
@@ -1188,15 +1188,15 @@
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
         <div>
           <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">공급가액 (원) <span style="font-weight:400;color:var(--text3)">(직접입력 가능)</span></label>
-          <input class="inp" type="number" id="incSupply" placeholder="자동계산 또는 직접입력" oninput="calcIncTotalFromParts()">
+          <input class="inp" type="number" id="incSupply" placeholder="자동계산 또는 직접입력" autocomplete="off" oninput="calcIncTotalFromParts()">
         </div>
         <div>
           <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">세액 (원) <span style="font-weight:400;color:var(--text3)">(직접입력 가능)</span></label>
-          <input class="inp" type="number" id="incVat" placeholder="자동계산 또는 직접입력" oninput="calcIncTotalFromParts()">
+          <input class="inp" type="number" id="incVat" placeholder="자동계산 또는 직접입력" autocomplete="off" oninput="calcIncTotalFromParts()">
         </div>
         <div>
           <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">합계 / 입금금액 (원) ★</label>
-          <input class="inp" type="number" id="incTotal" placeholder="합계 입력하세요" oninput="calcIncFromTotal()">
+          <input class="inp" type="number" id="incTotal" placeholder="합계 입력하세요" autocomplete="off" oninput="calcIncFromTotal()">
         </div>
       </div>
 
@@ -10811,9 +10811,29 @@ function expSheetInitUi(){
   if (id && st)  { st.textContent = '✅ 연동 중'; }
 }
 
+// 공급가액+세액 합이 총액과 다르면 알려주고, 원하면 총액 기준으로 재계산
+// (원인이 뭐든 간에 저장 시점에 어긋난 금액이 조용히 저장·구글시트로 올라가는 걸 막기 위한 안전장치)
+function _fixAmountMismatch(d, isCalcEl) {
+  const total  = Number(d.total)  || 0;
+  const supply = Number(d.supply) || 0;
+  const vat    = Number(d.vat)    || 0;
+  if (!total) return true;
+  if (supply + vat === total) return true;
+  const isCalc = document.getElementById(isCalcEl).checked;
+  const ok = confirm(
+    `⚠ 공급가액(${supply.toLocaleString()}) + 세액(${vat.toLocaleString()})의 합이 ` +
+    `총액(${total.toLocaleString()})과 ${Math.abs(total-(supply+vat)).toLocaleString()}원 차이가 나요.\n\n` +
+    `[확인] = 총액 기준으로 공급가액/세액을 다시 계산해서 저장\n[취소] = 저장하지 않고 직접 확인`
+  );
+  if (!ok) return false;
+  if (isCalc) { d.supply = total; d.vat = 0; }
+  else { d.supply = Math.ceil(total / 1.1); d.vat = total - d.supply; }
+  return true;
+}
 function saveExpense() {
   const d = getExpFormData();
   if (!d.vendor || !d.total) { alert('송금처와 송금금액을 입력해주세요.'); return; }
+  if (!_fixAmountMismatch(d, 'ev2')) return;
   const hist = loadExpHist();
   const pending = _expPendingAttachments.slice();
 
@@ -11272,6 +11292,7 @@ function cancelIncEdit() {
 function saveIncome() {
   const d = getIncFormData();
   if (!d.vendor || !d.total) { alert('입금처와 입금금액을 입력해주세요.'); return; }
+  if (!_fixAmountMismatch(d, 'iev2')) return;
   const hist = loadIncHist();
   const attachInput = document.getElementById('incAttachFile');
   const file = attachInput && attachInput.files && attachInput.files[0];
