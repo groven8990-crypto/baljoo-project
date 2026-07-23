@@ -10573,7 +10573,7 @@ function _parseSheetId(url){
   return m ? m[1] : null;
 }
 function _expSheetRow(d){
-  // 컬럼 순서: A날짜|B증빙|C분류|D내용|E업체명|F공급가|G세액|H합계|I주문건수|J결제일(송금완료일)|K결제여부|L사업자명|M비고|N앱내부ID(수정·삭제 동기화용, 화면엔 안 씀)|O증빙확인일
+  // 컬럼 순서: A날짜|B증빙|C분류|D내용|E업체명|F공급가|G세액|H합계|I주문건수|J결제일(송금완료일)|K결제여부|L증빙확인일|M사업자명|N비고|O앱내부ID(수정·삭제 동기화용, 화면엔 안 씀)
   const dt = d.date ? new Date(d.date + 'T00:00:00') : new Date();
   const evList = [d.ev1&&'세금계산서', d.ev2&&'계산서', d.ev3&&'현금영수증', d.ev4&&'고지서', d.ev5&&'기타', d.ev6&&'사후첨부'].filter(Boolean).join(', ');
   const dateStr = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
@@ -10583,15 +10583,15 @@ function _expSheetRow(d){
     d.desc||'', d.vendor||'',
     Number(d.supply)||0, Number(d.vat)||0, Number(d.total)||0,
     '', d.paidAt||'',
-    d.payType||'', d.co||'', d.note||'',
-    d.id||'', d.proofAt||''
+    d.payType||'', d.proofAt||'', d.co||'', d.note||'',
+    d.id||''
   ];
 }
-// N열(id)로 해당 항목의 시트 행 번호(1-based) 찾기 — 없으면 -1
+// O열(id)로 해당 항목의 시트 행 번호(1-based) 찾기 — 없으면 -1
 async function _expSheetsFindRowById(sheetId, token, id) {
   if (!id) return -1;
   try {
-    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/N:N`, { headers: { Authorization: 'Bearer ' + token } });
+    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/O:O`, { headers: { Authorization: 'Bearer ' + token } });
     if (!r.ok) return -1;
     const rows = (await r.json()).values || [];
     const idStr = String(id);
@@ -10704,15 +10704,18 @@ async function expSheetsExportAll(){
         total   = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
         paidAt  = String(row[9]||'').trim() || undefined;
         payType = String(row[10]||'').trim() || '즉시결제';
-        id      = String(row[13]||'').trim() || undefined;
-        proofAt = String(row[14]||'').trim() || undefined;
-        // 구형(12열, L=비고) vs 신형(13열, L=사업자명, M=비고) 구분
-        if (row.length >= 13 && row[11] && !/^\d/.test(String(row[11]))) {
-          // 이미 사업자명이 L에 있는 신형
+        // 구형(L=사업자명,M=비고, 13열) vs 신형(L=증빙확인일,M=사업자명,N=비고,O=id, 15열) 구분
+        if (row.length >= 14) {
+          proofAt = String(row[11]||'').trim() || undefined;
+          co      = String(row[12]||'').trim();
+          note    = String(row[13]||'').trim();
+          id      = String(row[14]||'').trim() || undefined;
+        } else if (row.length >= 13 && row[11] && !/^\d/.test(String(row[11]))) {
+          // 이미 사업자명이 L에 있는 구형
           co   = String(row[11]||'').trim();
           note = String(row[12]||'').trim();
         } else {
-          // 구형: L=비고
+          // 아주 옛 구형: L=비고
           note = String(row[11]||'').trim();
           co   = '';
         }
@@ -10818,8 +10821,14 @@ async function expSheetsLoad(showAlert){
         total   = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
         paidAt  = String(row[9]||'').trim() || undefined;
         payType = String(row[10]||'').trim() || '즉시결제';
-        note    = String(row[11]||'').trim();
-        proofAt = String(row[14]||'').trim() || undefined;
+        if (row.length >= 14) {
+          // 신형 (L=증빙확인일, M=사업자명, N=비고, O=id)
+          proofAt = String(row[11]||'').trim() || undefined;
+          note    = String(row[13]||'').trim();
+        } else {
+          // 구형 (L=사업자명 또는 비고)
+          note = String(row[11]||'').trim();
+        }
       } else {
         // 구형식 (년/월/일 숫자 3열) — col0이 순수 4자리 숫자여야 함 (날짜문자열 오인 방지)
         if (!/^\d{4}$/.test(col0)) continue;
