@@ -2674,6 +2674,16 @@ function _add11stOrdersFromRows(rows, hr){
   }
   return { added, dupSkipped };
 }
+// 도매꾹: 선택사항에 콤마로 여러 옵션이 묶여서 온 주문(예: "화이트,그레이")은
+// 실제로는 옵션별로 별도 품목이 함께 배송되는 것 → 옵션 개수만큼 행을 나눠서 생성
+function _splitDomeggookMultiOption(so) {
+  const raw = String(so||'');
+  if (!raw.includes(',')) return null;
+  const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  if (parts.some(p => p.includes(':'))) return null; // "색상:블랙,사이즈:L" 같은 속성 나열은 제외
+  return parts;
+}
 function handleFile(file, onDone) {
   if (!file) { if(typeof onDone==='function') onDone(); return; }
   setSt('파일 읽는 중...');
@@ -2729,22 +2739,27 @@ function handleFile(file, onDone) {
         const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn,so),alias=extractAlias(r[C.al]);
-        const parsed=parseParts(vc,vo,pn,so,dop);
-        // 주문금액 = AB - AI + AH + 구매쿠폰적용금액/2 (지마켓/옥션만)
-        const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
-        const _smRaw=C.sm>=0?String(r[C.sm]||'').trim():'';
-        const _siRaw=C.si>=0?String(r[C.si]||''):'';
-        const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
-        const _bcHalf=_bcM?Math.round(parseInt(_bcM[1].replace(/,/g,''))/2):0;
-        const order_amt=Math.round(_ab - _ai + _ah + _bcHalf);
-        const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
-        // 시간대별 발주처 규칙 적용
-        const vkFinal=_applyTimeVendorRule(order, vk);
-        order.vendor_key=vkFinal; order.unmatched=!vkFinal;
-        allOrders.push(order);
-        if(vkFinal){const gk=vkFinal+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
-        else unmatchedList.push(order);
+        // 도매꾹: 선택사항이 "화이트,그레이"처럼 콤마로 묶여 있으면 옵션별로 행을 나눔
+        const _soParts = (vk === '도매꾹') ? _splitDomeggookMultiOption(so) : null;
+        const _optionList = _soParts || [so];
+        for (const soOne of _optionList) {
+          const parsed=parseParts(vc,vo,pn,soOne,dop);
+          // 주문금액 = AB - AI + AH + 구매쿠폰적용금액/2 (지마켓/옥션만)
+          const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
+          const _smRaw=C.sm>=0?String(r[C.sm]||'').trim():'';
+          const _siRaw=C.si>=0?String(r[C.si]||''):'';
+          const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
+          const _bcHalf=_bcM?Math.round(parseInt(_bcM[1].replace(/,/g,''))/2):0;
+          const order_amt=Math.round(_ab - _ai + _ah + _bcHalf);
+          const order_date_raw = (C.od>=0?r[C.od]:'') || '';
+          const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
+          // 시간대별 발주처 규칙 적용
+          const vkFinal=_applyTimeVendorRule(order, vk);
+          order.vendor_key=vkFinal; order.unmatched=!vkFinal;
+          allOrders.push(order);
+          if(vkFinal){const gk=vkFinal+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
+          else unmatchedList.push(order);
+        }
       }
       // 발주처]품목명 형태 자동 등록 후 재매칭
       const autoAdded=autoRegisterBracketCodes(allOrders);
@@ -9301,21 +9316,26 @@ function handleFileAdd(file, onDone){
         totalCount++;added++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn,so),alias=extractAlias(r[C.al]);
-        const parsed=parseParts(vc,vo,pn,so,dop);
-        // 주문금액 = AB - AI + AH + 구매쿠폰적용금액/2 (지마켓/옥션만)
-        const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
-        const _smRaw=C.sm>=0?String(r[C.sm]||'').trim():'';
-        const _siRaw=C.si>=0?String(r[C.si]||''):'';
-        const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
-        const _bcHalf=_bcM?Math.round(parseInt(_bcM[1].replace(/,/g,''))/2):0;
-        const order_amt=Math.round(_ab - _ai + _ah + _bcHalf);
-        const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-        const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:so,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
-        const vkFinal=_applyTimeVendorRule(order, vk);
-        order.vendor_key=vkFinal; order.unmatched=!vkFinal;
-        allOrders.push(order);
-        if(vkFinal){const gk=vkFinal+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
-        else unmatchedList.push(order);
+        // 도매꾹: 선택사항이 "화이트,그레이"처럼 콤마로 묶여 있으면 옵션별로 행을 나눔
+        const _soParts = (vk === '도매꾹') ? _splitDomeggookMultiOption(so) : null;
+        const _optionList = _soParts || [so];
+        for (const soOne of _optionList) {
+          const parsed=parseParts(vc,vo,pn,soOne,dop);
+          // 주문금액 = AB - AI + AH + 구매쿠폰적용금액/2 (지마켓/옥션만)
+          const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
+          const _smRaw=C.sm>=0?String(r[C.sm]||'').trim():'';
+          const _siRaw=C.si>=0?String(r[C.si]||''):'';
+          const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
+          const _bcHalf=_bcM?Math.round(parseInt(_bcM[1].replace(/,/g,''))/2):0;
+          const order_amt=Math.round(_ab - _ai + _ah + _bcHalf);
+          const order_date_raw = (C.od>=0?r[C.od]:'') || '';
+          const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
+          const vkFinal=_applyTimeVendorRule(order, vk);
+          order.vendor_key=vkFinal; order.unmatched=!vkFinal;
+          allOrders.push(order);
+          if(vkFinal){const gk=vkFinal+'|'+alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(order);}
+          else unmatchedList.push(order);
+        }
       }
       const autoAdded=autoRegisterBracketCodes(allOrders);
       if(autoAdded>0) rematchAllOrders();
