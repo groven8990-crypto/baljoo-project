@@ -2948,6 +2948,14 @@ function renderStep3(){
       if (!kakaoMap[key] || h.ts > kakaoMap[key]) kakaoMap[key] = h.ts;
     }
   });
+  // 오늘 발주사이트 업로드(버튼 클릭) 매핑 (vendor|alias → 가장 최근 시각)
+  const siteMap = {};
+  loadSiteUploadHistory().forEach(h => {
+    if (h.ts >= todayStartTs) {
+      const key = (h.vendor||'') + '|' + (h.alias||'');
+      if (!siteMap[key] || h.ts > siteMap[key]) siteMap[key] = h.ts;
+    }
+  });
   for(const gk of sortVendorKeys(Object.keys(groupedOrders))){
     const [v,a]=gk.split('|'),cnt=groupedOrders[gk].length;
     const savedEmail=emails[v]||'';
@@ -2967,6 +2975,11 @@ function renderStep3(){
     const kakaoMark = kakaoTs
       ? `<span class="kakao-mark" id="kkm_${ekey(gk)}" title="오늘 ${kakaoTime} 카카오톡 전송" style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#FEF3C7;color:#78350F;border:1px solid #FDE68A;border-radius:6px;font-size:12px;font-weight:700">✅ 전송완료 ${kakaoTime}</span>`
       : '';
+    const siteTs = siteMap[gk];
+    const siteTime = siteTs ? new Date(siteTs).toTimeString().slice(0,5) : '';
+    const siteMark = siteTs
+      ? `<span class="site-mark" id="stm_${ekey(gk)}" title="오늘 ${siteTime} 발주사이트 업로드" style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:6px;font-size:12px;font-weight:700">✅ 업로드완료 ${siteTime}</span>`
+      : '';
     const doneCls = dlTs ? ' done' : '';
     html+=`<div class="gen-card${doneCls}" id="gc_${ekey(gk)}">
       <div style="min-width:0;flex:1">
@@ -2982,6 +2995,7 @@ function renderStep3(){
         ${dvChip}
         ${v==='동일'?`<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border-color:#86efac" onclick="dlDongilSettlement('${esc(gk)}')" title="발주정산내역서 다운로드">📋 정산내역서</button>`:''}
         ${(Array.isArray(delivery[v])&&delivery[v].includes('kakao'))?(kakaoMark || `<button class="btn btn-sm" style="background:#FEF3C7;color:#78350F;border-color:#FDE68A" onclick="kakaoSendOne('${esc(gk)}')" title="카카오톡으로 발주 내용 발송">💬 카카오</button>`):''}
+        ${(Array.isArray(delivery[v])&&delivery[v].includes('site'))?(siteMark || `<button class="btn btn-sm" style="background:#DCFCE7;color:#166534;border-color:#86EFAC" onclick="siteUploadOne('${esc(gk)}')" title="발주서 다운로드 후 발주사이트에 직접 업로드">🌐 발주사이트</button>`):''}
         ${sendMark || `<button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>`}
       </div>
     </div>`;
@@ -3376,6 +3390,33 @@ function kakaoSendOne(gk){
   } else {
     _kakaoFallbackPrompt(text);
   }
+}
+// ── 발주사이트 업로드 이력 (버튼 클릭 = 업로드 의사로 간주해 기록) ──
+const LS_SITE_UPLOAD_HISTORY = 'yb_site_upload_history';
+function loadSiteUploadHistory(){ try{ return JSON.parse(localStorage.getItem(LS_SITE_UPLOAD_HISTORY)||'[]'); }catch{ return []; } }
+function saveSiteUploadHistory(arr){ try{ localStorage.setItem(LS_SITE_UPLOAD_HISTORY, JSON.stringify(arr.slice(-500))); }catch(e){} }
+function logSiteUpload(vendor, alias){
+  const hist = loadSiteUploadHistory();
+  hist.push({ vendor, alias, ts: Date.now() });
+  saveSiteUploadHistory(hist);
+}
+// 발주처 카드의 🌐 발주사이트 버튼 — 발주서 다운로드 + 업로드 의사 기록(뱃지 전환)
+function siteUploadOne(gk){
+  const [v, a] = gk.split('|');
+  logSiteUpload(v, a);
+  const card = document.getElementById('gc_'+ekey(gk));
+  const stBtn = card?.querySelector('button[onclick^="siteUploadOne"]');
+  if (stBtn) {
+    const nowTime = new Date().toTimeString().slice(0,5);
+    const badge = document.createElement('span');
+    badge.id = 'stm_'+ekey(gk);
+    badge.title = `오늘 ${nowTime} 발주사이트 업로드`;
+    badge.style.cssText = 'display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:6px;font-size:12px;font-weight:700';
+    badge.textContent = `✅ 업로드완료 ${nowTime}`;
+    stBtn.replaceWith(badge);
+  }
+  try { dlOne(gk); } catch(e) { console.warn('발주사이트용 발주서 다운로드 실패:', e); }
+  _poShowToast('✅ 발주서 다운로드됨! 발주사이트에 업로드해주세요');
 }
 // 발주처별 카톡 채팅방 이름 (자동으로 그 방을 열 수는 없지만, 사용자에게 어느 방인지 힌트로 보여줌)
 const LS_KAKAO_ROOM_NAMES = 'yb_kakao_room_names';
