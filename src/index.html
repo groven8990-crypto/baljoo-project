@@ -729,6 +729,10 @@
         <span id="invGmailStatus" style="font-size:12px;color:var(--text3)"></span>
       </div>
       <div id="invGmailSaveDirChip" style="display:none;margin-bottom:8px;font-size:11px;color:var(--text3)">📂 저장 폴더: <span id="invGmailSaveDirName" style="font-weight:600;color:var(--text2)"></span></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <span id="dongilQuoteFolderName" style="font-size:11px;color:var(--text3)">동일 견적서 폴더 미설정</span>
+        <button class="btn btn-sm" onclick="pickDongilQuoteFolder()" style="background:var(--bg2);border:1px solid var(--border)" title="동일 회신 메일에 같이 오는 견적서를 자동 저장할 폴더 선택">📁 동일 견적서 폴더</button>
+      </div>
       <!-- 발신자 설정 패널 -->
       <div id="invGmailSenderConfig" style="display:none;margin-bottom:10px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px">
         <div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text2)">📮 발신자 → 거래처 매핑 <span style="font-weight:400;color:var(--text3)">— 발신자 이름/이메일의 일부만 입력해도 됩니다</span></div>
@@ -6549,8 +6553,21 @@ async function invGmailFetch() {
       const date    = (hds.find(h => h.name === 'Date')    || {}).value || '';
       const from    = (hds.find(h => h.name === 'From')    || {}).value || '';
       if (!_isToday(date)) continue;  // 오늘 메일만
+      // 동일: 회신 메일에 견적서가 같이 첨부되어 오므로, 운송장 엑셀이 아닌 나머지 첨부를 견적서 후보로 저장
+      const label = _invGmailMatchLabel(from);
+      let quotePart = null;
+      if (label === '동일') {
+        const allParts = _gmailFindAllAttachmentParts(msg.payload);
+        const others = allParts.filter(p => !parts.includes(p));
+        others.sort((a,b) => (/\.pdf$/i.test(b.filename||'')?1:0) - (/\.pdf$/i.test(a.filename||'')?1:0));
+        quotePart = others[0] || null;
+      }
       for (const part of parts) {
-        items.push({ msgId: msg.id, attachId: part.body.attachmentId, filename: part.filename, subject, date, from });
+        items.push({
+          msgId: msg.id, attachId: part.body.attachmentId, filename: part.filename, subject, date, from,
+          quoteAttachId: quotePart ? quotePart.body.attachmentId : null,
+          quoteFilename: quotePart ? quotePart.filename : null
+        });
       }
     }
 
@@ -6615,6 +6632,20 @@ function _gmailFindXlsxParts(payload, result) {
   }
   return result;
 }
+// 동일 견적서용 — 첨부파일 전체(형식 무관, 서명 이미지 등 인라인 이미지는 제외)
+function _gmailFindAllAttachmentParts(payload, result) {
+  if (!result) result = [];
+  if (!payload) return result;
+  const fn = payload.filename || '';
+  const mt = payload.mimeType || '';
+  if (fn && !mt.startsWith('image/') && payload.body && payload.body.attachmentId) {
+    result.push(payload);
+  }
+  if (payload.parts) {
+    for (const p of payload.parts) _gmailFindAllAttachmentParts(p, result);
+  }
+  return result;
+}
 
 function _gmailShortDate(dateStr) {
   if (!dateStr) return '';
@@ -6625,10 +6656,81 @@ function _gmailShortDate(dateStr) {
   } catch { return dateStr.slice(0, 10); }
 }
 
+// ── 동일 견적서 저장 폴더 (Gmail 회신 메일에 같이 오는 견적서 자동 저장용) ──
+let _dongilQuoteDirHandle = null;
+async function _updateDongilQuoteFolderLabel(){
+  const nameEl = document.getElementById('dongilQuoteFolderName');
+  if (!nameEl) return;
+  if (_dongilQuoteDirHandle) {
+    nameEl.textContent = '📂 ' + _dongilQuoteDirHandle.name + ' (자동 저장)';
+    nameEl.style.color = 'var(--primary)';
+  } else {
+    nameEl.textContent = '동일 견적서 폴더 미설정';
+    nameEl.style.color = '';
+  }
+}
+async function _restoreDongilQuoteFolder(){
+  try {
+    const handle = await _idbGet('dongilQuoteDirHandle');
+    if (!handle) return;
+    const perm = await handle.queryPermission({mode:'readwrite'});
+    _dongilQuoteDirHandle = handle;
+    const nameEl = document.getElementById('dongilQuoteFolderName');
+    if (nameEl) {
+      if (perm === 'granted') {
+        nameEl.textContent = '📂 ' + handle.name + ' (자동 저장)';
+        nameEl.style.color = 'var(--success)';
+      } else {
+        nameEl.textContent = '📂 ' + handle.name + ' (재실행 시 승인 필요 — 저장 시 자동 요청)';
+        nameEl.style.color = 'var(--warn)';
+      }
+    }
+  } catch(e) { /* 무시 */ }
+}
+async function pickDongilQuoteFolder(){
+  try {
+    if (!window.showDirectoryPicker) { alert('이 브라우저는 폴더 직접 저장을 지원하지 않습니다.'); return; }
+    const handle = await window.showDirectoryPicker({mode:'readwrite', startIn:'desktop'});
+    _dongilQuoteDirHandle = handle;
+    await _idbPut('dongilQuoteDirHandle', handle);
+    await _updateDongilQuoteFolderLabel();
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('폴더 선택 오류: ' + e.message);
+  }
+}
+// 동일 회신 메일에 같이 온 견적서를 YYMMDD-동일-견적서.ext 로 저장 (실패해도 운송장 업로드엔 영향 없음)
+async function _saveDongilQuote(item, token){
+  if (!item || !item.quoteAttachId || !_dongilQuoteDirHandle) return;
+  try {
+    let perm = await _dongilQuoteDirHandle.queryPermission({mode:'readwrite'});
+    if (perm === 'prompt') perm = await _dongilQuoteDirHandle.requestPermission({mode:'readwrite'});
+    if (perm !== 'granted') return;
+    const attResp = await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + item.msgId + '/attachments/' + item.quoteAttachId,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!attResp.ok) return;
+    const attData = await attResp.json();
+    const b64 = (attData.data || '').replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const d = item.date ? new Date(item.date) : new Date();
+    const yy = String(d.getFullYear()).slice(2), mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+    const extM = String(item.quoteFilename||'').match(/\.[a-z0-9]+$/i);
+    const fname = `${yy}${mm}${dd}-동일-견적서${extM ? extM[0] : ''}`;
+    const fh = await _dongilQuoteDirHandle.getFileHandle(fname, {create:true});
+    const w = await fh.createWritable();
+    await w.write(bytes); await w.close();
+    _poShowToast('✅ 동일 견적서 저장: ' + fname);
+  } catch(e) { console.warn('동일 견적서 저장 실패:', e); }
+}
 async function invGmailLoadAttachment(idx) {
   const item  = (window._invGmailItems || [])[idx];
   const token = window._invGmailToken;
   if (!item || !token) { alert('먼저 받은메일함을 검색해 주세요.'); return; }
+
+  if (item.quoteAttachId) _saveDongilQuote(item, token);
 
   const statusEl = document.getElementById('invGmailStatus');
   statusEl.textContent = '"' + item.filename + '" 다운로드 중...';
@@ -13551,6 +13653,8 @@ window.addEventListener('load', ()=>{
   _restorePoSaveFolder();
   // 동일 발주정산내역서 저장 폴더 복원
   _restoreDongilSettleFolder();
+  // 동일 견적서 저장 폴더 복원
+  _restoreDongilQuoteFolder();
 });
 
 // ══════════════════════════════════════════════════════════
