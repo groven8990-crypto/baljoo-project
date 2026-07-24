@@ -11029,18 +11029,17 @@ function saveExpense() {
     }
     const existing = hist[targetIdx] || {};
     const updated  = { ...existing, ...d, savedAt: new Date().toISOString() };
-    if (pending.length) updated.hasAttach = true;
+    updated.hasAttach = pending.length > 0;
     hist[targetIdx] = updated;
     saveExpHist(hist);
     _sbUpsertExp(updated).catch(()=>{});
     expSheetsUpdateRow(updated).catch(()=>{});
-    if (pending.length && existing.id) {
-      (async () => {
-        const prev = await _expGetAttachAnywhere(existing.id).catch(()=>null);
-        const prevList = prev ? (prev.attachments || (prev.data ? [{name:prev.name,type:prev.type,data:prev.data}] : [])) : [];
-        const newList = pending.map(a => ({ name: a.name, type: a.type, data: a.dataUrl }));
-        await _idbPutAttach(existing.id, { attachments: [...prevList, ...newList] });
-      })();
+    if (existing.id) {
+      // _expPendingAttachments는 수정모드 진입 시 기존 첨부를 이미 불러와 채워둔 상태라
+      // 여기 담긴 목록 자체가 "최종적으로 남겨야 할 첨부 전체"임(사용자가 ✕로 지운 것 반영됨).
+      // 기존 첨부에 다시 이어붙이면 저장할 때마다 중복이 쌓임 — 그대로 덮어써야 함.
+      const newList = pending.map(a => ({ name: a.name, type: a.type, data: a.dataUrl }));
+      (async () => { await _idbPutAttach(existing.id, { attachments: newList }); })();
       clearExpAttach();
     }
     _editingExpIdx = -1;
