@@ -2695,15 +2695,28 @@ function _add11stOrdersFromRows(rows, hr){
   }
   return { added, dupSkipped };
 }
-// 도매꾹: 선택사항에 콤마로 여러 옵션이 묶여서 온 주문(예: "화이트,그레이")은
+// 도매꾹: 선택사항에 여러 옵션이 묶여서 온 주문(예: "화이트,그레이" 또는 콤마 없이 "화이트 그레이")은
 // 실제로는 옵션별로 별도 품목이 함께 배송되는 것 → 옵션 개수만큼 행을 나눠서 생성
-function _splitDomeggookMultiOption(so) {
-  const raw = String(so||'');
-  if (!raw.includes(',')) return null;
-  const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
-  if (parts.length < 2) return null;
-  if (parts.some(p => p.includes(':'))) return null; // "색상:블랙,사이즈:L" 같은 속성 나열은 제외
-  return parts;
+// 콤마가 없으면 상품명 끝의 ", 옵션1, 옵션2" 나열과 대조해서 진짜 옵션 묶음인지 확인 후에만 나눔
+function _splitDomeggookMultiOption(so, productName) {
+  const raw = String(so||'').trim();
+  if (!raw) return null;
+  if (raw.includes(':')) return null; // "색상:블랙,사이즈:L" 같은 속성 나열은 제외
+  if (raw.includes(',')) {
+    const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+    return parts.length >= 2 ? parts : null;
+  }
+  if (!/\s/.test(raw)) return null;
+  const spaceParts = raw.split(/\s+/).filter(Boolean);
+  if (spaceParts.length < 2) return null;
+  const pn = String(productName||'');
+  const segs = pn.split(',').map(s => s.trim()).filter(Boolean);
+  const tailSegs = segs.slice(-spaceParts.length);
+  if (tailSegs.length !== spaceParts.length) return null;
+  const norm = s => s.replace(/\s+/g,'');
+  const tailSet = new Set(tailSegs.map(norm));
+  const allMatch = spaceParts.every(p => tailSet.has(norm(p)));
+  return allMatch ? spaceParts : null;
 }
 function handleFile(file, onDone) {
   if (!file) { if(typeof onDone==='function') onDone(); return; }
@@ -2761,7 +2774,7 @@ function handleFile(file, onDone) {
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn,so),alias=extractAlias(r[C.al]);
         // 도매꾹: 선택사항이 "화이트,그레이"처럼 콤마로 묶여 있으면 옵션별로 행을 나눔
-        const _soParts = (vk === '도매꾹') ? _splitDomeggookMultiOption(so) : null;
+        const _soParts = (vk === '도매꾹') ? _splitDomeggookMultiOption(so, pn) : null;
         const _optionList = _soParts || [so];
         for (const soOne of _optionList) {
           const parsed=parseParts(vc,vo,pn,soOne,dop);
@@ -9527,7 +9540,7 @@ function handleFileAdd(file, onDone){
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn,so),alias=extractAlias(r[C.al]);
         // 도매꾹: 선택사항이 "화이트,그레이"처럼 콤마로 묶여 있으면 옵션별로 행을 나눔
-        const _soParts = (vk === '도매꾹') ? _splitDomeggookMultiOption(so) : null;
+        const _soParts = (vk === '도매꾹') ? _splitDomeggookMultiOption(so, pn) : null;
         const _optionList = _soParts || [so];
         for (const soOne of _optionList) {
           const parsed=parseParts(vc,vo,pn,soOne,dop);
