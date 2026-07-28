@@ -29,6 +29,8 @@
   #expco-gr.active{background:#16A34A;border-color:#16A34A;color:#fff}
   #expco-yb.active{background:#FFF176;border-color:#FDE047;color:#5C4A00}
   .sub-content{display:none}.sub-content.active{display:block}
+  .mgmt-menu{position:absolute;top:100%;left:0;margin-top:6px;background:#fff;border:1px solid var(--border2);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:220px;z-index:200;padding:8px;display:flex;flex-direction:column;gap:4px}
+  .mgmt-menu button{display:flex;align-items:center}
   .sr-sub-content{display:none}.sr-sub-content.active{display:block}
   .container{max-width:900px;margin:0 auto;padding:28px 20px 60px}
   /* progress */
@@ -1093,7 +1095,7 @@
         <button class="btn btn-sm" id="expTodayBtn" onclick="setExpTodayFilter()" style="white-space:nowrap">📅 금일</button>
       </div>
       <!-- 필터 -->
-      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="sub-tab-btn active" id="expCoFilter-all"   onclick="setExpCoFilter('all')">전체</button>
           <button class="sub-tab-btn"        id="expCoFilter-yb"    onclick="setExpCoFilter('옐로우브릿지')">옐로우브릿지</button>
@@ -1101,23 +1103,31 @@
           <button class="sub-tab-btn" style="border-color:var(--danger);color:var(--danger)" id="expCoFilter-none" onclick="setExpCoFilter('__none__')">⚠ 회사 미지정</button>
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button class="btn btn-sm active" id="expPaidFilter-all"    onclick="setExpPaidFilter('all')"    style="white-space:nowrap">전체</button>
+          <button class="btn btn-sm active" id="expPaidFilter-all"    onclick="setExpPaidFilter('all')"    style="white-space:nowrap">송금 전체</button>
           <button class="btn btn-sm"        id="expPaidFilter-unpaid" onclick="setExpPaidFilter('unpaid')" style="white-space:nowrap">⏳ 미송금</button>
           <button class="btn btn-sm"        id="expPaidFilter-paid"   onclick="setExpPaidFilter('paid')"   style="white-space:nowrap">✅ 송금완료</button>
         </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn btn-sm active" id="expProofFilter-all"     onclick="setExpProofFilter('all')"     style="white-space:nowrap">증빙 전체</button>
+          <button class="btn btn-sm"        id="expProofFilter-unproof" onclick="setExpProofFilter('unproof')" style="white-space:nowrap">⏳ 미증빙</button>
+          <button class="btn btn-sm"        id="expProofFilter-proof"   onclick="setExpProofFilter('proof')"   style="white-space:nowrap">✅ 증빙완료</button>
+        </div>
       </div>
-      <!-- 내보내기/백업/관리 -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+      <!-- 내보내기/관리 -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
         <button class="btn btn-green btn-sm" onclick="exportExpHistXlsx()">📥 Excel 내보내기</button>
-        <button class="btn btn-sm" style="background:#1A56DB;color:#fff;border:none" onclick="exportExpHistJson()" title="이 컴퓨터의 지출결의서 작성이력을 JSON 백업 파일로 받기">📦 JSON 백업</button>
-        <button class="btn btn-sm" onclick="document.getElementById('expHistJsonFile').click()" title="다른 컴퓨터에서 받은 JSON 백업을 불러오기">📤 JSON 가져오기</button>
-        <input type="file" id="expHistJsonFile" accept=".json" style="display:none" onchange="importExpHistJson(this)">
-        <button id="sbUploadBtn" class="btn btn-sm" onclick="_sbUploadAllExp()" style="background:#0f766e;color:#fff;border:none" title="현재 기기 이력을 Supabase에 업로드해서 다른 직원과 공유">☁️ Supabase 업로드</button>
-        <button class="btn btn-sm expExportAllBtn" onclick="expSheetsExportAll()" style="background:#2563EB;color:#fff;border:none;white-space:nowrap" title="구글 시트를 로컬 이력 기준으로 통째로 다시 써서 중복·누락 정리">📤 시트 전체 내보내기</button>
-        <button class="btn btn-sm" onclick="if(confirm('전체 이력을 삭제할까요?')){localStorage.removeItem('yb_exphist');renderExpHistList();}">🗑 전체삭제</button>
-        <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
-          <span id="expSaveFolderName" style="font-size:11px;color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
-          <button class="btn btn-sm" onclick="pickExpSaveFolder()" title="저장할 폴더를 선택합니다">📁 폴더 설정</button>
+        <div style="position:relative">
+          <button class="btn btn-sm" onclick="_toggleMgmtMenu('expMgmtMenu')" style="background:var(--bg2);border:1px solid var(--border)">⚙️ 관리 ▾</button>
+          <div id="expMgmtMenu" class="mgmt-menu" style="display:none">
+            <button class="btn btn-sm" style="background:#1A56DB;color:#fff;border:none;width:100%;justify-content:flex-start" onclick="exportExpHistJson()" title="이 컴퓨터의 지출결의서 작성이력을 JSON 백업 파일로 받기">📦 JSON 백업</button>
+            <button class="btn btn-sm" style="width:100%;justify-content:flex-start" onclick="document.getElementById('expHistJsonFile').click()" title="다른 컴퓨터에서 받은 JSON 백업을 불러오기">📤 JSON 가져오기</button>
+            <input type="file" id="expHistJsonFile" accept=".json" style="display:none" onchange="importExpHistJson(this)">
+            <button id="sbUploadBtn" class="btn btn-sm" style="background:#0f766e;color:#fff;border:none;width:100%;justify-content:flex-start" onclick="_sbUploadAllExp()" title="현재 기기 이력을 Supabase에 업로드해서 다른 직원과 공유">☁️ Supabase 업로드</button>
+            <button class="btn btn-sm expExportAllBtn" style="background:#2563EB;color:#fff;border:none;width:100%;justify-content:flex-start" onclick="expSheetsExportAll()" title="구글 시트를 로컬 이력 기준으로 통째로 다시 써서 중복·누락 정리">📤 시트 전체 내보내기</button>
+            <div style="border-top:1px solid var(--border2);margin:6px 0;padding-top:6px;font-size:11px;color:var(--text3)">저장 폴더: <span id="expSaveFolderName">미설정</span></div>
+            <button class="btn btn-sm" style="width:100%;justify-content:flex-start" onclick="pickExpSaveFolder()">📁 저장 폴더 설정</button>
+            <button class="btn btn-sm" style="width:100%;justify-content:flex-start;color:var(--danger)" onclick="if(confirm('전체 이력을 삭제할까요?')){localStorage.removeItem('yb_exphist');renderExpHistList();}">🗑 전체삭제</button>
+          </div>
         </div>
       </div>
       <!-- 선택 항목 액션 툴바 -->
@@ -1332,28 +1342,40 @@
   <div class="sub-content" id="incsubtab-list">
     <div class="card">
       <div class="card-title">📋 입금결의서 작성 이력</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
         <input id="incHistSearch" class="inp" type="text" placeholder="거래처·입금내역 검색..." oninput="renderIncHistList()" style="flex:1;min-width:160px;max-width:260px">
         <input id="incHistDateFrom" class="inp" type="date" oninput="setIncDateRangeFilter()" style="width:140px" title="시작일">
         <span style="font-size:12px;color:var(--text3)">~</span>
         <input id="incHistDateTo" class="inp" type="date" oninput="setIncDateRangeFilter()" style="width:140px" title="종료일">
         <button class="btn btn-sm" id="incTodayBtn" onclick="setIncTodayFilter()" style="white-space:nowrap">📅 금일</button>
-        <div style="display:flex;gap:6px">
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="sub-tab-btn active" id="incCoFilter-all"   onclick="setIncCoFilter('all')">전체</button>
           <button class="sub-tab-btn"        id="incCoFilter-yb"    onclick="setIncCoFilter('옐로우브릿지')">옐로우브릿지</button>
           <button class="sub-tab-btn"        id="incCoFilter-gr"    onclick="setIncCoFilter('그로븐')">그로븐</button>
         </div>
-        <div style="display:flex;gap:4px;margin-left:4px">
-          <button class="btn btn-sm active" id="incPaidFilter-all"    onclick="setIncPaidFilter('all')"    style="white-space:nowrap">전체</button>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn btn-sm active" id="incPaidFilter-all"    onclick="setIncPaidFilter('all')"    style="white-space:nowrap">입금 전체</button>
           <button class="btn btn-sm"        id="incPaidFilter-unpaid" onclick="setIncPaidFilter('unpaid')" style="white-space:nowrap">⏳ 미확인</button>
           <button class="btn btn-sm"        id="incPaidFilter-paid"   onclick="setIncPaidFilter('paid')"   style="white-space:nowrap">✅ 입금확인</button>
         </div>
-        <button class="btn btn-green btn-sm" style="margin-left:auto" onclick="exportIncHistXlsx()">📥 Excel 내보내기</button>
-        <button class="btn btn-sm" onclick="if(confirm('전체 이력을 삭제할까요?')){localStorage.removeItem('yb_inchist');renderIncHistList();}">🗑 전체삭제</button>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn btn-sm active" id="incProofFilter-all"     onclick="setIncProofFilter('all')"     style="white-space:nowrap">증빙 전체</button>
+          <button class="btn btn-sm"        id="incProofFilter-unproof" onclick="setIncProofFilter('unproof')" style="white-space:nowrap">⏳ 미증빙</button>
+          <button class="btn btn-sm"        id="incProofFilter-proof"   onclick="setIncProofFilter('proof')"   style="white-space:nowrap">✅ 증빙완료</button>
+        </div>
       </div>
-      <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-bottom:10px">
-        <span id="incSaveFolderName" style="font-size:11px;color:var(--text3);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">저장 폴더 미설정</span>
-        <button class="btn btn-sm" onclick="pickIncSaveFolder()" title="저장할 폴더를 선택합니다">📁 폴더 설정</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <button class="btn btn-green btn-sm" onclick="exportIncHistXlsx()">📥 Excel 내보내기</button>
+        <div style="position:relative">
+          <button class="btn btn-sm" onclick="_toggleMgmtMenu('incMgmtMenu')" style="background:var(--bg2);border:1px solid var(--border)">⚙️ 관리 ▾</button>
+          <div id="incMgmtMenu" class="mgmt-menu" style="display:none">
+            <div style="border-bottom:1px solid var(--border2);margin-bottom:6px;padding-bottom:6px;font-size:11px;color:var(--text3)">저장 폴더: <span id="incSaveFolderName">미설정</span></div>
+            <button class="btn btn-sm" style="width:100%;justify-content:flex-start" onclick="pickIncSaveFolder()">📁 저장 폴더 설정</button>
+            <button class="btn btn-sm" style="width:100%;justify-content:flex-start;color:var(--danger)" onclick="if(confirm('전체 이력을 삭제할까요?')){localStorage.removeItem('yb_inchist');renderIncHistList();}">🗑 전체삭제</button>
+          </div>
+        </div>
       </div>
       <div id="incHistSummary" style="margin-bottom:12px"></div>
       <div id="incHistList"><p style="font-size:13px;color:var(--text3)">저장된 이력이 없습니다.</p></div>
@@ -7895,6 +7917,7 @@ function invReset() {
 let _expCoFilter   = 'all';
 let _expTodayOnly  = false;
 let _expPaidFilter = 'all'; // 'all' | 'unpaid' | 'paid'
+let _expProofFilter = 'all'; // 'all' | 'unproof' | 'proof'
 
 function setExpPaidFilter(val) {
   _expPaidFilter = val;
@@ -7909,6 +7932,35 @@ function setExpPaidFilter(val) {
   });
   renderExpHistList();
 }
+function setExpProofFilter(val) {
+  _expProofFilter = val;
+  ['all','unproof','proof'].forEach(v => {
+    const btn = document.getElementById('expProofFilter-' + v);
+    if (!btn) return;
+    if (v === val) {
+      btn.style.background = 'var(--text)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--text)';
+    } else {
+      btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = '';
+    }
+  });
+  renderExpHistList();
+}
+// 카드 헤더 옆 "⚙️ 관리" 같은 드롭다운 메뉴 공용 토글 (다른 메뉴 열려있으면 같이 닫음)
+function _toggleMgmtMenu(id) {
+  document.querySelectorAll('.mgmt-menu').forEach(el => { if (el.id !== id) el.style.display = 'none'; });
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = (el.style.display === 'none') ? 'flex' : 'none';
+}
+document.addEventListener('click', function(e) {
+  document.querySelectorAll('.mgmt-menu').forEach(menu => {
+    if (menu.style.display === 'none') return;
+    if (menu.contains(e.target)) return;
+    const btn = menu.previousElementSibling;
+    if (btn && btn.contains(e.target)) return;
+    menu.style.display = 'none';
+  });
+});
 
 function toggleExpPaid(i) {
   const hist = loadExpHist();
@@ -8015,6 +8067,8 @@ function renderExpHistList() {
     if (!_expTodayOnly && dateTo   && (d.date||'') > dateTo)   return false;
     if (_expPaidFilter === 'paid'   &&  !d.paid) return false;
     if (_expPaidFilter === 'unpaid' && !!d.paid) return false;
+    if (_expProofFilter === 'proof'   &&  !d.proof) return false;
+    if (_expProofFilter === 'unproof' && !!d.proof) return false;
     if (q && !(
       (d.vendor||'').toLowerCase().includes(q) ||
       (d.desc||'').toLowerCase().includes(q) ||
@@ -11232,6 +11286,7 @@ let curIncCo = '옐로우브릿지';
 let _incCoFilter   = 'all';
 let _incTodayOnly  = false;
 let _incPaidFilter = 'all';
+let _incProofFilter = 'all'; // 'all' | 'unproof' | 'proof'
 let _editingIncIdx = -1;
 let _incModalData  = null;
 
@@ -11677,6 +11732,19 @@ function setIncPaidFilter(val) {
   if (btn) btn.classList.add('active');
   renderIncHistList();
 }
+function setIncProofFilter(val) {
+  _incProofFilter = val;
+  ['all','unproof','proof'].forEach(v => {
+    const btn = document.getElementById('incProofFilter-' + v);
+    if (!btn) return;
+    if (v === val) {
+      btn.style.background = 'var(--text)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--text)';
+    } else {
+      btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = '';
+    }
+  });
+  renderIncHistList();
+}
 function setIncCoFilter(co) {
   _incCoFilter = co; _incTodayOnly = false;
   const tb = document.getElementById('incTodayBtn');
@@ -11749,6 +11817,8 @@ function renderIncHistList() {
     if (!_incTodayOnly && dateTo   && (d.date||'') > dateTo)   return false;
     if (_incPaidFilter === 'paid'   &&  !d.paid) return false;
     if (_incPaidFilter === 'unpaid' && !!d.paid) return false;
+    if (_incProofFilter === 'proof'   &&  !d.proof) return false;
+    if (_incProofFilter === 'unproof' && !!d.proof) return false;
     if (q && !((d.vendor||'').toLowerCase().includes(q)||(d.desc||'').toLowerCase().includes(q)||(d.date||'').includes(q))) return false;
     return true;
   });
