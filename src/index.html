@@ -8987,21 +8987,19 @@ function poStmtUpload(input){
     const byVendor = {};
     for (const p of parsedAll) {
       const v = p.vendor || '미지정';
-      if (!byVendor[v]) byVendor[v] = {vendor:v, items:new Map(), files:[], dates:[]};
+      if (!byVendor[v]) byVendor[v] = {vendor:v, items:[], files:[], dates:[]};
       byVendor[v].files.push(p.fileName);
       if (p.inferredDate) byVendor[v].dates.push(p.inferredDate);
       for (const it of p.items) {
-        // 일자가 다르면 별도 행으로 유지 (파일 안에 일자 컬럼이 있을 때 같은 품목도 일자별로 분리)
+        // 발주서에 들어간 주문 건수만큼 행을 그대로 유지 (같은 품목·옵션·일자라도 합치지 않음)
         const itemDate = it.date || p.inferredDate || '';
-        const key = it.item + '||' + (it.option||'') + '||' + itemDate;
-        if (!byVendor[v].items.has(key)) byVendor[v].items.set(key, {item:it.item, option:it.option||'', qty:0, date: itemDate});
-        byVendor[v].items.get(key).qty += it.qty;
+        byVendor[v].items.push({item:it.item, option:it.option||'', qty:it.qty, date: itemDate});
       }
     }
     const groups = Object.values(byVendor).map(g => ({
       vendor: g.vendor,
       files: g.files,
-      items: [...g.items.values()].sort((a,b) => {
+      items: g.items.slice().sort((a,b) => {
         const ad = a.date||'', bd = b.date||'';
         if (ad !== bd) return ad < bd ? -1 : 1;
         return a.item < b.item ? -1 : a.item > b.item ? 1 : 0;
