@@ -1094,14 +1094,22 @@
         <input id="expHistDateTo" class="inp" type="date" oninput="setExpDateRangeFilter()" style="width:140px" title="종료일">
         <button class="btn btn-sm" id="expTodayBtn" onclick="setExpTodayFilter()" style="white-space:nowrap">📅 금일</button>
       </div>
-      <!-- 필터 -->
-      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+      <!-- 회사 필터 + 선택항목 회사지정 (같은 묶음) -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px;padding:10px 12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+        <span style="font-size:11px;font-weight:700;color:var(--text3);white-space:nowrap">🏢 회사</span>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="sub-tab-btn active" id="expCoFilter-all"   onclick="setExpCoFilter('all')">전체</button>
           <button class="sub-tab-btn"        id="expCoFilter-yb"    onclick="setExpCoFilter('옐로우브릿지')">옐로우브릿지</button>
           <button class="sub-tab-btn"        id="expCoFilter-gr"    onclick="setExpCoFilter('그로븐')">그로븐</button>
           <button class="sub-tab-btn" style="border-color:var(--danger);color:var(--danger)" id="expCoFilter-none" onclick="setExpCoFilter('__none__')">⚠ 회사 미지정</button>
         </div>
+        <span style="width:1px;height:20px;background:var(--border2)"></span>
+        <span style="font-size:11px;color:var(--text3);white-space:nowrap">선택 항목 지정</span>
+        <button class="btn btn-sm" style="background:#3b82f6;color:#fff;border:none" onclick="bulkAssignExpCo('그로븐')">그로븐으로</button>
+        <button class="btn btn-sm" style="background:#EAB308;color:#1F2937;border:none" onclick="bulkAssignExpCo('옐로우브릿지')">옐로우브릿지로</button>
+      </div>
+      <!-- 송금·증빙 필터 (같은 묶음) -->
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
         <div style="display:flex;gap:4px;flex-wrap:wrap">
           <button class="btn btn-sm active" id="expPaidFilter-all"    onclick="setExpPaidFilter('all')"    style="white-space:nowrap">송금 전체</button>
           <button class="btn btn-sm"        id="expPaidFilter-unpaid" onclick="setExpPaidFilter('unpaid')" style="white-space:nowrap">⏳ 미송금</button>
@@ -1141,11 +1149,6 @@
           <button class="btn btn-sm" style="background:#0ea5e9;color:#fff;border:none" onclick="buildStatement()">📋 거래내역서 만들기</button>
           <button class="btn btn-sm" style="background:#16a34a;color:#fff;border:none" onclick="document.getElementById('poStmtFile').click()">📦 발주서로 거래내역서</button>
           <input type="file" id="poStmtFile" accept=".xlsx,.xls" multiple style="display:none" onchange="poStmtUpload(this)">
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border2)">
-          <span style="font-size:12px;color:var(--text3);white-space:nowrap">🏢 선택 항목 회사 지정</span>
-          <button class="btn btn-sm" style="background:#3b82f6;color:#fff;border:none" onclick="bulkAssignExpCo('그로븐')">그로븐으로</button>
-          <button class="btn btn-sm" style="background:#EAB308;color:#1F2937;border:none" onclick="bulkAssignExpCo('옐로우브릿지')">옐로우브릿지로</button>
         </div>
       </div>
       <!-- 합계 요약 -->
@@ -1349,12 +1352,17 @@
         <input id="incHistDateTo" class="inp" type="date" oninput="setIncDateRangeFilter()" style="width:140px" title="종료일">
         <button class="btn btn-sm" id="incTodayBtn" onclick="setIncTodayFilter()" style="white-space:nowrap">📅 금일</button>
       </div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+      <!-- 회사 필터 -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px;padding:10px 12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+        <span style="font-size:11px;font-weight:700;color:var(--text3);white-space:nowrap">🏢 회사</span>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="sub-tab-btn active" id="incCoFilter-all"   onclick="setIncCoFilter('all')">전체</button>
           <button class="sub-tab-btn"        id="incCoFilter-yb"    onclick="setIncCoFilter('옐로우브릿지')">옐로우브릿지</button>
           <button class="sub-tab-btn"        id="incCoFilter-gr"    onclick="setIncCoFilter('그로븐')">그로븐</button>
         </div>
+      </div>
+      <!-- 입금·증빙 필터 (같은 묶음) -->
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
         <div style="display:flex;gap:4px;flex-wrap:wrap">
           <button class="btn btn-sm active" id="incPaidFilter-all"    onclick="setIncPaidFilter('all')"    style="white-space:nowrap">입금 전체</button>
           <button class="btn btn-sm"        id="incPaidFilter-unpaid" onclick="setIncPaidFilter('unpaid')" style="white-space:nowrap">⏳ 미확인</button>
