@@ -9100,7 +9100,7 @@ function poStmtParseRows(rows, fileName){
     }
     return '';
   };
-  const map = new Map();
+  const items = [];
   for (let i = hdrIdx + 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r || r.every(c => c === '')) continue;
@@ -9109,11 +9109,10 @@ function poStmtParseRows(rows, fileName){
     const opt = optIdx >= 0 ? String(r[optIdx]||'').trim() : '';
     if (!item || qty <= 0) continue;
     const rowDate = dateIdx >= 0 ? parseCellDate(r[dateIdx]) : '';
-    const key = item + '||' + opt + '||' + rowDate;  // 일자가 다르면 별도 행
-    if (!map.has(key)) map.set(key, {item, option:opt, qty:0, date: rowDate});
-    map.get(key).qty += qty;
+    // 발주서에 들어간 주문 건수만큼 행을 그대로 유지 (같은 품목·옵션·일자라도 합치지 않음)
+    items.push({item, option:opt, qty, date: rowDate});
   }
-  return {vendor, fileName, inferredDate, items:[...map.values()]};
+  return {vendor, fileName, inferredDate, items};
 }
 
 function poStmtShowModal(){
