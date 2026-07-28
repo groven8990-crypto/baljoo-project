@@ -8414,6 +8414,13 @@ function onExpAttachPaste(e) {
   e.preventDefault();
   _expAddFiles(imageItems.map(it => it.getAsFile()));
 }
+// 숫자 입력칸(<input type="number">) 위에서 마우스 휠 스크롤하면 브라우저 기본 동작으로
+// 값이 슬쩍 +1/-1 씩 바뀌는 문제 방지 — 포커스된 채로 휠 이벤트가 오면 바로 포커스 해제
+// (합계 금액칸을 클릭해두고 페이지를 스크롤하다가 금액이 조용히 바뀌는 문제의 원인이었음)
+document.addEventListener('wheel', function(e) {
+  const el = document.activeElement;
+  if (el && el.tagName === 'INPUT' && el.type === 'number') el.blur();
+}, { passive: true });
 // 지출결의서 작성 탭이 보일 때 전역 Ctrl+V 캡처
 document.addEventListener('paste', function(e) {
   const zone = document.getElementById('expDropZone');
