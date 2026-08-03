@@ -3157,7 +3157,7 @@ function verifyVendorBuild(vendor, alias, orders){
         dst_opt: chunkKgs.length ? `총 ${totalKg}kg = ${chunkKgs.join('+')} (${chunkKgs.length}박스)` : '',
         dst_qty: sumKg,
         splitKgs: chunkKgs, totalKg,
-        issues, bundleRgb: _bundleColorMap.get(i)||null
+        issues, bundleRgb: _bundleColorMap.get(i)||null, srcIdx: i
       });
       if (issues.length) res.badCnt++;
     }
@@ -3211,7 +3211,7 @@ function verifyVendorBuild(vendor, alias, orders){
       dst_opt:  dstOpt,
       dst_qty:  dstQty,
       issues,
-      bundleRgb: _bundleColorMap.get(i)||null
+      bundleRgb: _bundleColorMap.get(i)||null, srcIdx: i
     });
     if (issues.length) res.badCnt++;
   }
@@ -3227,8 +3227,8 @@ function renderVerifyArea(){
   const results = [];
   for (const gk of sortVendorKeys(groupKeys)) {
     const [v,a] = gk.split('|');
-    try { results.push(verifyVendorBuild(v, a, groupedOrders[gk])); }
-    catch(e) { results.push({vendor:v, alias:a, ok:false, srcCnt:0, dstCnt:0, badCnt:0, rowDetails:[], issues:['검증 오류: '+e.message]}); }
+    try { const r = verifyVendorBuild(v, a, groupedOrders[gk]); r.gk = gk; results.push(r); }
+    catch(e) { results.push({vendor:v, alias:a, gk, ok:false, srcCnt:0, dstCnt:0, badCnt:0, rowDetails:[], issues:['검증 오류: '+e.message]}); }
   }
   const okCnt = results.filter(r=>r.ok).length;
   const warnCnt = results.length - okCnt;
@@ -3256,6 +3256,7 @@ function renderVerifyArea(){
           <th style="padding:6px 8px;text-align:left;font-weight:600">발주서 품목/옵션</th>
           <th style="padding:6px 8px;text-align:right;font-weight:600;white-space:nowrap" title="발주서에 들어간 수량">발주<br>수량</th>
           <th style="padding:6px 8px;text-align:left;font-weight:600">이상</th>
+          <th style="padding:6px 8px;text-align:center;font-weight:600">삭제</th>
         </tr></thead>
         <tbody>${list.map(rd => `
           <tr style="background:${rd.bundleRgb?'#'+rd.bundleRgb.slice(2):(rd.issues.length?'#FEF2F2':'#fff')}">
@@ -3267,6 +3268,7 @@ function renderVerifyArea(){
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;max-width:180px;word-break:break-word">${escHtml((rd.dst_item+' '+rd.dst_opt).trim()||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">${rd.dst_qty!==null?rd.dst_qty:'-'}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:var(--danger);font-size:10px">${rd.issues.map(i=>'• '+escHtml(i)).join('<br>')||''}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:center"><button class="btn btn-sm" style="padding:2px 8px;font-size:10px;color:var(--danger);border-color:var(--danger);background:#fff" onclick="verifyDeleteRow('${esc(r.gk)}',${rd.srcIdx})" title="이 주문을 발주서에서 삭제">✕</button></td>
           </tr>`).join('')}</tbody></table>`;
     };
     const tableId = `vtab_${idx}`;
@@ -3291,6 +3293,18 @@ function renderVerifyArea(){
     </div>`;
   }).join('');
   el.innerHTML = head + '<div style="border:1px solid var(--border);border-radius:6px;background:#fff">' + list + '</div>';
+}
+// 자동 검토 표에서 특정 주문 행을 발주서에서 통째로 제외 (groupedOrders + allOrders 양쪽에서 제거)
+function verifyDeleteRow(gk, idx){
+  const list = groupedOrders[gk];
+  if (!list || !list[idx]) return;
+  const o = list[idx];
+  if (!confirm(`"${o.recv_name||'이 주문'}" 건을 발주서에서 삭제할까요?\n(다시 넣으려면 원본 파일을 새로 업로드해야 해요)`)) return;
+  list.splice(idx, 1);
+  const ai = allOrders.indexOf(o);
+  if (ai >= 0) allOrders.splice(ai, 1);
+  if (!list.length) delete groupedOrders[gk];
+  renderStep3();
 }
 
 // ── 거래처별 이메일 저장 ──
@@ -4404,13 +4418,32 @@ function _effOrderUnits(o, vendor){
   return baseQty * (Number(o.code_qty)||1);
 }
 function applyMergeForVendor(orders, vendor){
-  // 합배송: 행은 각각 그대로 유지, 메모 수정 없음, 색상 태그만 부여 (dlOne에서 배경색 적용)
   _lastBundledRows = [];
   const cntByKey = new Map();
   orders.forEach(o => {
     const k = _mergeKey(o);
     if (_mergeDecisions.has(k)) cntByKey.set(k, (cntByKey.get(k)||0)+1);
   });
+  // 푸드엔드베스트: 색칠 대신 — 같은 사람·주소·품목(옵션)이 합배송 대상이면
+  // 아예 한 행으로 합치고 수량을 더함 (예: 13팩 + 13팩 → 26팩)
+  if (vendor === '푸드엔드베스트') {
+    const mergedMap = new Map();
+    const result = [];
+    orders.forEach(o => {
+      const k = _mergeKey(o);
+      if (!(_mergeDecisions.has(k) && (cntByKey.get(k)||0) > 1)) { result.push(o); return; }
+      const itemKey = k + '||' + String(o.option_name || o.item_name || '');
+      if (mergedMap.has(itemKey)) {
+        mergedMap.get(itemKey).qty += effQty(o);
+      } else {
+        const clone = {...o, qty: effQty(o), code_qty: 1};
+        mergedMap.set(itemKey, clone);
+        result.push(clone);
+      }
+    });
+    return result;
+  }
+  // 그 외 발주처: 행은 각각 그대로 유지, 메모 수정 없음, 색상 태그만 부여 (dlOne에서 배경색 적용)
   const bundleColorIdx = {}; let nextColor = 0;
   const result = [];
   orders.forEach(o => {
