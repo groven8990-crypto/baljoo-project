@@ -3164,6 +3164,47 @@ function verifyVendorBuild(vendor, alias, orders){
     if (res.badCnt > 0) res.ok = false;
     return res;
   }
+  // ── 푸드엔드베스트: 합배송 시 같은 품목끼리 한 행으로 합쳐져서 원본 순서와 발주서 행이 1:1이 아님.
+  //    실제 병합 계획을 다시 계산해서(순수함수라 결과 동일) 각 원본 주문이 어느 발주서 행에 해당하는지 정확히 매칭.
+  if (vendor === '푸드엔드베스트') {
+    const plan = _foodenMergePlan(orders);
+    for (let i = 0; i < orders.length; i++) {
+      const o = orders[i];
+      const r = rows[plan.repIndexOf[i] + 1] || [];
+      const dstItem = itemCol >= 0 ? String(r[itemCol]||'') : '';
+      const dstOpt  = optCol  >= 0 ? String(r[optCol]||'')  : '';
+      const dstQty  = qtyCol  >= 0 ? (parseInt(r[qtyCol]) || 0) : null;
+      const dstHaystack = (dstItem + ' ' + dstOpt).toLowerCase();
+      const issues = [];
+      const tokens = _extractSpecTokens(o);
+      for (const tk of tokens) {
+        if (tk.type === 'kg') {
+          const re = new RegExp(tk.value.replace('kg','\\s*kg'), 'i');
+          if (!re.test(dstHaystack)) issues.push(`옵션에 ${tk.value} 누락 (원본에는 있음)`);
+        } else if (tk.type === 'p') {
+          const re = new RegExp(tk.value.replace('+','\\+'), 'i');
+          if (!re.test(dstHaystack)) issues.push(`옵션에 ${tk.value} 누락 (원본에는 있음)`);
+        }
+      }
+      const bundled = plan.bundled.find(b => b.dataIdx === plan.repIndexOf[i]);
+      res.rowDetails.push({
+        recv_name: o.recv_name||'',
+        order_no: o.order_no||'',
+        src_product: o.product||'',
+        src_select: o.select_opt||'',
+        src_disp: o.disp_opt||'',
+        src_qty:  Number(o.qty)||1,
+        dst_item: dstItem,
+        dst_opt:  dstOpt,
+        dst_qty:  dstQty,
+        issues,
+        bundleRgb: bundled ? bundled.rgb : null, srcIdx: i
+      });
+      if (issues.length) res.badCnt++;
+    }
+    if (res.badCnt > 0) res.ok = false;
+    return res;
+  }
   // 1:1 매핑이라고 가정 (모든 vendor가 orders.map(...))
   if (orders.length !== rows.length - 1) {
     res.issues.push(`행 수 불일치: 원본 ${orders.length}건 → 발주서 ${rows.length-1}행`);
@@ -4417,32 +4458,74 @@ function _effOrderUnits(o, vendor){
   }
   return baseQty * (Number(o.code_qty)||1);
 }
-function applyMergeForVendor(orders, vendor){
-  _lastBundledRows = [];
+// 푸드엔드베스트 전용 합배송 계획 — 순수함수(같은 orders + _mergeDecisions면 항상 같은 결과)라
+// buildRows(applyMergeForVendor)와 verifyVendorBuild 양쪽에서 각자 호출해도 결과가 항상 일치함
+//   result: 병합 반영된 최종 행 배열
+//   repIndexOf[i]: 원본 orders[i]가 result 배열에서 몇 번째 행에 해당하는지
+//   bundled: [{dataIdx, rgb}] — 짝을 못 찾아 병합되지 않고 색상만 칠할 행
+function _foodenMergePlan(orders){
   const cntByKey = new Map();
   orders.forEach(o => {
     const k = _mergeKey(o);
     if (_mergeDecisions.has(k)) cntByKey.set(k, (cntByKey.get(k)||0)+1);
   });
-  // 푸드엔드베스트: 색칠 대신 — 같은 사람·주소·품목(옵션)이 합배송 대상이면
-  // 아예 한 행으로 합치고 수량을 더함 (예: 13팩 + 13팩 → 26팩)
-  if (vendor === '푸드엔드베스트') {
-    const mergedMap = new Map();
-    const result = [];
-    orders.forEach(o => {
-      const k = _mergeKey(o);
-      if (!(_mergeDecisions.has(k) && (cntByKey.get(k)||0) > 1)) { result.push(o); return; }
-      const itemKey = k + '||' + String(o.option_name || o.item_name || '');
-      if (mergedMap.has(itemKey)) {
-        mergedMap.get(itemKey).qty += effQty(o);
+  // 그룹(이름+주소)별 · 품목(옵션)별 개수 — 2개 이상이면 병합 대상, 1개면 색칠만
+  const itemCntByGroup = new Map();
+  orders.forEach(o => {
+    const k = _mergeKey(o);
+    if (!(_mergeDecisions.has(k) && (cntByKey.get(k)||0) > 1)) return;
+    const itemKey = String(o.option_name || o.item_name || '');
+    if (!itemCntByGroup.has(k)) itemCntByGroup.set(k, new Map());
+    const m = itemCntByGroup.get(k);
+    m.set(itemKey, (m.get(itemKey)||0) + 1);
+  });
+  const bundleColorIdx = {}; let nextColor = 0;
+  const repIndexOf = new Array(orders.length).fill(-1);
+  const mergedRepByFullKey = new Map();
+  const result = [];
+  const bundled = [];
+  orders.forEach((o, i) => {
+    const k = _mergeKey(o);
+    if (!(_mergeDecisions.has(k) && (cntByKey.get(k)||0) > 1)) {
+      repIndexOf[i] = result.length; result.push(o); return;
+    }
+    const itemKey = String(o.option_name || o.item_name || '');
+    const cnt = itemCntByGroup.get(k).get(itemKey);
+    if (cnt >= 2) {
+      // 같은 품목·옵션이 2건 이상 → 한 행으로 합치고 수량을 더함 (예: 13팩+13팩→26팩)
+      const fullKey = k + '||' + itemKey;
+      if (mergedRepByFullKey.has(fullKey)) {
+        const repIdx = mergedRepByFullKey.get(fullKey);
+        repIndexOf[i] = repIdx;
+        result[repIdx].qty += effQty(o);
       } else {
         const clone = {...o, qty: effQty(o), code_qty: 1};
-        mergedMap.set(itemKey, clone);
+        mergedRepByFullKey.set(fullKey, result.length);
+        repIndexOf[i] = result.length;
         result.push(clone);
       }
-    });
-    return result;
+    } else {
+      // 같은 사람·주소로 합배송 대상이지만 품목/옵션이 달라 짝이 없음 → 합치지 않고 색상만 칠함
+      if (!(k in bundleColorIdx)) bundleColorIdx[k] = nextColor++ % _BUNDLE_COLORS.length;
+      bundled.push({dataIdx: result.length, rgb: _BUNDLE_COLORS[bundleColorIdx[k]]});
+      repIndexOf[i] = result.length;
+      result.push(o);
+    }
+  });
+  return {result, repIndexOf, bundled};
+}
+function applyMergeForVendor(orders, vendor){
+  _lastBundledRows = [];
+  if (vendor === '푸드엔드베스트') {
+    const plan = _foodenMergePlan(orders);
+    _lastBundledRows = plan.bundled;
+    return plan.result;
   }
+  const cntByKey = new Map();
+  orders.forEach(o => {
+    const k = _mergeKey(o);
+    if (_mergeDecisions.has(k)) cntByKey.set(k, (cntByKey.get(k)||0)+1);
+  });
   // 그 외 발주처: 행은 각각 그대로 유지, 메모 수정 없음, 색상 태그만 부여 (dlOne에서 배경색 적용)
   const bundleColorIdx = {}; let nextColor = 0;
   const result = [];
