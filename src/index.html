@@ -3157,7 +3157,7 @@ function verifyVendorBuild(vendor, alias, orders){
         dst_opt: chunkKgs.length ? `총 ${totalKg}kg = ${chunkKgs.join('+')} (${chunkKgs.length}박스)` : '',
         dst_qty: sumKg,
         splitKgs: chunkKgs, totalKg,
-        issues, bundleRgb: _bundleColorMap.get(i)||null, srcIdx: i
+        issues, bundleRgb: _bundleColorMap.get(i)||null, srcIdx: [i]
       });
       if (issues.length) res.badCnt++;
     }
@@ -3165,12 +3165,20 @@ function verifyVendorBuild(vendor, alias, orders){
     return res;
   }
   // ── 푸드엔드베스트: 합배송 시 같은 품목끼리 한 행으로 합쳐져서 원본 순서와 발주서 행이 1:1이 아님.
-  //    실제 병합 계획을 다시 계산해서(순수함수라 결과 동일) 각 원본 주문이 어느 발주서 행에 해당하는지 정확히 매칭.
+  //    실제 병합 계획을 다시 계산해서(순수함수라 결과 동일) 발주서에 실제로 나오는 행 개수만큼만
+  //    보여주고(합쳐진 주문들은 한 행으로), 삭제 버튼은 그 행에 속한 원본 주문을 전부 지움.
   if (vendor === '푸드엔드베스트') {
     const plan = _foodenMergePlan(orders);
-    for (let i = 0; i < orders.length; i++) {
-      const o = orders[i];
-      const r = rows[plan.repIndexOf[i] + 1] || [];
+    const idxByRep = new Map();
+    plan.repIndexOf.forEach((rep, i) => {
+      if (!idxByRep.has(rep)) idxByRep.set(rep, []);
+      idxByRep.get(rep).push(i);
+    });
+    const repList = [...idxByRep.keys()].sort((a,b) => a - b);
+    for (const rep of repList) {
+      const idxList = idxByRep.get(rep);
+      const o = orders[idxList[0]]; // 대표(첫 건) 정보로 표시
+      const r = rows[rep + 1] || [];
       const dstItem = itemCol >= 0 ? String(r[itemCol]||'') : '';
       const dstOpt  = optCol  >= 0 ? String(r[optCol]||'')  : '';
       const dstQty  = qtyCol  >= 0 ? (parseInt(r[qtyCol]) || 0) : null;
@@ -3186,22 +3194,24 @@ function verifyVendorBuild(vendor, alias, orders){
           if (!re.test(dstHaystack)) issues.push(`옵션에 ${tk.value} 누락 (원본에는 있음)`);
         }
       }
-      const bundled = plan.bundled.find(b => b.dataIdx === plan.repIndexOf[i]);
+      const bundled = plan.bundled.find(b => b.dataIdx === rep);
+      const srcQtySum = idxList.reduce((s,i2) => s + (Number(orders[i2].qty)||1), 0);
       res.rowDetails.push({
-        recv_name: o.recv_name||'',
+        recv_name: o.recv_name + (idxList.length > 1 ? ` (${idxList.length}건 합배송)` : ''),
         order_no: o.order_no||'',
         src_product: o.product||'',
         src_select: o.select_opt||'',
         src_disp: o.disp_opt||'',
-        src_qty:  Number(o.qty)||1,
+        src_qty:  srcQtySum,
         dst_item: dstItem,
         dst_opt:  dstOpt,
         dst_qty:  dstQty,
         issues,
-        bundleRgb: bundled ? bundled.rgb : null, srcIdx: i
+        bundleRgb: bundled ? bundled.rgb : null, srcIdx: idxList
       });
       if (issues.length) res.badCnt++;
     }
+    res.srcCnt = repList.length;
     if (res.badCnt > 0) res.ok = false;
     return res;
   }
@@ -3252,7 +3262,7 @@ function verifyVendorBuild(vendor, alias, orders){
       dst_opt:  dstOpt,
       dst_qty:  dstQty,
       issues,
-      bundleRgb: _bundleColorMap.get(i)||null, srcIdx: i
+      bundleRgb: _bundleColorMap.get(i)||null, srcIdx: [i]
     });
     if (issues.length) res.badCnt++;
   }
@@ -3309,7 +3319,7 @@ function renderVerifyArea(){
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;max-width:180px;word-break:break-word">${escHtml((rd.dst_item+' '+rd.dst_opt).trim()||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">${rd.dst_qty!==null?rd.dst_qty:'-'}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:var(--danger);font-size:10px">${rd.issues.map(i=>'• '+escHtml(i)).join('<br>')||''}</td>
-            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:center"><button class="btn btn-sm" style="padding:2px 8px;font-size:10px;color:var(--danger);border-color:var(--danger);background:#fff" onclick="verifyDeleteRow('${esc(r.gk)}',${rd.srcIdx})" title="이 주문을 발주서에서 삭제">✕</button></td>
+            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:center"><button class="btn btn-sm" style="padding:2px 8px;font-size:10px;color:var(--danger);border-color:var(--danger);background:#fff" onclick="verifyDeleteRow('${esc(r.gk)}',${JSON.stringify(rd.srcIdx)})" title="이 주문을 발주서에서 삭제">✕</button></td>
           </tr>`).join('')}</tbody></table>`;
     };
     const tableId = `vtab_${idx}`;
@@ -3336,14 +3346,19 @@ function renderVerifyArea(){
   el.innerHTML = head + '<div style="border:1px solid var(--border);border-radius:6px;background:#fff">' + list + '</div>';
 }
 // 자동 검토 표에서 특정 주문 행을 발주서에서 통째로 제외 (groupedOrders + allOrders 양쪽에서 제거)
-function verifyDeleteRow(gk, idx){
+function verifyDeleteRow(gk, idxList){
   const list = groupedOrders[gk];
-  if (!list || !list[idx]) return;
-  const o = list[idx];
-  if (!confirm(`"${o.recv_name||'이 주문'}" 건을 발주서에서 삭제할까요?\n(다시 넣으려면 원본 파일을 새로 업로드해야 해요)`)) return;
-  list.splice(idx, 1);
-  const ai = allOrders.indexOf(o);
-  if (ai >= 0) allOrders.splice(ai, 1);
+  if (!list) return;
+  const idxs = (Array.isArray(idxList) ? idxList : [idxList]).filter(i => list[i]);
+  if (!idxs.length) return;
+  const targets = idxs.map(i => list[i]);
+  const label = targets.length > 1
+    ? `${targets[0].recv_name||'이 주문'} 외 ${targets.length-1}건 (합배송 묶음)`
+    : (targets[0].recv_name || '이 주문');
+  if (!confirm(`"${label}" 을(를) 발주서에서 삭제할까요?\n(다시 넣으려면 원본 파일을 새로 업로드해야 해요)`)) return;
+  // 뒤에서부터 지워야 앞쪽 인덱스가 안 밀림
+  idxs.slice().sort((a,b) => b - a).forEach(i => list.splice(i, 1));
+  targets.forEach(o => { const ai = allOrders.indexOf(o); if (ai >= 0) allOrders.splice(ai, 1); });
   if (!list.length) delete groupedOrders[gk];
   renderStep3();
 }
