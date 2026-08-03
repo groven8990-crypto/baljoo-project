@@ -4912,6 +4912,11 @@ function _srStripInputsForExport(clone){
   });
   // ▶ 상세 토글 버튼 제거 (PNG에선 의미 없음)
   clone.querySelectorAll('button[data-toggle-key]').forEach(btn => btn.remove());
+  // 매입/순이익 "(취급품목)" 클릭 편집 태그 — 점선 밑줄/포인터 커서는 화면에서만 필요, PNG엔 안 보이게
+  clone.querySelectorAll('.sr-vendor-cat').forEach(el => {
+    el.style.textDecoration = 'none';
+    el.style.cursor = 'default';
+  });
 }
 // 원본의 canvas를 clone 쪽에서는 <img data:url>로 치환 (cloneNode는 빈 캔버스가 되므로)
 //   bitmap 카피보다 안정적 — html2canvas가 canvas를 못 그릴 때도 img는 무조건 잡음
