@@ -1499,6 +1499,7 @@ const VENDOR_PREFIXES = {
   '동일':          ['동일]','동일-','동일_'],
   '그린캠':        ['그린캠]','그린캠-','그린캠_'],
   '에이팩':        ['에이팩]','에이팩-','에이팩_','사무실]','사무실-','사무실_'],
+  '우리뜰':        ['bfc]','bfc-','bfc_'],
 };
 // 사용자 등록 발주처 (UI 에서 추가) — 기존 양식을 베이스로 발주처 이름/prefix 만 새로
 // 저장 형식: { '발주처명': { prefixes: ['x]','x_'], baseFormat: '일비' } }
@@ -4600,6 +4601,9 @@ function buildRows(vk,orders,alias){
     case '푸드엔드베스트':
       return [['예약구분','집하예정일','보내는분성명','보내는분전화번호','보내는분기타연락처','보내는분우편번호','보내는분주소(전체, 분할)','받는분성명','받는분전화번호','받는분기타연락처','받는분우편번호','받는분주소(전체, 분할)','운송장번호','고객주문번호','품목명','박스수량','박스타입','기본운임','배송메세지1','배송메세지2','운임구분'],
         ...orders.map(o=>['','',s.name,s.phone,'',s.zip,s.addr,o.recv_name,o.recv_phone,'',o.zip,o.addr,'',o.order_no,foodenItem(o),1,'','',o.memo,'',''])];
+    case '우리뜰':
+      return [['품목명','수량','보내는분성명','받는분성명','받는분전화번호','받는분기타연락처','받는분주소(전체, 분할)','배송메세지1'],
+        ...orders.map(o=>[combined(o),effQty(o),s.name,o.recv_name,o.recv_phone,'',o.addr,o.memo])];
     case '한마당식품':
       return [['주문번호','주문상품고유번호','주문일','주문자명','주문자연락처','수령인명','수령인연락처','우편번호','주소','상품코드','상품명','고객선택옵션','주문수량','','','','배송비타입','배송비','추가배송비','배송시요청사항','추가구성상품','택배사**','배송번호','송하인정보','송하인전화번호','송하인 주소','묶음설정','패키지명','관리자메모'],
         ...orders.map(o=>[o.order_no,'','',s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,'',o.item_name,o.option_name,effQty(o),'','','','','0','0',o.memo,'','','',s.name,s.phone,s.addr,'','',''])];
@@ -15310,10 +15314,40 @@ const SR_VENDOR_CATEGORY = {
   '거풍푸드':'김치', '일해수산':'홍어회', '남부파머스':'농산물',
   '그린캠':'제습제', '렉스팜':'건강식품'
 };
+// 취급품목 태그는 위 기본값 외에, 매입/순이익 화면에서 직접 입력한 값이 우선 적용됨(브라우저 저장 + 공유 동기화)
+const LS_SR_VENDOR_CAT_OVERRIDE = 'yb_sr_vendor_category_override';
+function loadSrVendorCatOverrides(){ try{ return JSON.parse(localStorage.getItem(LS_SR_VENDOR_CAT_OVERRIDE)||'{}'); }catch{ return {}; } }
+function saveSrVendorCatOverrides(m){
+  try{ localStorage.setItem(LS_SR_VENDOR_CAT_OVERRIDE, JSON.stringify(m)); }catch(e){}
+  _sbSaveKV('sr_vendor_category_override', m).catch(()=>{});
+}
 function _srVendorName(v){ return SR_VENDOR_RENAME[v] || v; }
+function _srVendorCategory(v){
+  const overrides = loadSrVendorCatOverrides();
+  if (Object.prototype.hasOwnProperty.call(overrides, v)) return overrides[v]; // 빈 문자열이면 "표시 안 함"으로 저장된 것
+  return SR_VENDOR_CATEGORY[v] || '';
+}
+function _srCatSpanHtml(v, cat){
+  return cat
+    ? `<span class="sr-vendor-cat" data-vendor="${escHtml(v)}" style="color:#6B7684;font-weight:400;font-size:11px;margin-left:4px;cursor:pointer;text-decoration:underline dotted" onclick="editSrVendorCategory('${esc(v)}')" title="클릭해서 취급품목 수정">(${escHtml(cat)})</span>`
+    : `<span class="sr-vendor-cat" data-vendor="${escHtml(v)}" style="color:#B0B8C1;font-weight:400;font-size:11px;margin-left:4px;cursor:pointer" onclick="editSrVendorCategory('${esc(v)}')" title="클릭해서 취급품목 입력">+품목</span>`;
+}
 function _srVendorLabel(v){
-  const cat = SR_VENDOR_CATEGORY[v];
-  return escHtml(_srVendorName(v)) + (cat ? `<span style="color:#6B7684;font-weight:400;font-size:11px;margin-left:4px">(${escHtml(cat)})</span>` : '');
+  const cat = _srVendorCategory(v);
+  return escHtml(_srVendorName(v)) + _srCatSpanHtml(v, cat);
+}
+// 매입/순이익 화면에서 발주처 옆 "(취급품목)" 태그를 직접 클릭해서 수정
+function editSrVendorCategory(v){
+  const cur = _srVendorCategory(v);
+  const val = prompt(`"${_srVendorName(v)}" 옆에 표시할 취급품목을 입력하세요 (예: 마늘)\n비우고 확인하면 표시 안 함`, cur);
+  if (val === null) return;
+  const trimmed = val.trim();
+  const overrides = loadSrVendorCatOverrides();
+  overrides[v] = trimmed;
+  saveSrVendorCatOverrides(overrides);
+  document.querySelectorAll(`.sr-vendor-cat[data-vendor="${CSS && CSS.escape ? CSS.escape(v) : v}"]`).forEach(el => {
+    el.outerHTML = _srCatSpanHtml(v, trimmed);
+  });
 }
 // 사업자별 발주처 요약 테이블 inner HTML (그로븐만 부가세 컬럼 숨김)
 function _srBuildBizVendorTableInner(biz, bizRows){
