@@ -4721,8 +4721,8 @@ function buildRows(vk,orders,alias){
       return [['예약구분','집하예정일','보내는분성명','보내는분전화번호','보내는분기타연락처','보내는분우편번호','보내는분주소(전체, 분할)','받는분성명','받는분전화번호','받는분기타연락처','받는분우편번호','받는분주소(전체, 분할)','운송장번호','고객주문번호','품목명','박스수량','박스타입','기본운임','배송메세지1','배송메세지2','운임구분'],
         ...orders.map(o=>['','',s.name,s.phone,'',s.zip,s.addr,o.recv_name,o.recv_phone,'',o.zip,o.addr,'',o.order_no,foodenItem(o),1,'','',o.memo,'',''])];
     case '우리뜰':
-      return [['품목명','수량','보내는분성명','받는분성명','받는분전화번호','받는분기타연락처','받는분주소(전체, 분할)','배송메세지1'],
-        ...orders.map(o=>[combined(o),effQty(o),s.name,o.recv_name,o.recv_phone,'',o.addr,o.memo])];
+      return [['품목명','수량','보내는분성명','보내는분연락처','받는분성명','받는분전화번호','받는분기타연락처','받는분주소(전체, 분할)','배송메세지1'],
+        ...orders.map(o=>[combined(o),effQty(o),s.name,s.phone,o.recv_name,o.recv_phone,'',o.addr,o.memo])];
     case '한마당식품':
       return [['주문번호','주문상품고유번호','주문일','주문자명','주문자연락처','수령인명','수령인연락처','우편번호','주소','상품코드','상품명','고객선택옵션','주문수량','','','','배송비타입','배송비','추가배송비','배송시요청사항','추가구성상품','택배사**','배송번호','송하인정보','송하인전화번호','송하인 주소','묶음설정','패키지명','관리자메모'],
         ...orders.map(o=>[o.order_no,'','',s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,'',o.item_name,o.option_name,effQty(o),'','','','','0','0',o.memo,'','','',s.name,s.phone,s.addr,'','',''])];
