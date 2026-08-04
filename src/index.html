@@ -2785,10 +2785,8 @@ function _addSikjaeOrdersFromRows(rows, hr){
     // 수취인란에 "이름(스토어명)"처럼 채널명이 괄호로 붙어 오므로 이름만 분리
     const rawName = String(r[C.rn]||'').trim();
     const recv_name = rawName.replace(/\(.*$/, '').trim() || rawName;
-    // 택배발송자명(예: "골드케어몰(goldcaremall)")을 별칭으로 사용 — 영문 괄호는 정리
-    const storeRaw = String(r[C.sl]||'').trim();
-    const storeName = storeRaw.replace(/\(.*$/, '').trim() || storeRaw || '기타';
-    const alias = '식자재코리아-' + storeName;
+    // 식자재코리아 주문은 무조건 그로븐(로또상회) 사업자로 잡힘 (매출보고 srBrand가 '로또상회' 포함 여부로 그로븐/YB 구분함)
+    const alias = '식자재코리아-로또상회';
     const phone = String(r[C.rp]||r[C.rp2]||'').replace(/^'/, '').trim();
     const order_amt = parseInt(String(r[C.sp]||'').replace(/[,\s원]/g,'')) || 0;
     const order = {
