@@ -2785,8 +2785,9 @@ function _addSikjaeOrdersFromRows(rows, hr){
     // 수취인란에 "이름(스토어명)"처럼 채널명이 괄호로 붙어 오므로 이름만 분리
     const rawName = String(r[C.rn]||'').trim();
     const recv_name = rawName.replace(/\(.*$/, '').trim() || rawName;
-    // 식자재코리아 주문은 무조건 그로븐(로또상회) 사업자로 잡힘 (매출보고 srBrand가 '로또상회' 포함 여부로 그로븐/YB 구분함)
-    const alias = '식자재코리아-로또상회';
+    // 식자재코리아 주문은 무조건 그로븐(로또상회) 사업자로 잡힘 — 발주서 생성 시 같은 발주처 안에서
+    // 기존 샵마인발 "로또상회" 그룹과 합쳐지도록 별칭도 그냥 '로또상회'로 통일 (플랫폼 구분은 shop_mall로 별도 유지)
+    const alias = '로또상회';
     const phone = String(r[C.rp]||r[C.rp2]||'').replace(/^'/, '').trim();
     const order_amt = parseInt(String(r[C.sp]||'').replace(/[,\s원]/g,'')) || 0;
     const order = {
