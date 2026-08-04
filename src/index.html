@@ -16498,6 +16498,7 @@ function srExportImage(){
   }
   (async()=>{
     const saved=[];
+    let _srFolderStale=false;
     for(const g of targets){
       const tmp=document.createElement('div');
       tmp.style.cssText='background:#fff;padding:22px;width:680px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
@@ -16516,13 +16517,25 @@ function srExportImage(){
         const fileName=`${dateStr}-매출보고_${g.label}.png`;
         const blob=await new Promise(res=>canvas.toBlob(res,'image/png'));
         const dir=await _getSrSubDirHandle(g.label);
+        let wroteToFolder=false;
         if (dir && blob) {
-          const fileHandle=await dir.getFileHandle(fileName,{create:true});
-          const w=await fileHandle.createWritable();
-          await w.write(blob); await w.close();
-          saved.push((_srSaveDirHandle?.name||'?')+'/'+fileName);
-          console.log('[매출보고] 폴더 저장 완료:', (_srSaveDirHandle?.name||'?')+'/'+fileName);
-        } else {
+          try {
+            const fileHandle=await dir.getFileHandle(fileName,{create:true});
+            const w=await fileHandle.createWritable();
+            await w.write(blob); await w.close();
+            saved.push((_srSaveDirHandle?.name||'?')+'/'+fileName);
+            console.log('[매출보고] 폴더 저장 완료:', (_srSaveDirHandle?.name||'?')+'/'+fileName);
+            wroteToFolder=true;
+          } catch(folderErr) {
+            // 선택했던 폴더가 삭제/이동됐거나 더 이상 존재하지 않는 경우 — 폴더 설정을 초기화하고 다운로드로 대체
+            console.warn('[매출보고] 폴더 저장 실패, 저장 폴더 설정 초기화:', folderErr);
+            _srSaveDirHandle = null;
+            await _idbPut('srSaveDirHandle', null).catch(()=>{});
+            await _updateSrFolderLabel();
+            _srFolderStale = true;
+          }
+        }
+        if (!wroteToFolder) {
           const link=document.createElement('a');
           link.download=fileName;
           link.href=canvas.toDataURL('image/png');
@@ -16593,12 +16606,23 @@ function srExportImage(){
         const fileName=`${dateStr}-매입순이익.png`;
         const blob=await new Promise(res=>canvas.toBlob(res,'image/png'));
         const dir=await _getSrSubDirHandle('매입순이익');
+        let wroteToFolder=false;
         if (dir && blob) {
-          const fileHandle=await dir.getFileHandle(fileName,{create:true});
-          const w=await fileHandle.createWritable();
-          await w.write(blob); await w.close();
-          saved.push((_srSaveDirHandle?.name||'?')+'/'+fileName);
-        } else {
+          try {
+            const fileHandle=await dir.getFileHandle(fileName,{create:true});
+            const w=await fileHandle.createWritable();
+            await w.write(blob); await w.close();
+            saved.push((_srSaveDirHandle?.name||'?')+'/'+fileName);
+            wroteToFolder=true;
+          } catch(folderErr) {
+            console.warn('[매입/순이익] 폴더 저장 실패, 저장 폴더 설정 초기화:', folderErr);
+            _srSaveDirHandle = null;
+            await _idbPut('srSaveDirHandle', null).catch(()=>{});
+            await _updateSrFolderLabel();
+            _srFolderStale = true;
+          }
+        }
+        if (!wroteToFolder) {
           const link=document.createElement('a');
           link.download=fileName;
           link.href=canvas.toDataURL('image/png');
@@ -16610,6 +16634,9 @@ function srExportImage(){
       }finally{
         document.body.removeChild(tmp);
       }
+    }
+    if (_srFolderStale) {
+      alert('선택해두신 저장 폴더를 찾을 수 없어서(삭제/이동됨) 대신 다운로드 폴더에 저장했어요.\n폴더에 바로 저장하려면 "저장 폴더 설정"을 다시 눌러 폴더를 재선택해주세요.');
     }
     if (saved.length) {
       _poShowToast('✅ '+saved.length+'장 저장됨\n'+saved.join('\n'));
