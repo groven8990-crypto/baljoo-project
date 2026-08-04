@@ -2730,6 +2730,107 @@ function _add11stOrdersFromRows(rows, hr){
   }
   return { added, dupSkipped };
 }
+// 식자재코리아 주문내역서 감지 — 헤더에 '주문번호'+'수취인'+'상품관리코드'+'택배발송자명' 있으면 식자재코리아
+// (실제로는 .xls 확장자지만 내용은 HTML 표 — XLSX.read가 자동으로 HTML 표도 읽어줌)
+function _isSikjaeRows(rows){
+  if (!Array.isArray(rows) || !rows.length) return false;
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    const h = rows[i] || [];
+    const has = (name) => h.some(c => String(c||'').trim() === name);
+    if (has('주문번호') && has('수취인') && has('상품관리코드') && has('택배발송자명')) return i;
+  }
+  return false;
+}
+// 식자재코리아 "상품관리코드" → 발주처 매핑 (예: dongil2 → 동일). 모르는 코드는 상품명 키워드로 재시도.
+function _sikjaeVendorFromCode(code, pn){
+  const c = String(code||'').trim().toLowerCase();
+  if (c.startsWith('dongil')) return '동일';
+  return (typeof detectVendor === 'function') ? detectVendor(code, pn) : null;
+}
+function _addSikjaeOrdersFromRows(rows, hr){
+  const H = rows[hr];
+  const findCol = (...names) => {
+    for (const n of names) {
+      const i = H.findIndex(c=>String(c||'').trim()===n);
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const C = {
+    on: findCol('주문번호'),
+    pn: findCol('상품명'),
+    qt: findCol('수량'),
+    sp: findCol('공급가'),
+    rn: findCol('수취인'),
+    rp: findCol('전화번호'),
+    rp2:findCol('핸드폰번호'),
+    zp: findCol('우편번호'),
+    ad: findCol('주소'),
+    mm: findCol('고객메모'),
+    vc: findCol('상품관리코드'),
+    sl: findCol('택배발송자명'),
+  };
+  const existingOrderNos = new Set(allOrders.map(o => String(o.order_no||'').trim()).filter(Boolean));
+  let added = 0, dupSkipped = 0;
+  for (let i = hr + 1; i < rows.length; i++) {
+    const r = rows[i]; if (!r || r.every(c => c === '')) continue;
+    const onVal = String(r[C.on]||'').trim();
+    if (!onVal) continue;
+    if (existingOrderNos.has(onVal)) { dupSkipped++; continue; }
+    existingOrderNos.add(onVal);
+    const pn = String(r[C.pn]||'').trim();
+    const vc = String(r[C.vc]||'').trim();
+    const vk = _sikjaeVendorFromCode(vc, pn);
+    const parsed = (typeof parseParts === 'function') ? parseParts(vc, '', pn, '', '') : {itemName: pn.slice(0,20), optionName:'', codeQty:1};
+    // 수취인란에 "이름(스토어명)"처럼 채널명이 괄호로 붙어 오므로 이름만 분리
+    const rawName = String(r[C.rn]||'').trim();
+    const recv_name = rawName.replace(/\(.*$/, '').trim() || rawName;
+    // 택배발송자명(예: "골드케어몰(goldcaremall)")을 별칭으로 사용 — 영문 괄호는 정리
+    const storeRaw = String(r[C.sl]||'').trim();
+    const storeName = storeRaw.replace(/\(.*$/, '').trim() || storeRaw || '기타';
+    const alias = '식자재코리아-' + storeName;
+    const phone = String(r[C.rp]||r[C.rp2]||'').replace(/^'/, '').trim();
+    const order_amt = parseInt(String(r[C.sp]||'').replace(/[,\s원]/g,'')) || 0;
+    const order = {
+      vendor_code: vc, vendor_opt: '', vendor_key: vk,
+      alias, alias_raw: alias,
+      shop_mall: '식자재코리아',
+      item_name: parsed.itemName || pn.slice(0,20),
+      option_name: parsed.optionName || '',
+      opt_mapped: parsed.optMapped || false,
+      opt_needs_check: parsed.optNeedsCheck || false,
+      mapped_code: parsed.mappedCode || '',
+      unmatched: parsed.unmatched || !vk,
+      recv_name, recv_phone: phone,
+      // 우편번호가 숫자로 읽히면 앞자리 0이 날아가므로(예: 5815) 5자리로 다시 채움
+      zip: String(r[C.zp]||'').trim().replace(/^\d+$/, s => s.padStart(5,'0')),
+      addr: String(r[C.ad]||'').trim(),
+      memo: String(r[C.mm]||'').trim(),
+      product: pn,
+      // 별도 옵션 컬럼이 없어 상품명에 kg/규격 정보가 다 들어있음 — select_opt/disp_opt에도
+      // 상품명을 넣어둬야 동일(깐마늘) 등의 "Nkg" 자동 인식 로직이 정상 동작함
+      select_opt: pn, disp_opt: pn,
+      qty: parseInt(r[C.qt]) || 1,
+      code_qty: parsed.codeQty || 1,
+      order_no: onVal,
+      buyer: '', buyer_phone: '',
+      carrier: '',
+      order_amt,
+      order_date: '',
+    };
+    allOrders.push(order);
+    if (vk) {
+      const gk = vk + '|' + order.alias;
+      if (!groupedOrders[gk]) groupedOrders[gk] = [];
+      groupedOrders[gk].push(order);
+    } else {
+      unmatchedList.push(order);
+    }
+    added++;
+    totalCount++;
+  }
+  return { added, dupSkipped };
+}
 // 도매꾹: 선택사항에 여러 옵션이 묶여서 온 주문(예: "화이트,그레이" 또는 콤마 없이 "화이트 그레이")은
 // 실제로는 옵션별로 별도 품목이 함께 배송되는 것 → 옵션 개수만큼 행을 나눠서 생성
 // 콤마가 없으면 상품명 끝의 ", 옵션1, 옵션2" 나열과 대조해서 진짜 옵션 묶음인지 확인 후에만 나눔
@@ -2787,6 +2888,23 @@ function handleFile(file, onDone) {
         const autoAdded3=autoRegisterBracketCodes(allOrders);
         if(autoAdded3>0) rematchAllOrders();
         setSt('11번가 주문 ' + res.added + '건 로드됨' + (res.dupSkipped?` (중복 ${res.dupSkipped} 제외)`:''));
+        renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+        loadedFileNames.push(file.name);
+        renderLoadedFiles();
+        saveToHistory(file.name, allOrders);
+        saveLastFile(file.name);
+        showLastFileCard();
+        try { logUpload(file, e.target.result, allOrders); } catch(_){}
+        return;
+      }
+      // 식자재코리아 주문내역서 자동 감지 → 별도 파서로 라우팅
+      const sikjaeHr = _isSikjaeRows(rows);
+      if (sikjaeHr !== false) {
+        groupedOrders={};unmatchedList=[];allOrders=[];totalCount=0;loadedFileNames=[];_mergeDecisions=new Set();
+        const res = _addSikjaeOrdersFromRows(rows, sikjaeHr);
+        const autoAdded4=autoRegisterBracketCodes(allOrders);
+        if(autoAdded4>0) rematchAllOrders();
+        setSt('식자재코리아 주문 ' + res.added + '건 로드됨' + (res.dupSkipped?` (중복 ${res.dupSkipped} 제외)`:''));
         renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
         loadedFileNames.push(file.name);
         renderLoadedFiles();
@@ -9728,6 +9846,19 @@ function handleFileAdd(file, onDone){
         if(autoAdded3>0) rematchAllOrders();
         const dupNote = res.dupSkipped>0 ? ` (중복 ${res.dupSkipped}건 제외)` : '';
         setSt(res.added>0 ? `✅ ${file.name}: 11번가 ${res.added}건 추가${dupNote}` : `⚠ ${file.name}: 추가할 새 주문이 없음 (중복 ${res.dupSkipped}건 모두 제외)`);
+        loadedFileNames.push(file.name+'(+'+res.added+'건'+(res.dupSkipped>0?',중복'+res.dupSkipped+'제외':'')+')');
+        renderLoadedFiles();
+        renderStep2();renderStep3();renderUnmatchedHints();renderOmPreview();
+        return;
+      }
+      // 식자재코리아 주문내역서 자동 감지 → 별도 파서로 라우팅 (추가 모드)
+      const sikjaeHr = _isSikjaeRows(rows);
+      if (sikjaeHr !== false) {
+        const res = _addSikjaeOrdersFromRows(rows, sikjaeHr);
+        const autoAdded4=autoRegisterBracketCodes(allOrders);
+        if(autoAdded4>0) rematchAllOrders();
+        const dupNote = res.dupSkipped>0 ? ` (중복 ${res.dupSkipped}건 제외)` : '';
+        setSt(res.added>0 ? `✅ ${file.name}: 식자재코리아 ${res.added}건 추가${dupNote}` : `⚠ ${file.name}: 추가할 새 주문이 없음 (중복 ${res.dupSkipped}건 모두 제외)`);
         loadedFileNames.push(file.name+'(+'+res.added+'건'+(res.dupSkipped>0?',중복'+res.dupSkipped+'제외':'')+')');
         renderLoadedFiles();
         renderStep2();renderStep3();renderUnmatchedHints();renderOmPreview();
