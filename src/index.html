@@ -8189,6 +8189,19 @@ let _expCoFilter   = 'all';
 let _expTodayOnly  = false;
 let _expPaidFilter = 'all'; // 'all' | 'unpaid' | 'paid'
 let _expProofFilter = 'all'; // 'all' | 'unproof' | 'proof'
+let _expHistLastFiltered = []; // 체크 해제 시 다시 보여줄, 검색/필터 결과 전체 목록
+
+function _expHistSumHtml(list, selected) {
+  const totalSupply = list.reduce((s,d) => s + (Number(d.supply)||0), 0);
+  const totalVat    = list.reduce((s,d) => s + (Number(d.vat)||0), 0);
+  const totalAmt    = list.reduce((s,d) => s + (Number(d.total)||0), 0);
+  return '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:13px">' +
+    '<span>' + (selected ? '✅' : '📊') + ' <b>' + list.length + '건' + (selected ? ' 선택됨' : '') + '</b></span>' +
+    '<span>공급가액 합계 <b>' + totalSupply.toLocaleString() + '원</b></span>' +
+    '<span>세액 합계 <b>' + totalVat.toLocaleString() + '원</b></span>' +
+    '<span style="color:var(--primary)">총 합계 <b>' + totalAmt.toLocaleString() + '원</b></span>' +
+    '</div>';
+}
 
 function setExpPaidFilter(val) {
   _expPaidFilter = val;
@@ -8354,19 +8367,11 @@ function renderExpHistList() {
     return ad < bd ? 1 : ad > bd ? -1 : 0;
   });
 
-  // 합계 요약
+  // 합계 요약 (체크된 항목이 있으면 selection 쪽에서 덮어씀 — 일단 전체 필터 결과 기준으로 표시)
+  _expHistLastFiltered = filtered;
   const sumEl = document.getElementById('expHistSummary');
   if (sumEl && filtered.length) {
-    const totalSupply = filtered.reduce((s,d) => s + (Number(d.supply)||0), 0);
-    const totalVat    = filtered.reduce((s,d) => s + (Number(d.vat)||0), 0);
-    const totalAmt    = filtered.reduce((s,d) => s + (Number(d.total)||0), 0);
-    sumEl.innerHTML =
-      '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:13px">' +
-      '<span>📊 <b>' + filtered.length + '건</b></span>' +
-      '<span>공급가액 합계 <b>' + totalSupply.toLocaleString() + '원</b></span>' +
-      '<span>세액 합계 <b>' + totalVat.toLocaleString() + '원</b></span>' +
-      '<span style="color:var(--primary)">총 합계 <b>' + totalAmt.toLocaleString() + '원</b></span>' +
-      '</div>';
+    sumEl.innerHTML = _expHistSumHtml(filtered, false);
   } else if (sumEl) { sumEl.innerHTML = ''; }
 
   if (!filtered.length) { el.innerHTML = '<p style="font-size:13px;color:var(--text3)">검색 결과가 없습니다.</p>'; return; }
@@ -8939,6 +8944,18 @@ function updateExpHistSelCount() {
   if (allChk) allChk.indeterminate = chks.length > 0 && chks.length < total;
   if (allChk && chks.length === total && total > 0) allChk.checked = true;
   if (allChk && chks.length === 0) allChk.checked = false;
+
+  // 선택한 항목이 있으면 선택 항목 기준 합계로, 없으면 검색/필터 결과 전체 합계로 표시
+  const sumEl = document.getElementById('expHistSummary');
+  if (sumEl) {
+    if (chks.length > 0) {
+      const hist = loadExpHist();
+      const selectedList = [...chks].map(c => hist[parseInt(c.dataset.idx)]).filter(Boolean);
+      sumEl.innerHTML = _expHistSumHtml(selectedList, true);
+    } else if (_expHistLastFiltered.length) {
+      sumEl.innerHTML = _expHistSumHtml(_expHistLastFiltered, false);
+    }
+  }
 }
 
 function toggleAllExpHist(checked) {
