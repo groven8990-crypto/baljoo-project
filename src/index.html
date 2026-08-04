@@ -2962,7 +2962,9 @@ function handleFile(file, onDone) {
       try {
         const _sa = Date.now().toString();
         invOrderWb = wb;
-        invOrderData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+        // blankrows:true 필수 — 기본값이면 완전 빈 행이 통째로 사라져서, 이후 완성 파일
+        // 다운로드 시 원본 시트 행 번호와 어긋나 운송장번호가 엉뚱한 행에 써지는 문제가 있었음
+        invOrderData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:'', blankrows:true});
         invOrderFileName = file.name;
         invOrderLoadedAt = _sa;
         try {
@@ -7206,7 +7208,7 @@ function invLoadOrder(file) {
       const arrayBuf = e.target.result;
       invOrderWb = _xlsxReadAuto(arrayBuf);
       const ws = invOrderWb.Sheets[invOrderWb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:'', blankrows:true});
       invOrderData = rows;
       // localStorage 에 저장 (하루 유지)
       try {
@@ -7256,7 +7258,7 @@ async function invLoadOrderAdd(files) {
       const arrayBuf = await _invReadFile(file);
       invOrderWb = _xlsxReadAuto(arrayBuf);
       const ws = invOrderWb.Sheets[invOrderWb.SheetNames[0]];
-      invOrderData = XLSX.utils.sheet_to_json(ws, {defval:''});
+      invOrderData = XLSX.utils.sheet_to_json(ws, {defval:'', blankrows:true});
       invOrderFileName = file.name;
       try {
         const bytes = new Uint8Array(arrayBuf);
@@ -7284,7 +7286,7 @@ function _invAppendOrderFile(file) {
   return _invReadFile(file).then(buf => {
     const wb = _xlsxReadAuto(buf);
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+    const rows = XLSX.utils.sheet_to_json(ws, {defval:'', blankrows:true});
     if (!rows.length) return;
     const sample = (invOrderData && invOrderData[0]) || rows[0] || {};
     const onKey = Object.keys(sample).find(k => /주문번호/.test(k));
@@ -7364,7 +7366,7 @@ function invRestoreOrder() {
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     invOrderWb = XLSX.read(bytes.buffer, {type:'array'});
     const ws = invOrderWb.Sheets[invOrderWb.SheetNames[0]];
-    invOrderData = XLSX.utils.sheet_to_json(ws, {defval:''});
+    invOrderData = XLSX.utils.sheet_to_json(ws, {defval:'', blankrows:true});
     invOrderFileName = fname;
     invOrderLoadedAt = savedAt;
     // 추가 업로드 파일들도 복원
@@ -9912,7 +9914,7 @@ function handleFileAdd(file, onDone){
       // 송장입력 탭에도 합산 동기화 (첫 파일 업로드와 동일하게 추가 파일도 반영)
       try {
         if (invOrderData && added > 0) {
-          const rows2 = XLSX.utils.sheet_to_json(ws, {defval:''});
+          const rows2 = XLSX.utils.sheet_to_json(ws, {defval:'', blankrows:true});
           const sample = invOrderData[0] || rows2[0] || {};
           const onKey = Object.keys(sample).find(k => /주문번호/.test(k));
           const existingNos = onKey ? new Set(invOrderData.map(r => String(r[onKey]||'').trim()).filter(Boolean)) : null;
