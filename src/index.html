@@ -784,7 +784,12 @@
       <span id="invCarrierSettingsToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼  펼치기</span>
     </div>
     <div id="invCarrierSettingsBody" style="display:none">
-      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">운송장 파일명에 포함된 키워드로 택배사를 자동 설정합니다. 파일 업로드 전에 먼저 저장해두세요.</p>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">운송장 파일명에 포함된 키워드로 택배사를 자동 설정합니다. 파일 업로드 전에 먼저 저장해두세요. (택배사는 목록에서 골라도 되고, 목록에 없으면 직접 입력해도 돼요)</p>
+      <datalist id="invCourierDatalist">
+        <option value="롯데택배"><option value="CJ대한통운"><option value="우체국택배">
+        <option value="한진택배"><option value="로젠택배"><option value="경동택배">
+        <option value="대신택배"><option value="일양로지스"><option value="합동택배">
+      </datalist>
       <div id="invCarrierMapRows" style="margin-bottom:10px"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-sm" onclick="invAddCarrierRow()">+ 줄 추가</button>
@@ -6719,24 +6724,20 @@ function invToggleCarrierSettings() {
 function invRenderCarrierMapRows() {
   const el = document.getElementById('invCarrierMapRows');
   if (!el) return;
-  const COURIERS = ['롯데택배','CJ대한통운','우체국택배','한진택배','로젠택배','경동택배'];
   const arr = invGetCarrierMap();
   if (!arr.length) {
     // 기본값 채워주기 (처음 펼쳤을 때)
     const defaults = Object.entries(VENDOR_COURIER_DEFAULT).map(([k,v]) => ({keyword:k, courier:v}));
-    el.innerHTML = defaults.map((e,i) => invCarrierRowHtml(i, e.keyword, e.courier, COURIERS)).join('') +
+    el.innerHTML = defaults.map((e,i) => invCarrierRowHtml(i, e.keyword, e.courier)).join('') +
       '<div id="invCarrierCustomRows"></div>';
   } else {
-    el.innerHTML = arr.map((e,i) => invCarrierRowHtml(i, e.keyword, e.courier, COURIERS)).join('');
+    el.innerHTML = arr.map((e,i) => invCarrierRowHtml(i, e.keyword, e.courier)).join('');
   }
 }
-function invCarrierRowHtml(i, keyword, courier, couriers) {
-  const COURIERS = couriers || ['롯데택배','CJ대한통운','우체국택배','한진택배','로젠택배','경동택배'];
+function invCarrierRowHtml(i, keyword, courier) {
   return '<div class="inv-cmap-row" data-idx="' + i + '" style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">' +
     '<input class="inp" style="font-size:13px" placeholder="파일명 키워드 (예: 푸드앤드베스트)" value="' + escHtml(keyword||'') + '" oninput="invCarrierRowEdit(this)">' +
-    '<select class="inp" style="font-size:13px" onchange="invCarrierRowEdit(this)">' +
-    COURIERS.map(c => '<option value="' + c + '"' + (c===courier?' selected':'') + '>' + c + '</option>').join('') +
-    '</select>' +
+    '<input class="inp" style="font-size:13px" list="invCourierDatalist" placeholder="택배사 (목록 선택 또는 직접 입력)" value="' + escHtml(courier||'') + '" oninput="invCarrierRowEdit(this)">' +
     '<button class="btn btn-danger btn-sm" onclick="invDelCarrierRow(this)">✕</button>' +
     '</div>';
 }
@@ -6748,11 +6749,10 @@ function invDelCarrierRow(btn) {
   if (row) row.remove();
 }
 function invAddCarrierRow() {
-  const COURIERS = ['롯데택배','CJ대한통운','우체국택배','한진택배','로젠택배','경동택배'];
   const el = document.getElementById('invCarrierMapRows');
   if (!el) return;
   const div = document.createElement('div');
-  div.innerHTML = invCarrierRowHtml(Date.now(), '', '롯데택배', COURIERS);
+  div.innerHTML = invCarrierRowHtml(Date.now(), '', '롯데택배');
   el.appendChild(div.firstElementChild);
 }
 function invSaveCarrierMap() {
@@ -6761,7 +6761,7 @@ function invSaveCarrierMap() {
   rows.forEach(row => {
     const inputs = row.querySelectorAll('input, select');
     const keyword = inputs[0] ? inputs[0].value.trim() : '';
-    const courier = inputs[1] ? inputs[1].value : '';
+    const courier = inputs[1] ? inputs[1].value.trim() : '';
     if (keyword && courier) arr.push({keyword, courier});
   });
   invSaveCarrierMapData(arr);
