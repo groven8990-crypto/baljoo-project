@@ -1283,13 +1283,18 @@
       </div>
 
       <div style="margin-bottom:14px">
-        <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:6px">📎 거래내역서 첨부 <span style="font-weight:400;color:var(--text3)">(이미지·PDF, 선택)</span></label>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <input type="file" id="incAttachFile" accept="image/*,.pdf" style="display:none" onchange="onIncAttachChange(this)">
-          <button class="btn btn-sm" onclick="document.getElementById('incAttachFile').click()">📎 파일 선택</button>
-          <span id="incAttachName" style="font-size:12px;color:var(--text3)">선택된 파일 없음</span>
-          <button class="btn btn-sm" id="incAttachClear" style="display:none;color:var(--danger);border-color:var(--danger);padding:2px 8px" onclick="clearIncAttach()">✕ 제거</button>
+        <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:6px">📎 거래내역서 첨부 <span style="font-weight:400;color:var(--text3)">(이미지 여러 장 가능)</span></label>
+        <input type="file" id="incAttachFile" accept="image/*,.pdf" multiple style="display:none" onchange="onIncAttachChange(this)">
+        <div id="incDropZone"
+          style="border:2px dashed var(--border);border-radius:8px;padding:16px 12px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;background:var(--bg2)"
+          onclick="document.getElementById('incAttachFile').click()"
+          ondragover="onIncAttachDragOver(event)"
+          ondragleave="onIncAttachDragLeave(event)"
+          ondrop="onIncAttachDrop(event)">
+          <div style="font-size:13px;color:var(--text3);pointer-events:none">📎 드래그 · 클릭 · <b>Ctrl+V 붙여넣기</b></div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px;opacity:.7;pointer-events:none">여러 장 동시 선택 가능</div>
         </div>
+        <div id="incAttachGrid" style="display:none;margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start"></div>
       </div>
 
       <div id="incEditBanner" style="display:none;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:10px">
@@ -11632,6 +11637,8 @@ let _incTodayOnly  = false;
 let _incPaidFilter = 'all';
 let _incProofFilter = 'all'; // 'all' | 'unproof' | 'proof'
 let _editingIncIdx = -1;
+let _editingIncItemId = null;
+let _incPendingAttachments = []; // [{name, type, dataUrl}, ...]
 let _incModalData  = null;
 
 function loadIncHist() { try{ return JSON.parse(localStorage.getItem(LS_INCHIST)||'[]'); }catch{ return []; } }
@@ -11782,15 +11789,29 @@ function getIncFormData() {
 
 async function previewIncome() {
   const d = getIncFormData();
-  const inp = document.getElementById('incAttachFile');
-  const file = inp && inp.files && inp.files[0];
-  if (file && file.type.startsWith('image/')) {
-    const reader = new FileReader();
-    reader.onload = e => _doPreviewIncome(d, e.target.result);
-    reader.readAsDataURL(file);
-  } else {
-    _doPreviewIncome(d, null);
+  let imgUrls = [];
+  if (_incPendingAttachments.length) {
+    imgUrls = (await Promise.all(_incPendingAttachments.map(a => _expAttachToImageUrl(a.type, a.dataUrl)))).filter(Boolean);
+  } else if (_editingIncItemId) {
+    try {
+      const attach = await _expGetAttachAnywhere(_editingIncItemId);
+      if (attach) {
+        const list = attach.attachments || (attach.data ? [{type:attach.type, data:attach.data}] : []);
+        imgUrls = (await Promise.all(list.map(a => _expAttachToImageUrl(a.type, a.data)))).filter(Boolean);
+      }
+    } catch(e) { console.warn('기존 첨부 로드 실패:', e); }
   }
+  _doPreviewIncome(d, imgUrls);
+}
+// 이력 항목의 첨부 전체를 이미지 URL 배열로 (신·구 형식 모두 지원)
+async function _incLoadAttachImgUrls(d){
+  if (!d || !d.hasAttach || !d.id) return [];
+  try {
+    const attach = await _expGetAttachAnywhere(d.id);
+    if (!attach) return [];
+    const list = attach.attachments || (attach.data ? [{type: attach.type, data: attach.data}] : []);
+    return (await Promise.all(list.map(a => _expAttachToImageUrl(a.type, a.data)))).filter(Boolean);
+  } catch(e) { console.warn('첨부 로드 실패:', e); return []; }
 }
 
 function _doPreviewIncome(d, attachImgUrl) {
@@ -11895,7 +11916,11 @@ function _doPreviewIncome(d, attachImgUrl) {
     '<tr><td style="'+B+';padding:5px 10px;font-size:11px;font-weight:600;background:#f5f5f5">특이사항 및 메모</td></tr>'+
     '<tr><td style="'+B+';padding:8px 10px;font-size:11px;min-height:36px">'+
       (d.note ? escHtml(d.note) : '* 입금 내역 첨부')+
-      (attachImgUrl ? '<br><img src="'+attachImgUrl+'" style="max-width:100%;margin-top:8px;display:block;border:1px solid #e0e0e0;border-radius:3px">' : '')+
+      (attachImgUrl && attachImgUrl.length
+        ? '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">' +
+            attachImgUrl.map(u => '<img src="' + u + '" style="max-width:' + (attachImgUrl.length === 1 ? '100%' : 'calc(50% - 4px)') + ';max-height:700px;object-fit:contain;border:1px solid #e0e0e0;border-radius:3px">').join('') +
+          '</div>'
+        : '')+
     '</td></tr>'+
     '</table>'+
     '</div>';
@@ -11955,6 +11980,7 @@ function editIncHist(i) {
   const d = hist[i];
   if (!d) return;
   _editingIncIdx = i;
+  _editingIncItemId = d.id != null ? d.id : null;
   selectIncCo(d.co || '옐로우브릿지');
   document.getElementById('incDate').value   = d.date    || '';
   document.getElementById('incWriter').value = d.writer  || '';
@@ -11977,9 +12003,17 @@ function editIncHist(i) {
   });
   const bank = loadBankInfo().find(b => b.name === d.vendor || (d.vendor||'').includes(b.name) || (b.name||'').includes(d.vendor||''));
   if (bank) applyIncBankTemplate(bank); else document.getElementById('incBankInfo').style.display='none';
-  const nameEl = document.getElementById('incAttachName');
-  if (d.hasAttach) { if (nameEl) { nameEl.textContent='📎 기존 첨부파일 있음'; nameEl.style.color='var(--primary)'; } }
-  else { if (nameEl) { nameEl.textContent='선택된 파일 없음'; nameEl.style.color='var(--text3)'; } }
+  // 첨부파일 — 기존 IDB 첨부를 _incPendingAttachments에 로드해 그리드 표시
+  _incPendingAttachments = [];
+  _incRenderAttachGrid();
+  if (d.hasAttach && d.id != null) {
+    _expGetAttachAnywhere(d.id).then(attach => {
+      if (!attach) return;
+      const list = attach.attachments || (attach.data ? [{name:attach.name,type:attach.type,data:attach.data}] : []);
+      _incPendingAttachments = list.map(a => ({ name: a.name, type: a.type, dataUrl: a.data }));
+      _incRenderAttachGrid();
+    }).catch(e => console.warn('기존 첨부 미리보기 로드 실패:', e));
+  }
   document.getElementById('incEditBanner').style.display   = '';
   document.getElementById('incSaveBtn').textContent        = '💾 수정 저장';
   document.getElementById('incCancelEditBtn').style.display = '';
@@ -11989,6 +12023,7 @@ function editIncHist(i) {
 
 function cancelIncEdit() {
   _editingIncIdx = -1;
+  _editingIncItemId = null;
   document.getElementById('incEditBanner').style.display    = 'none';
   document.getElementById('incSaveBtn').textContent         = '💾 이력 저장';
   document.getElementById('incCancelEditBtn').style.display = 'none';
@@ -12000,21 +12035,29 @@ function saveIncome() {
   if (!d.vendor || !d.total) { alert('입금처와 입금금액을 입력해주세요.'); return; }
   if (!_fixAmountMismatch(d, 'iev2')) return;
   const hist = loadIncHist();
-  const attachInput = document.getElementById('incAttachFile');
-  const file = attachInput && attachInput.files && attachInput.files[0];
+  const pending = _incPendingAttachments.slice();
+
   if (_editingIncIdx >= 0) {
-    const existing = hist[_editingIncIdx] || {};
+    let targetIdx = _editingIncIdx;
+    const expectedId = _editingIncItemId;
+    if (expectedId != null) {
+      const byId = hist.findIndex(x => x && x.id === expectedId);
+      if (byId >= 0) targetIdx = byId;
+    }
+    const existing = hist[targetIdx] || {};
     const updated  = { ...existing, ...d, savedAt: new Date().toISOString() };
-    if (file) updated.hasAttach = true;
-    hist[_editingIncIdx] = updated;
+    updated.hasAttach = pending.length > 0;
+    hist[targetIdx] = updated;
     saveIncHist(hist);
-    if (file && existing.id) {
-      const reader = new FileReader();
-      reader.onload = async e => { await _idbPutAttach(existing.id, { name: file.name, type: file.type, data: e.target.result }); };
-      reader.readAsDataURL(file);
+    if (existing.id) {
+      // _incPendingAttachments는 수정모드 진입 시 기존 첨부를 이미 불러와 채워둔 상태라
+      // 여기 담긴 목록 자체가 "최종적으로 남겨야 할 첨부 전체"임(사용자가 ✕로 지운 것 반영됨).
+      const newList = pending.map(a => ({ name: a.name, type: a.type, data: a.dataUrl }));
+      (async () => { await _idbPutAttach(existing.id, { attachments: newList }); })();
       clearIncAttach();
     }
     _editingIncIdx = -1;
+    _editingIncItemId = null;
     document.getElementById('incEditBanner').style.display    = 'none';
     document.getElementById('incSaveBtn').textContent         = '💾 이력 저장';
     document.getElementById('incCancelEditBtn').style.display = 'none';
@@ -12025,14 +12068,13 @@ function saveIncome() {
   }
   const newId  = Date.now();
   const record = { ...d, id: newId, savedAt: new Date().toISOString() };
-  if (file) record.hasAttach = true;
+  if (pending.length) record.hasAttach = true;
   hist.unshift(record);
   if (hist.length > 200) hist.splice(200);
   saveIncHist(hist);
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = async e => { await _idbPutAttach(newId, { name: file.name, type: file.type, data: e.target.result }); };
-    reader.readAsDataURL(file);
+  if (pending.length) {
+    const newList = pending.map(a => ({ name: a.name, type: a.type, data: a.dataUrl }));
+    _idbPutAttach(newId, { attachments: newList });
     clearIncAttach();
   }
   alert('저장됐어요!');
@@ -12045,25 +12087,124 @@ function resetIncForm() {
   document.getElementById('incVendor').value = '';
   document.getElementById('incBankInfo').style.display = 'none';
   hideIncVendorList();
+  clearIncAttach();
   ['iev1','iev2','iev3','iev4','iev5','iev6'].forEach(id=>document.getElementById(id).checked=false);
   document.querySelector('input[name="incPayType"][value="즉시결제"]').checked = true;
 }
 
-function onIncAttachChange(input) {
-  const nameEl = document.getElementById('incAttachName');
-  const clrBtn = document.getElementById('incAttachClear');
-  if (input && input.files && input.files[0]) {
-    if (nameEl) nameEl.textContent = input.files[0].name;
-    if (clrBtn) clrBtn.style.display = '';
-  } else {
-    if (nameEl) { nameEl.textContent='선택된 파일 없음'; nameEl.style.color='var(--text3)'; }
-    if (clrBtn) clrBtn.style.display = 'none';
-  }
+function _incAddFiles(files) {
+  Array.from(files).forEach(f => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      _incPendingAttachments.push({ name: f.name, type: f.type, dataUrl: e.target.result });
+      _incRenderAttachGrid();
+    };
+    reader.readAsDataURL(f);
+  });
 }
-function clearIncAttach() {
+function _incRenderAttachGrid() {
+  const grid = document.getElementById('incAttachGrid');
+  if (!grid) return;
+  if (_incPendingAttachments.length === 0) {
+    grid.style.display = 'none';
+    grid.innerHTML = '';
+    return;
+  }
+  grid.style.display = 'flex';
+  grid.innerHTML = _incPendingAttachments.map((a, i) => {
+    const isImg = (a.type||'').startsWith('image/');
+    const thumb = isImg
+      ? `<img src="${a.dataUrl}" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:4px">`
+      : `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:22px;color:var(--text3)">📄</div>`;
+    return `<div style="position:relative;width:110px;height:110px;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--bg2);flex-shrink:0">
+      ${thumb}
+      <button onclick="clearIncAttach(${i})" title="제거" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:1;padding:0">✕</button>
+      <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.45);color:#fff;font-size:9px;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(a.name)}</div>
+    </div>`;
+  }).join('');
+}
+function onIncAttachChange(input) {
+  if (input && input.files && input.files.length) _incAddFiles(input.files);
+  if (input) input.value = '';
+}
+function onIncAttachDragOver(e) {
+  e.preventDefault();
+  const z = document.getElementById('incDropZone');
+  if (z) { z.style.borderColor = 'var(--primary)'; z.style.background = 'rgba(var(--primary-rgb,79,70,229),.06)'; }
+}
+function onIncAttachDragLeave(e) {
+  const z = document.getElementById('incDropZone');
+  if (z) { z.style.borderColor = ''; z.style.background = ''; }
+}
+function onIncAttachDrop(e) {
+  e.preventDefault();
+  onIncAttachDragLeave(e);
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (files && files.length) _incAddFiles(files);
+}
+function onIncAttachPaste(e) {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  const imageItems = Array.from(items).filter(it => it.kind === 'file' && (it.type||'').startsWith('image/'));
+  if (!imageItems.length) return;
+  e.preventDefault();
+  _incAddFiles(imageItems.map(it => it.getAsFile()));
+}
+// 입금결의서 작성 탭이 보일 때 전역 Ctrl+V 캡처
+document.addEventListener('paste', function(e) {
+  const zone = document.getElementById('incDropZone');
+  if (!zone || zone.offsetParent === null) return; // 탭이 숨겨져 있으면 무시
+  if (document.activeElement && ['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
+  onIncAttachPaste(e);
+});
+function clearIncAttach(idx) {
+  if (typeof idx === 'number') {
+    _incPendingAttachments.splice(idx, 1);
+  } else {
+    _incPendingAttachments = [];
+  }
+  _incRenderAttachGrid();
   const inp = document.getElementById('incAttachFile');
   if (inp) inp.value = '';
-  onIncAttachChange(null);
+}
+async function viewIncAttach(id) {
+  const attach = await _expGetAttachAnywhere(id);
+  if (!attach) { alert('첨부파일을 찾을 수 없어요.'); return; }
+  const list = attach.attachments || (attach.data ? [{ name: attach.name, type: attach.type, data: attach.data }] : []);
+  if (!list.length) { alert('첨부파일을 찾을 수 없어요.'); return; }
+  const w = window.open('', '_blank');
+  const items = list.map(a => {
+    const isImg = (a.type||'').startsWith('image/');
+    return isImg
+      ? `<div style="margin-bottom:16px"><div style="color:#aaa;font-size:12px;margin-bottom:4px">${a.name}</div><img src="${a.data}" style="max-width:100%;display:block;border:1px solid #333"></div>`
+      : `<div style="margin-bottom:16px"><div style="color:#aaa;font-size:12px;margin-bottom:4px">${a.name}</div><iframe src="${a.data}" style="width:100%;height:500px;border:none;background:#fff"></iframe></div>`;
+  }).join('');
+  w.document.write('<html><head><title>첨부파일</title></head><body style="margin:16px;background:#1a1a1a;color:#eee;font-family:sans-serif">' + items + '</body></html>');
+}
+async function attachToIncHist(i) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*,.pdf'; input.multiple = true;
+  input.onchange = async () => {
+    const files = Array.from(input.files||[]);
+    if (!files.length) return;
+    const hist = loadIncHist();
+    const item = hist[i];
+    if (!item) return;
+    const id = item.id || 0;
+    if (!id) { alert('이 항목은 ID가 없어 첨부가 불가능해요.'); return; }
+    const existing = await _expGetAttachAnywhere(id).catch(()=>null);
+    const existList = existing ? (existing.attachments || (existing.data ? [{name:existing.name,type:existing.type,data:existing.data}] : [])) : [];
+    const newItems = await Promise.all(files.map(f => new Promise(res => {
+      const r = new FileReader();
+      r.onload = e => res({ name: f.name, type: f.type, data: e.target.result });
+      r.readAsDataURL(f);
+    })));
+    await _idbPutAttach(id, { attachments: [...existList, ...newItems] });
+    item.hasAttach = true;
+    saveIncHist(hist);
+    renderIncHistList();
+  };
+  input.click();
 }
 
 // 입금결의서 이력 필터
@@ -12217,17 +12358,21 @@ function renderIncHistList() {
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#8b5cf6;color:#fff;border-color:#8b5cf6;white-space:nowrap;font-variant-numeric:tabular-nums" title="'+proofTitleI+'" onclick="toggleIncProof('+realIdx+')">'+proofLabelI+'</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3);white-space:nowrap" title="'+proofTitleI+'" onclick="toggleIncProof('+realIdx+')">'+proofLabelI+'</button>';
       const descStyle = 'font-size:13px';
+      const attachBtnI = d.hasAttach
+        ? '<button class="btn btn-sm" style="padding:2px 8px;color:var(--primary);border-color:var(--primary)" title="거래내역서 보기" onclick="viewIncAttach('+(d.id||0)+')">📎</button>'
+        : '<button class="btn btn-sm" style="padding:2px 8px;color:var(--text3)" title="거래내역서 첨부" onclick="attachToIncHist('+realIdx+')">📎+</button>';
       const imgSavedI = !!d.imgSavedAt;
       const imgTitleI = imgSavedI ? ('이미지 저장됨 '+d.imgSavedAt+' · 다시 저장하기') : '이미지 저장';
       const imgBtnI = imgSavedI
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" title="'+imgTitleI+'" onclick="saveIncImgFromHist('+realIdx+')">📷 '+(d.imgSavedAt.slice(5)||'')+'</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px" title="'+imgTitleI+'" onclick="saveIncImgFromHist('+realIdx+')">📷</button>';
-      html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
+      html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
         '<span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.date||'')+'</span>'+
         '<span style="'+descStyle+';cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.desc||'')+'</span>'+
         '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+fmtNum(d.total)+'원</span>'+
         paidBtn+
         proofBtnI+
+        attachBtnI+
         imgBtnI+
         '<button class="btn btn-sm" style="padding:2px 8px;color:var(--accent);border-color:var(--accent)" onclick="editIncHist('+realIdx+')">✏️</button>'+
         '<button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger);padding:2px 8px" onclick="deleteIncHist('+realIdx+')">삭제</button>'+
@@ -12242,24 +12387,16 @@ async function previewIncHistItem(i) {
   const hist = loadIncHist();
   const d = hist[i];
   if (!d) return;
-  let attachImgUrl = null;
-  if (d.hasAttach && d.id) {
-    const attach = await _idbGetAttach(d.id);
-    if (attach && (attach.type||'').startsWith('image/')) attachImgUrl = attach.data;
-  }
-  _doPreviewIncome(d, attachImgUrl);
+  const attachImgUrls = await _incLoadAttachImgUrls(d);
+  _doPreviewIncome(d, attachImgUrls);
 }
 
 async function saveIncImgFromHist(i) {
   const hist = loadIncHist();
   const d = hist[i];
   if (!d) return;
-  let attachImgUrl = null;
-  if (d.hasAttach && d.id) {
-    const attach = await _idbGetAttach(d.id);
-    if (attach && (attach.type||'').startsWith('image/')) attachImgUrl = attach.data;
-  }
-  _doPreviewIncome(d, attachImgUrl);
+  const attachImgUrls = await _incLoadAttachImgUrls(d);
+  _doPreviewIncome(d, attachImgUrls);
   await new Promise(r => setTimeout(r, 300));
   saveIncImg();
 }
