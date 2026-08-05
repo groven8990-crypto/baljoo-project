@@ -2965,7 +2965,11 @@ function handleFile(file, onDone) {
           const _siRaw=C.si>=0?String(r[C.si]||''):'';
           const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
           const _bcHalf=_bcM?Math.round(parseInt(_bcM[1].replace(/,/g,''))/2):0;
-          const order_amt=Math.round(_ab - _ai + _ah + _bcHalf);
+          const _order_amt_full=Math.round(_ab - _ai + _ah + _bcHalf);
+          // 한 주문이 여러 행으로 나뉜 경우(도매꾹 옵션 분리) 주문금액을 행 수만큼 중복 계상하지 않도록 나눠 배분
+          const order_amt = _optionList.length > 1
+            ? (Math.round(_order_amt_full*(_oi+1)/_optionList.length) - Math.round(_order_amt_full*_oi/_optionList.length))
+            : _order_amt_full;
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
           // 시간대별 발주처 규칙 적용
@@ -9949,7 +9953,11 @@ function handleFileAdd(file, onDone){
           const _siRaw=C.si>=0?String(r[C.si]||''):'';
           const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
           const _bcHalf=_bcM?Math.round(parseInt(_bcM[1].replace(/,/g,''))/2):0;
-          const order_amt=Math.round(_ab - _ai + _ah + _bcHalf);
+          const _order_amt_full=Math.round(_ab - _ai + _ah + _bcHalf);
+          // 한 주문이 여러 행으로 나뉜 경우(도매꾹 옵션 분리) 주문금액을 행 수만큼 중복 계상하지 않도록 나눠 배분
+          const order_amt = _optionList.length > 1
+            ? (Math.round(_order_amt_full*(_oi+1)/_optionList.length) - Math.round(_order_amt_full*_oi/_optionList.length))
+            : _order_amt_full;
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
           const vkFinal=_applyTimeVendorRule(order, vk);
