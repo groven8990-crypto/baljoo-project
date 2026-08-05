@@ -2853,6 +2853,22 @@ function _splitDomeggookMultiOption(so, productName) {
   const allMatch = spaceParts.every(p => tailSet.has(norm(p)));
   return allMatch ? spaceParts : null;
 }
+// 도매꾹 냉장고바지(상품번호 56628327) "1+1" 옵션 — 선택사항에 뭐라고 적혀있든
+// (예: "블랙 1+1", "차콜1+블랙1") 실제로는 항상 차콜 1개 + 블랙 1개 세트로 나가야 함
+// → 선택사항에 적힌 사이즈(인치) 기준으로 "차콜/사이즈(인치)" · "블랙/사이즈(인치)" 두 줄로 분리
+const _DOMEGGOOK_1PLUS1_SIZE = { '28-30':'XL', '32-34':'3XL', '36-38':'5XL' };
+function _domeggook1Plus1Split(vc, so) {
+  if (!String(vc||'').includes('56628327')) return null;
+  const raw = String(so||'');
+  const is1plus1 = raw.includes('1+1') || /[가-힣]+\d\+[가-힣]+\d/.test(raw);
+  if (!is1plus1) return null;
+  const inchM = raw.match(/(\d{2}-\d{2})\s*인치/);
+  if (!inchM) return null;
+  const sizeLabel = _DOMEGGOOK_1PLUS1_SIZE[inchM[1]];
+  if (!sizeLabel) return null;
+  const suffix = '/' + sizeLabel + '(' + inchM[1] + '인치)';
+  return ['차콜' + suffix, '블랙' + suffix];
+}
 function handleFile(file, onDone) {
   if (!file) { if(typeof onDone==='function') onDone(); return; }
   setSt('파일 읽는 중...');
@@ -2925,11 +2941,17 @@ function handleFile(file, onDone) {
         const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn,so),alias=extractAlias(r[C.al]);
-        // 도매꾹: 선택사항이 "화이트,그레이"처럼 콤마로 묶여 있으면 옵션별로 행을 나눔
-        const _soParts = (vk === '도매꾹') ? _splitDomeggookMultiOption(so, pn) : null;
+        // 도매꾹: 선택사항이 "화이트,그레이"처럼 콤마로 묶여 있거나 냉장고바지 "1+1" 세트면 옵션별로 행을 나눔
+        let _soParts = null, _isBundleSplit = false;
+        if (vk === '도매꾹') {
+          _soParts = _domeggook1Plus1Split(vc, so);
+          if (_soParts) _isBundleSplit = true;
+          else _soParts = _splitDomeggookMultiOption(so, pn);
+        }
         const _optionList = _soParts || [so];
         for (const soOne of _optionList) {
           const parsed=parseParts(vc,vo,pn,soOne,dop);
+          if (_isBundleSplit) { parsed.optionName = soOne; parsed.codeQty = 1; }
           // 주문금액 = AB - AI + AH + 구매쿠폰적용금액/2 (지마켓/옥션만)
           const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
           const _smRaw=C.sm>=0?String(r[C.sm]||'').trim():'';
@@ -9900,11 +9922,17 @@ function handleFileAdd(file, onDone){
         totalCount++;added++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn,so),alias=extractAlias(r[C.al]);
-        // 도매꾹: 선택사항이 "화이트,그레이"처럼 콤마로 묶여 있으면 옵션별로 행을 나눔
-        const _soParts = (vk === '도매꾹') ? _splitDomeggookMultiOption(so, pn) : null;
+        // 도매꾹: 선택사항이 "화이트,그레이"처럼 콤마로 묶여 있거나 냉장고바지 "1+1" 세트면 옵션별로 행을 나눔
+        let _soParts = null, _isBundleSplit = false;
+        if (vk === '도매꾹') {
+          _soParts = _domeggook1Plus1Split(vc, so);
+          if (_soParts) _isBundleSplit = true;
+          else _soParts = _splitDomeggookMultiOption(so, pn);
+        }
         const _optionList = _soParts || [so];
         for (const soOne of _optionList) {
           const parsed=parseParts(vc,vo,pn,soOne,dop);
+          if (_isBundleSplit) { parsed.optionName = soOne; parsed.codeQty = 1; }
           // 주문금액 = AB - AI + AH + 구매쿠폰적용금액/2 (지마켓/옥션만)
           const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
           const _smRaw=C.sm>=0?String(r[C.sm]||'').trim():'';
