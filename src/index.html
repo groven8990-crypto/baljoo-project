@@ -4775,8 +4775,8 @@ function buildRows(vk,orders,alias){
       return [['보내는분성명','보내는분전화번호','보내는분기타연락처','보내는분우편번호','보내는분주소(전체, 분할)','받는분성명','받는분전화번호','받는분기타연락처','받는분우편번호','받는분주소(전체, 분할)','품목명','수량','배송메세지1','주문번호'],
         ...orders.map(o=>[s.name,s.phone,'',s.zip,s.addr,o.recv_name,o.recv_phone,'',o.zip,o.addr,combined(o),effQty(o),o.memo,o.order_no])];
     case '해담별':
-      return [['주문번호','주문일','주문자명','주문자연락처','수령인명','수령인연락처','우편번호','주소','상품코드','판매사상품명','주문수량','배송시 요청사항','택배사**','배송번호','판매사','판매사연락처','보내는주소'],
-        ...orders.map(o=>[o.order_no,'',s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,'',combined(o),effQty(o),o.memo,'','',s.name,s.phone,s.addr])];
+      return [['주문일시','품목명','박스수량','주문자\r\n성명','주문자\r\n전화번호','받는분\r\n성명','받는분\r\n전화번호','받는분\r\n우편번호','받는분주소\r\n(전체, 분할)','배송메세지1','공급가','택배사','송장번호','코드','고객주문번호','주문자주소'],
+        ...orders.map(o=>['',combined(o),effQty(o),s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,o.memo,'','','','',o.order_no,s.addr])];
     case '도매꾹': {
       // 형식: 도매꾹]상품번호/옵션코드:옵션명-수량  또는  상품번호:옵션명-수량
       //  - ] 없으면 전체 코드가 상품번호 후보
