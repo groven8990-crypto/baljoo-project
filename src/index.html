@@ -3885,6 +3885,103 @@ function _wbToBase64(wb){
   console.warn('[_wbToBase64] 모든 방법 실패 → 빈 문자열 반환');
   return '';
 }
+// SheetJS 무료(커뮤니티) 버전은 XLSX.write()에서 셀 배경색(fill) 스타일을 그냥 무시함(Pro 전용 기능이라
+// cell.s = {fill:...} 를 줘도 저장된 파일엔 반영이 안 됨 — 실제로 열어보면 색이 하나도 안 채워져 있음).
+// 그래서 일단 SheetJS로 평범하게 xlsx를 만든 다음, JSZip으로 그 파일을 직접 열어서
+// xl/styles.xml에 채우기(fill) 스타일을 추가하고 xl/worksheets/sheet1.xml의 대상 셀에
+// 그 스타일을 참조하도록 s="N" 속성을 심어주는 방식으로 우회함.
+// fillMap: Map<"행,열"(0-based, 헤더 포함), ARGB hex 문자열(예: "FFFFF2CC")>
+async function _injectXlsxCellFills(base64, fillMap) {
+  if (!base64 || !fillMap || !fillMap.size) return base64;
+  if (typeof JSZip === 'undefined') { console.warn('[색채움] JSZip 없음 — 색 없이 다운로드'); return base64; }
+  try {
+    const zip = await JSZip.loadAsync(base64, {base64: true});
+    const stylesPath = 'xl/styles.xml';
+    const sheetPath   = 'xl/worksheets/sheet1.xml';
+    const stylesFile = zip.file(stylesPath);
+    const sheetFile   = zip.file(sheetPath);
+    if (!stylesFile || !sheetFile) { console.warn('[색채움] xlsx 내부 구조를 찾을 수 없음'); return base64; }
+    const stylesXmlText = await stylesFile.async('string');
+    const sheetXmlText  = await sheetFile.async('string');
+
+    const parser = new DOMParser();
+    const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+    const stylesDoc = parser.parseFromString(stylesXmlText, 'application/xml');
+    const sheetDoc   = parser.parseFromString(sheetXmlText, 'application/xml');
+
+    const fillsEl = stylesDoc.getElementsByTagNameNS(NS, 'fills')[0];
+    const cellXfsEl = stylesDoc.getElementsByTagNameNS(NS, 'cellXfs')[0];
+    if (!fillsEl || !cellXfsEl) { console.warn('[색채움] styles.xml 구조가 예상과 다름'); return base64; }
+
+    let fillCount = parseInt(fillsEl.getAttribute('count')||'0', 10);
+    let xfCount   = parseInt(cellXfsEl.getAttribute('count')||'0', 10);
+    const colorToXfIdx = new Map();
+    const uniqueColors = [...new Set(fillMap.values())];
+    uniqueColors.forEach(rgb => {
+      const fillEl = stylesDoc.createElementNS(NS, 'fill');
+      const patEl  = stylesDoc.createElementNS(NS, 'patternFill');
+      patEl.setAttribute('patternType', 'solid');
+      const fgEl = stylesDoc.createElementNS(NS, 'fgColor');
+      fgEl.setAttribute('rgb', rgb);
+      const bgEl = stylesDoc.createElementNS(NS, 'bgColor');
+      bgEl.setAttribute('indexed', '64');
+      patEl.appendChild(fgEl); patEl.appendChild(bgEl);
+      fillEl.appendChild(patEl);
+      fillsEl.appendChild(fillEl);
+      const fillId = fillCount++;
+
+      const xfEl = stylesDoc.createElementNS(NS, 'xf');
+      xfEl.setAttribute('numFmtId', '0');
+      xfEl.setAttribute('fontId', '0');
+      xfEl.setAttribute('fillId', String(fillId));
+      xfEl.setAttribute('borderId', '0');
+      xfEl.setAttribute('xfId', '0');
+      xfEl.setAttribute('applyFill', '1');
+      cellXfsEl.appendChild(xfEl);
+      colorToXfIdx.set(rgb, xfCount++);
+    });
+    fillsEl.setAttribute('count', String(fillCount));
+    cellXfsEl.setAttribute('count', String(xfCount));
+
+    const rowsByNum = new Map();
+    const rowEls = sheetDoc.getElementsByTagNameNS(NS, 'row');
+    for (let i = 0; i < rowEls.length; i++) rowsByNum.set(parseInt(rowEls[i].getAttribute('r'),10), rowEls[i]);
+
+    fillMap.forEach((rgb, key) => {
+      const [r0, c0] = key.split(',').map(Number);
+      const rowNum = r0 + 1; // OOXML 행 번호는 1-based
+      const cellRef = XLSX.utils.encode_cell({r:r0, c:c0});
+      const xfIdx = colorToXfIdx.get(rgb);
+      const rowEl = rowsByNum.get(rowNum);
+      if (!rowEl) return;
+      let cellEl = null;
+      for (let i = 0; i < rowEl.children.length; i++) {
+        if (rowEl.children[i].getAttribute('r') === cellRef) { cellEl = rowEl.children[i]; break; }
+      }
+      if (cellEl) {
+        cellEl.setAttribute('s', String(xfIdx));
+      } else {
+        const newCell = sheetDoc.createElementNS(NS, 'c');
+        newCell.setAttribute('r', cellRef);
+        newCell.setAttribute('s', String(xfIdx));
+        let inserted = false;
+        for (let i = 0; i < rowEl.children.length; i++) {
+          const ref = rowEl.children[i].getAttribute('r');
+          if (XLSX.utils.decode_cell(ref).c > c0) { rowEl.insertBefore(newCell, rowEl.children[i]); inserted = true; break; }
+        }
+        if (!inserted) rowEl.appendChild(newCell);
+      }
+    });
+
+    const serializer = new XMLSerializer();
+    zip.file(stylesPath, serializer.serializeToString(stylesDoc));
+    zip.file(sheetPath, serializer.serializeToString(sheetDoc));
+    return await zip.generateAsync({type:'base64'});
+  } catch(e) {
+    console.warn('[색채움] JSZip 처리 실패, 색 없이 다운로드:', e);
+    return base64;
+  }
+}
 // 발주처별 워크북 생성 (저장 없이) — 생성 시점에 base64 도 같이 캐싱
 function buildVendorWorkbook(gk){
   const [v,a] = gk.split('|');
@@ -4874,21 +4971,24 @@ function dlOne(gk){
   // 합배송 색상 맵: sheetRow(0-based) → rgb
   const bundleMap = new Map((_lastBundledRows||[]).map(({dataIdx,rgb})=>[dataIdx+1,rgb]));
   const hasBundles = bundleMap.size > 0;
-  // 시트 수동 생성 — 스타일을 셀 객체 생성 시점에 바로 포함
+  // 시트 수동 생성
+  // ※ SheetJS 무료판은 cell.s(fill) 를 써줘도 실제 저장 파일엔 반영이 안 되는 것으로 확인됨
+  //   (검증: 색을 넣어 저장한 뒤 다시 읽어보면 fill이 전부 patternType:"none") — 그래서 색은
+  //   여기서 넣지 않고, 대상 위치(행,열)만 cellFillMap 에 모아뒀다가 아래에서 JSZip으로
+  //   xlsx 내부 xml에 직접 채워 넣는다 (_injectXlsxCellFills).
   const ws = {};
   const numCols = rows.reduce((m,r)=>Math.max(m,r.length),0);
+  const cellFillMap = new Map(); // "행,열"(0-based) → ARGB hex
   rows.forEach((row,r)=>{
     const rgb = bundleMap.get(r);
-    const fill = rgb ? {fgColor:{rgb},bgColor:{indexed:64},patternType:'solid'} : null;
     row.forEach((val,c)=>{
-      // 번들 행은 빈칸도 셀 생성 (배경색 적용을 위해)
-      if(!fill && (val===null||val===undefined)) return;
+      // 번들 행은 빈칸도 셀 생성 (배경색이 그 칸까지 이어지도록)
+      if(rgb===undefined && (val===null||val===undefined)) return;
       const addr = XLSX.utils.encode_cell({r,c});
       const safeVal = (val===null||val===undefined) ? '' : val;
       const t = typeof safeVal==='number'?'n':'s';
-      const cell = {t, v:safeVal};
-      if(fill) cell.s = {fill, font:{name:'맑은 고딕', sz:10}};
-      ws[addr]=cell;
+      ws[addr] = {t, v:safeVal};
+      if(rgb!==undefined) cellFillMap.set(r+','+c, rgb);
     });
   });
   if(rows.length>0&&numCols>0)
@@ -4904,33 +5004,38 @@ function dlOne(gk){
   if (dlBtn) { dlBtn.disabled = true; dlBtn.textContent = '⏳ 저장 중...'; }
 
   if (hasBundles) {
-    // 합배송 색채움: buildDongilSettlementXlsx와 동일한 방식 — data URL 직접 다운로드 (검증된 경로)
-    const b64 = _wbToBase64(wb);
-    const dataUrl = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + b64;
-    const link = document.createElement('a');
-    link.href = dataUrl; link.download = safeName;
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
-    // 폴더도 같이 저장 시도 (비동기, 실패해도 괜찮음)
-    _getPoSubDirHandle(a).then(subDir => {
-      if (!subDir) return;
-      const bin = atob(b64); const u8 = new Uint8Array(bin.length);
-      for (let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
-      return subDir.getFileHandle(safeName,{create:true})
-        .then(fh=>fh.createWritable()).then(w=>w.write(u8.buffer).then(()=>w.close()))
-        .then(()=>console.log('[발주서] 폴더 저장(색채움):', safeName));
-    }).catch(e=>console.warn('[발주서] 폴더 저장 실패:', e));
-    // UI 업데이트
-    if (card) card.classList.add('done');
-    const mk=document.getElementById('dlm_'+ekey(gk));
-    if(mk){
-      const nowTime = new Date().toTimeString().slice(0,5);
-      mk.title = `${nowTime} 저장: ${safeName}`;
-      mk.textContent = '✅ 다운로드(색채움)';
-      mk.style.display = 'inline-flex';
-    }
-    logDownload(v, a, orders, fname);
-    _poShowToast('✅ 합배송 색채움 발주서 다운로드: ' + safeName);
-    if (dlBtn) { dlBtn.disabled = false; dlBtn.textContent = prevText || '⬇ 다운로드'; }
+    const rawB64 = _wbToBase64(wb);
+    _injectXlsxCellFills(rawB64, cellFillMap).then(b64 => {
+      const dataUrl = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + b64;
+      const link = document.createElement('a');
+      link.href = dataUrl; link.download = safeName;
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      // 폴더도 같이 저장 시도 (비동기, 실패해도 괜찮음)
+      _getPoSubDirHandle(a).then(subDir => {
+        if (!subDir) return;
+        const bin = atob(b64); const u8 = new Uint8Array(bin.length);
+        for (let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+        return subDir.getFileHandle(safeName,{create:true})
+          .then(fh=>fh.createWritable()).then(w=>w.write(u8.buffer).then(()=>w.close()))
+          .then(()=>console.log('[발주서] 폴더 저장(색채움):', safeName));
+      }).catch(e=>console.warn('[발주서] 폴더 저장 실패:', e));
+      // UI 업데이트
+      if (card) card.classList.add('done');
+      const mk=document.getElementById('dlm_'+ekey(gk));
+      if(mk){
+        const nowTime = new Date().toTimeString().slice(0,5);
+        mk.title = `${nowTime} 저장: ${safeName}`;
+        mk.textContent = '✅ 다운로드(색채움)';
+        mk.style.display = 'inline-flex';
+      }
+      logDownload(v, a, orders, fname);
+      _poShowToast('✅ 합배송 색채움 발주서 다운로드: ' + safeName);
+      if (dlBtn) { dlBtn.disabled = false; dlBtn.textContent = prevText || '⬇ 다운로드'; }
+    }).catch(err => {
+      console.error('색채움 발주서 다운로드 실패:', err);
+      alert('발주서 저장 실패: ' + (err?.message||err));
+      if (dlBtn) { dlBtn.disabled = false; dlBtn.textContent = prevText || '⬇ 다운로드'; }
+    });
   } else {
     _poWriteWorkbook(wb, fname, a, {}).then((info)=>{
       if (card) card.classList.add('done');
@@ -15516,6 +15621,20 @@ function srBuildProfitRows(orders){
     const _effReviewUnit = (Number(r.reviewUnit) > 0) ? Number(r.reviewUnit) : _unit;
     const _realQty = Math.max(0, _qtySum - _reviewQty);
     r.itemCost = _realQty * _unit + _reviewQty * _effReviewUnit;
+    // 같은 주문번호가 여러 줄로 나뉜 경우(예: 도매꾹 "화이트,그레이" 옵션 분리처럼 한 주문이
+    // 옵션별로 여러 사람별계산 줄로 쪼개짐)엔 order_no만으로 박스수 보정 키를 잡으면 두 줄이
+    // 같은 저장 슬롯을 공유해서 한쪽을 고치면 다른 쪽도 같이 바뀌어버림 → 발생 순번을 붙여 구분
+    {
+      const _orderNoSeen = {};
+      r.orderDetail.forEach(d => { _orderNoSeen[d.order_no] = (_orderNoSeen[d.order_no]||0) + 1; });
+      const _orderNoIdx = {};
+      r.orderDetail.forEach(d => {
+        if ((_orderNoSeen[d.order_no]||0) > 1) {
+          const idx = (_orderNoIdx[d.order_no] = (_orderNoIdx[d.order_no]||0) + 1);
+          d.order_no = d.order_no + '#' + idx;
+        }
+      });
+    }
     let shipTotal = 0;
     for (const d of r.orderDetail) {
       const computed = r.consol > 0 ? Math.max(1, Math.ceil(d.units / r.consol)) : 1;
