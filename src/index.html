@@ -1403,6 +1403,16 @@
           </div>
         </div>
       </div>
+      <!-- 선택 항목 액션 툴바 -->
+      <div style="margin-bottom:10px;padding:10px 12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;font-weight:600">
+            <input type="checkbox" id="incHistSelectAll" onchange="toggleAllIncHist(this.checked)" style="width:15px;height:15px"> 전체선택
+          </label>
+          <span id="incHistSelCount" style="font-size:12px;color:var(--text3)">0건 선택됨</span>
+          <button class="btn btn-sm" style="background:#7c3aed;color:#fff;border:none" onclick="downloadSelectedIncImg()">📷 선택 다운로드</button>
+        </div>
+      </div>
       <div id="incHistSummary" style="margin-bottom:12px"></div>
       <div id="incHistList"><p style="font-size:13px;color:var(--text3)">저장된 이력이 없습니다.</p></div>
     </div>
@@ -11756,6 +11766,7 @@ const LS_INCHIST = 'yb_inchist';
 let curIncCo = '옐로우브릿지';
 let _incCoFilter   = 'all';
 let _incTodayOnly  = false;
+let _incHistLastFiltered = []; // 체크 해제 시 다시 보여줄, 검색/필터 결과 전체 목록
 let _incPaidFilter = 'all';
 let _incProofFilter = 'all'; // 'all' | 'unproof' | 'proof'
 let _editingIncIdx = -1;
@@ -12408,6 +12419,41 @@ function deleteIncHist(i) {
   renderIncHistList();
 }
 
+function _incHistSumHtml(list, selected) {
+  const totalSupply = list.reduce((s,d) => s + (Number(d.supply)||0), 0);
+  const totalVat    = list.reduce((s,d) => s + (Number(d.vat)||0), 0);
+  const totalAmt    = list.reduce((s,d) => s + (Number(d.total)||0), 0);
+  return '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:13px">' +
+    '<span>' + (selected ? '✅' : '📊') + ' <b>' + list.length + '건' + (selected ? ' 선택됨' : '') + '</b></span>' +
+    '<span>공급가액 합계 <b>' + totalSupply.toLocaleString() + '원</b></span>' +
+    '<span>세액 합계 <b>' + totalVat.toLocaleString() + '원</b></span>' +
+    '<span style="color:var(--primary)">총 합계 <b>' + totalAmt.toLocaleString() + '원</b></span>' +
+    '</div>';
+}
+function updateIncHistSelCount() {
+  const chks = document.querySelectorAll('.inc-hist-chk:checked');
+  const el = document.getElementById('incHistSelCount');
+  if (el) el.textContent = chks.length + '건 선택됨';
+  const allChk = document.getElementById('incHistSelectAll');
+  const total  = document.querySelectorAll('.inc-hist-chk').length;
+  if (allChk) allChk.indeterminate = chks.length > 0 && chks.length < total;
+  if (allChk && chks.length === total && total > 0) allChk.checked = true;
+  if (allChk && chks.length === 0) allChk.checked = false;
+  const sumEl = document.getElementById('incHistSummary');
+  if (sumEl) {
+    if (chks.length > 0) {
+      const hist = loadIncHist();
+      const selectedList = [...chks].map(c => hist[parseInt(c.dataset.idx)]).filter(Boolean);
+      sumEl.innerHTML = _incHistSumHtml(selectedList, true);
+    } else if (_incHistLastFiltered.length) {
+      sumEl.innerHTML = _incHistSumHtml(_incHistLastFiltered, false);
+    }
+  }
+}
+function toggleAllIncHist(checked) {
+  document.querySelectorAll('.inc-hist-chk').forEach(c => c.checked = checked);
+  updateIncHistSelCount();
+}
 function renderIncHistList() {
   const el = document.getElementById('incHistList');
   if (!el) return;
@@ -12435,18 +12481,10 @@ function renderIncHistList() {
     const bd = (b.date||'') + '|' + (b.savedAt||String(b.id||''));
     return ad < bd ? 1 : ad > bd ? -1 : 0;
   });
+  _incHistLastFiltered = filtered;
   const sumEl = document.getElementById('incHistSummary');
   if (sumEl && filtered.length) {
-    const totalSupply = filtered.reduce((s,d) => s + (Number(d.supply)||0), 0);
-    const totalVat    = filtered.reduce((s,d) => s + (Number(d.vat)||0), 0);
-    const totalAmt    = filtered.reduce((s,d) => s + (Number(d.total)||0), 0);
-    sumEl.innerHTML =
-      '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:13px">' +
-      '<span>📊 <b>' + filtered.length + '건</b></span>' +
-      '<span>공급가액 합계 <b>' + totalSupply.toLocaleString() + '원</b></span>' +
-      '<span>세액 합계 <b>' + totalVat.toLocaleString() + '원</b></span>' +
-      '<span style="color:var(--primary)">총 합계 <b>' + totalAmt.toLocaleString() + '원</b></span>' +
-      '</div>';
+    sumEl.innerHTML = _incHistSumHtml(filtered, false);
   } else if (sumEl) { sumEl.innerHTML=''; }
   if (!filtered.length) { el.innerHTML='<p style="font-size:13px;color:var(--text3)">검색 결과가 없습니다.</p>'; return; }
   const groups = {};
@@ -12488,7 +12526,8 @@ function renderIncHistList() {
       const imgBtnI = imgSavedI
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" title="'+imgTitleI+'" onclick="saveIncImgFromHist('+realIdx+')">📷 '+(d.imgSavedAt.slice(5)||'')+'</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px" title="'+imgTitleI+'" onclick="saveIncImgFromHist('+realIdx+')">📷</button>';
-      html += '<div style="display:grid;grid-template-columns:90px 1fr auto auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
+      html += '<div id="inchi_'+realIdx+'" style="display:grid;grid-template-columns:24px 90px 1fr auto auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;'+rowBg+'">'+
+        '<input type="checkbox" class="inc-hist-chk" data-idx="'+realIdx+'" style="width:15px;height:15px;cursor:pointer" onchange="updateIncHistSelCount()">'+
         '<span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.date||'')+'</span>'+
         '<span style="'+descStyle+';cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+escHtml(d.desc||'')+'</span>'+
         '<span style="font-size:13px;font-weight:600;text-align:right;cursor:pointer" onclick="previewIncHistItem('+realIdx+')">'+fmtNum(d.total)+'원</span>'+
@@ -12521,6 +12560,79 @@ async function saveIncImgFromHist(i) {
   _doPreviewIncome(d, attachImgUrls);
   await new Promise(r => setTimeout(r, 300));
   saveIncImg();
+}
+
+async function downloadSelectedIncImg() {
+  const chks = [...document.querySelectorAll('.inc-hist-chk:checked')];
+  if (!chks.length) { alert('다운로드할 항목을 선택해 주세요.'); return; }
+  const hist = loadIncHist();
+
+  const btn = document.querySelector('button[onclick="downloadSelectedIncImg()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 처리 중...'; }
+
+  let ok = 0, fail = 0;
+  const savedIds = [];
+  for (const chk of chks) {
+    const i = parseInt(chk.dataset.idx);
+    const d = hist[i];
+    if (!d) { fail++; continue; }
+    try {
+      _doPreviewIncome(d, await _incLoadAttachImgUrls(d));
+      await new Promise(r => setTimeout(r, 120));
+      const el = document.getElementById('incPrintArea');
+      if (!el) { fail++; continue; }
+      const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#fff', useCORS: true });
+      const dateStr = (d.date||'').replace(/-/g,'').slice(2);  // YYMMDD
+      const amtStr  = (Number(d.total)||0).toLocaleString() + '원';
+      const fname   = dateStr + '-입금결의서-' + (d.vendor||'거래처') + '_' + (d.co||'') + '_' + amtStr + '.png';
+
+      const subDir = await _getIncSubDirHandle(d.co);
+      if (subDir) {
+        try {
+          const fileHandle = await subDir.getFileHandle(fname, { create: true });
+          const writable   = await fileHandle.createWritable();
+          const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+          await writable.write(blob);
+          await writable.close();
+          ok++;
+        } catch(fe) {
+          const a = document.createElement('a');
+          a.download = fname;
+          a.href = canvas.toDataURL('image/png');
+          a.click();
+          ok++;
+        }
+      } else {
+        const a = document.createElement('a');
+        a.download = fname;
+        a.href = canvas.toDataURL('image/png');
+        a.click();
+        ok++;
+      }
+      if (d.id) savedIds.push(d.id);
+      await new Promise(r => setTimeout(r, 180));
+    } catch(e) {
+      console.error('이미지 생성 오류:', e);
+      fail++;
+    }
+  }
+
+  if (savedIds.length) {
+    const h2 = loadIncHist();
+    const today = _localISO();
+    let stamped = false;
+    for (const id of savedIds) {
+      const idx = h2.findIndex(x => x && x.id === id);
+      if (idx >= 0) { h2[idx].imgSavedAt = today; stamped = true; }
+    }
+    if (stamped) { saveIncHist(h2); renderIncHistList(); }
+  }
+
+  const incModal = document.getElementById('incModal');
+  if (incModal) incModal.style.display = 'none';
+
+  if (btn) { btn.disabled = false; btn.textContent = '📷 선택 다운로드'; }
+  _poShowToast(`✅ 이미지 다운로드 완료: ${ok}건${fail ? ', 실패 ' + fail + '건' : ''}`);
 }
 
 function exportIncHistXlsx() {
