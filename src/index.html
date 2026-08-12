@@ -14507,7 +14507,12 @@ function srPlatform(o){
   if (stripped) return stripped;
   return '기타';
 }
-function srFee(plat){ return plat === '식자재코리아' ? 0 : 0.12; }
+function srFee(plat){
+  const p = String(plat||'');
+  if (p === '식자재코리아') return 0;
+  if (p.includes('톡딜')) return 0.033;  // 카카오톡딜 판매수수료 3.3%
+  return 0.12;
+}
 const LS_PRODUCT_ALIASES = 'yb_product_aliases';
 function loadProductAliases(){ try{ return JSON.parse(localStorage.getItem(LS_PRODUCT_ALIASES)||'[]'); }catch{ return []; } }
 function saveProductAliases(arr){ try{ localStorage.setItem(LS_PRODUCT_ALIASES, JSON.stringify(arr)); }catch(e){} }
