@@ -14602,6 +14602,8 @@ function srRemoveSalesOverride(i){
   try { if (typeof srRender === 'function' && Array.isArray(allOrders) && allOrders.length) srRender(); } catch(e){}
 }
 
+// 표시 이름(그룹핑된 제품명) → 그걸 만들어낸 실제 원본 상품명 집합. srRender()가 매번 새로 채움
+let _srProdRawByLabel = {};
 // 매출보고 "제품" 표에서 이름 칸을 클릭하면 바로 이름을 고칠 수 있게 함 (별칭 등록과 동일한 저장소 사용)
 function srEditProductLabel(td){
   if (td.querySelector('input')) return; // 이미 편집 중
@@ -14631,8 +14633,15 @@ function srEditProductLabel(td){
 }
 function srRenameProductLabel(oldName, newName){
   let arr = loadProductAliases();
-  arr = arr.filter(a => !(a && a.kw === oldName));
-  arr.push({kw: oldName, label: newName});
+  // 화면에 보이는 이름(oldName)으로 그냥 별칭을 걸면, 그 문구가 우연히 들어간 무관한 다른
+  // 상품(예: "100% 국내산"이 여러 상품 설명에 흔히 들어감)까지 같이 바뀌어버리는 사고가 남.
+  // 그래서 이 이름을 만들어낸 실제 원본 상품명들을 정확히 찾아서 그것들에만 별칭을 검.
+  const rawNames = _srProdRawByLabel[oldName];
+  const targets = (rawNames && rawNames.size) ? [...rawNames] : [oldName];
+  for (const kw of targets) {
+    arr = arr.filter(a => !(a && a.kw === kw));
+    arr.push({kw, label: newName});
+  }
   saveProductAliases(arr);
   try { srRenderProductAliases(); } catch(e){}
   try { if (typeof srRender === 'function' && Array.isArray(allOrders) && allOrders.length) srRender(); } catch(e){}
@@ -14693,8 +14702,9 @@ function srAggregate(orders){
     if(!platMap[p])platMap[p]={count:0,sales:0};
     platMap[p].count++;platMap[p].sales+=amt;
     const n=srNormalize(o.product);
-    if(!prodMap[n])prodMap[n]={count:0,sales:0};
+    if(!prodMap[n])prodMap[n]={count:0,sales:0,rawNames:new Set()};
     prodMap[n].count++;prodMap[n].sales+=amt;
+    if(o.product) prodMap[n].rawNames.add(String(o.product).trim());
     // 깐마늘 (item_name 또는 normalize 결과 또는 product에 '깐마늘' 포함)
     const isGarlic = (o.item_name||'').includes('깐마늘')
                   || n === '깐마늘'
@@ -14761,6 +14771,14 @@ function srBrandSection(title, color, agg, opts){
   } else {
     prodDisplay = prodSorted;
   }
+  // 제품명 인라인 수정 시, 화면에 보이는(이미 그룹핑된) 이름이 아니라 그 이름을 만들어낸
+  // 실제 원본 상품명들을 정확히 기억해뒀다가 별칭에 써야, "100% 국내산"처럼 여러 상품
+  // 설명에 흔히 들어가는 문구를 살짝 바꿨다가 무관한 다른 상품까지 같이 바뀌는 걸 막을 수 있음
+  prodSorted.forEach(([n,v]) => {
+    if (!v.rawNames) return;
+    if (!_srProdRawByLabel[n]) _srProdRawByLabel[n] = new Set();
+    v.rawNames.forEach(rn => _srProdRawByLabel[n].add(rn));
+  });
   const prodRows = prodDisplay.map(([n,v],i)=>`
     <tr style="background:${i%2===0?'#fff':'#F8FAFC'}">
       ${v._rest
@@ -15411,6 +15429,7 @@ function srRender(){
     statusEl.innerHTML='<span style="color:var(--danger)">⚠ 발주서 생성 탭에서 샵마인 파일을 먼저 업로드해주세요.</span>';
     return;
   }
+  _srProdRawByLabel = {};
   const gr=allOrders.filter(o=>srBrand(o.alias)==='grobn');
   const yb=allOrders.filter(o=>srBrand(o.alias)==='yb');
   const grAgg=srAggregate(gr), ybAgg=srAggregate(yb);
