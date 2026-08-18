@@ -14982,7 +14982,7 @@ function srLoadDinette(file){
       const wb = XLSX.read(e.target.result, {type:'array'});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''}).slice(1);
-      srDinetteRows = rows.filter(r => String(r[3]||'').trim() in SR_DINETTE_SPEC);
+      srDinetteRows = rows.filter(r => String(r[3]||'').trim().toLowerCase() in SR_DINETTE_SPEC);
       const info = document.getElementById('srDinetteInfo');
       const valid = srDinetteRows.length;
       info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(file.name)} — ${valid}건 인식</span> <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearDinette()">제거</button>`;
@@ -15297,7 +15297,7 @@ function srAggregateDinette(rows){
   const byCfg = {};
   // 1) 기본 매출 합계 + 규격별 집계
   for (const r of rows) {
-    const spec = String(r[3]||'').trim();
+    const spec = String(r[3]||'').trim().toLowerCase();
     if (!(spec in SR_DINETTE_SPEC)) continue;
     const qty = parseInt(r[4]) || SR_DINETTE_UNIT[spec];
     const price = srDinettePrice(spec, qty);
@@ -15312,7 +15312,7 @@ function srAggregateDinette(rows){
   const SHIP_FEE = srGetDinettePrices().ship;
   const grpCount = {};
   for (const r of rows) {
-    const spec = String(r[3]||'').trim();
+    const spec = String(r[3]||'').trim().toLowerCase();
     if (!(spec in SR_DINETTE_SPEC)) continue;
     const name = String(r[0]||'').trim();
     const addr = _addrNorm(r[2]);
@@ -15624,7 +15624,7 @@ function _srBuildDinetteProfitRows(db){
   const bySpec = {};
   for (let i = 0; i < srDinetteRows.length; i++) {
     const r = srDinetteRows[i];
-    const spec = String(r[3]||'').trim();
+    const spec = String(r[3]||'').trim().toLowerCase();
     if (!(spec in SR_DINETTE_SPEC)) continue;
     const qty = parseInt(r[4]) || SR_DINETTE_UNIT[spec];
     const price = (typeof srDinettePrice==='function') ? srDinettePrice(spec, qty) : 0;
