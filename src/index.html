@@ -14602,6 +14602,42 @@ function srRemoveSalesOverride(i){
   try { if (typeof srRender === 'function' && Array.isArray(allOrders) && allOrders.length) srRender(); } catch(e){}
 }
 
+// 매출보고 "제품" 표에서 이름 칸을 클릭하면 바로 이름을 고칠 수 있게 함 (별칭 등록과 동일한 저장소 사용)
+function srEditProductLabel(td){
+  if (td.querySelector('input')) return; // 이미 편집 중
+  const oldName = td.getAttribute('data-name') || td.textContent.trim();
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = oldName;
+  input.style.cssText = 'width:100%;font-size:13px;padding:2px 4px;border:1px solid var(--primary);border-radius:3px;box-sizing:border-box';
+  let done = false;
+  const finish = (commit) => {
+    if (done) return;
+    done = true;
+    const newName = input.value.trim();
+    td.textContent = oldName;
+    if (commit && newName && newName !== oldName) srRenameProductLabel(oldName, newName);
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('click', e => e.stopPropagation());
+  td.textContent = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+}
+function srRenameProductLabel(oldName, newName){
+  let arr = loadProductAliases();
+  arr = arr.filter(a => !(a && a.kw === oldName));
+  arr.push({kw: oldName, label: newName});
+  saveProductAliases(arr);
+  try { srRenderProductAliases(); } catch(e){}
+  try { if (typeof srRender === 'function' && Array.isArray(allOrders) && allOrders.length) srRender(); } catch(e){}
+  try { _poShowToast(`✅ "${oldName}" → "${newName}"(으)로 이름 변경됨`); } catch(e){}
+}
 function srAddProductAlias(){
   const kwEl = document.getElementById('paKw');
   const lbEl = document.getElementById('paLabel');
@@ -14727,7 +14763,9 @@ function srBrandSection(title, color, agg, opts){
   }
   const prodRows = prodDisplay.map(([n,v],i)=>`
     <tr style="background:${i%2===0?'#fff':'#F8FAFC'}">
-      <td style="padding:10px 14px;border-bottom:1px solid #eee${v._rest?';color:#888;font-style:italic':''}">${escHtml(n)}</td>
+      ${v._rest
+        ? `<td style="padding:10px 14px;border-bottom:1px solid #eee;color:#888;font-style:italic">${escHtml(n)}</td>`
+        : `<td class="sr-prod-name-cell" data-name="${escHtml(n)}" onclick="srEditProductLabel(this)" title="클릭해서 이름 수정" style="padding:10px 14px;border-bottom:1px solid #eee;cursor:pointer">${escHtml(n)}</td>`}
       <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee${v._rest?';color:#888':''}">${v.count.toLocaleString()}건</td>
       <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee${v._rest?';color:#888':''}">${v.sales.toLocaleString()}원</td>
     </tr>`).join('');
