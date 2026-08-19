@@ -7807,71 +7807,90 @@ function normalizeCourier(raw) {
   return String(raw||'').trim();
 }
 
+// 시트 하나(rawRows)에서 운송장/수령인/주문코드 등 헤더 위치를 찾음 — 못 찾으면 trackIdx=-1
+function _invDetectTrackHeader(rawRows) {
+  const norm = c => String(c).replace(/\s/g,'').toLowerCase();
+  const isTrackCol    = c => /운송장|송장|배송번호|발송번호|등기번호|추적번호|대한통운|한진|롯데|우체국|로젠|경동|cj/.test(norm(c));
+  const isNameCol     = c => { const n = norm(c); return /받는분|수취인명|수령자|수취인|받는사람|수신자|수령인|수화인|수하인|이름/.test(n) && !/주소|전화|전번|연락처|우편|코드|번호/.test(n); };
+  const isCourierCol  = c => /택배사|배송사|운송사|courier/.test(norm(c));
+  const isAddrCol      = c => { const n = norm(c); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); };
+  const isRecvAddrCol  = c => { const n = norm(c); return /주소/.test(n) && /받는분|수취인|수령인|배송지|도착|수화인|수하인/.test(n); };
+  const isOrderCodeCol = c => /주문고유코드|주문번호/.test(norm(c));
+  let trackIdx = -1, nameIdx = -1, orderCodeIdx = -1, courierIdx = -1, addrIdx = -1, hdrRow = -1;
+  for (let ri = 0; ri < Math.min(20, rawRows.length); ri++) {
+    const row = rawRows[ri];
+    const nextRow = rawRows[ri+1] || [];
+    const ti = row.findIndex(isTrackCol);
+    // 헤더가 두 줄로 나뉜 표(예: 1행 "수하인"(그룹병합) / 2행 "이름·주소·전화"(세부라벨)) 대응 —
+    // 그룹 라벨(예: '수하인')만으로도 이름 컬럼 위치는 찾아지지만, 주소·택배사 같은 세부 라벨은
+    // 다음 줄에만 있는 경우가 있어서 이름/주소/택배사 각각 이 줄에 없으면 다음 줄도 확인
+    const ni = row.findIndex(isNameCol) >= 0 ? row.findIndex(isNameCol) : nextRow.findIndex(isNameCol);
+    const oi = row.findIndex(isOrderCodeCol);
+    if (ti >= 0 && (ni >= 0 || oi >= 0)) {
+      trackIdx = ti; nameIdx = ni; orderCodeIdx = oi; hdrRow = ri;
+      courierIdx = row.findIndex(isCourierCol);
+      if (courierIdx < 0) courierIdx = nextRow.findIndex(isCourierCol);
+      addrIdx = row.findIndex(isRecvAddrCol);
+      if (addrIdx < 0) addrIdx = row.findIndex(isAddrCol);
+      if (addrIdx < 0) addrIdx = nextRow.findIndex(isRecvAddrCol);
+      if (addrIdx < 0) addrIdx = nextRow.findIndex(isAddrCol);
+      break;
+    }
+  }
+  // 폴백: 발주서 회신형(에이팩 등) — 헤더에 운송장 컬럼명은 없지만
+  // 수령인 컬럼이 있고, 데이터 행 오른쪽에 헤더 없는 9~15자리 숫자 컬럼이 운송장번호
+  if (trackIdx < 0) {
+    for (let ri = 0; ri < Math.min(20, rawRows.length); ri++) {
+      const row = rawRows[ri];
+      const ni = row.findIndex(isNameCol);
+      if (ni < 0) continue;
+      const dataRows = rawRows.slice(ri + 1).filter(r => r && r.some(c => String(c).trim() !== ''));
+      if (!dataRows.length) break;
+      const maxLen = Math.max(row.length, ...dataRows.map(r => r.length));
+      for (let c = maxLen - 1; c >= 0; c--) {
+        const hdr = norm(row[c] || '');
+        // 전화/핸드폰번호는 자릿수가 운송장번호와 겹쳐서(10~11자리) 잘못 골라잡히기 쉬우니 헤더로 미리 제외
+        if (/전화|전번|연락처|우편|수량|주문|핸드폰|휴대폰|모바일|팩스/.test(hdr)) continue;
+        const vals = dataRows.map(r => String(r[c] == null ? '' : r[c]).replace(/\s/g,'')).filter(v => v !== '');
+        if (!vals.length) continue;
+        // 운송장번호에 하이픈이 섞여 오는 경우(예: 롯데택배 2683-7772-3235)도 인식
+        const hits = vals.filter(v => /^[\d-]{9,20}$/.test(v) && /^\d{9,15}$/.test(v.replace(/-/g,''))).length;
+        if (hits >= Math.max(1, Math.ceil(vals.length * 0.5))) {
+          trackIdx = c; nameIdx = ni; hdrRow = ri;
+          courierIdx = row.findIndex(isCourierCol);
+          addrIdx = row.findIndex(isRecvAddrCol);
+          if (addrIdx < 0) addrIdx = row.findIndex(isAddrCol);
+          break;
+        }
+      }
+      if (trackIdx >= 0) break;
+    }
+  }
+  return {trackIdx, nameIdx, orderCodeIdx, courierIdx, addrIdx, hdrRow};
+}
 function invLoadTracks(files, vendorHint) {
   Array.from(files).forEach(file => {
     const reader = new FileReader();
     reader.onload = function(e) {
       try {
         const wb = _xlsxReadAuto(e.target.result);
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        // rawRows 방식: 20행 스캔하여 헤더 행 자동 탐지
-        const rawRows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-        const norm = c => String(c).replace(/\s/g,'').toLowerCase();
-        const isTrackCol    = c => /운송장|송장|배송번호|발송번호|등기번호|추적번호|대한통운|한진|롯데|우체국|로젠|경동|cj/.test(norm(c));
-        const isNameCol     = c => { const n = norm(c); return /받는분|수취인명|수령자|수취인|받는사람|수신자|수령인|수화인|수하인/.test(n) && !/주소|전화|전번|연락처|우편|코드|번호/.test(n); };
-        const isCourierCol  = c => /택배사|배송사|운송사|courier/.test(norm(c));
-        const isAddrCol      = c => { const n = norm(c); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); };
-        const isRecvAddrCol  = c => { const n = norm(c); return /주소/.test(n) && /받는분|수취인|수령인|배송지|도착|수화인|수하인/.test(n); };
-        const isOrderCodeCol = c => /주문고유코드|주문번호/.test(norm(c));
-        let trackIdx = -1, nameIdx = -1, orderCodeIdx = -1, courierIdx = -1, addrIdx = -1, hdrRow = -1;
-        for (let ri = 0; ri < Math.min(20, rawRows.length); ri++) {
-          const row = rawRows[ri];
-          const ti = row.findIndex(isTrackCol);
-          const ni = row.findIndex(isNameCol);
-          const oi = row.findIndex(isOrderCodeCol);
-          if (ti >= 0 && (ni >= 0 || oi >= 0)) {
-            trackIdx = ti; nameIdx = ni; orderCodeIdx = oi; hdrRow = ri;
-            courierIdx = row.findIndex(isCourierCol);
-            addrIdx = row.findIndex(isRecvAddrCol);
-            if (addrIdx < 0) addrIdx = row.findIndex(isAddrCol);
-            break;
-          }
+        // 여러 시트 중 운송장/수령인 정보가 실제로 있는 첫 시트를 찾음
+        // (예: 참맛더드림 회신파일은 1번 시트가 원본 발주서 사본, 2번 시트에 실제 송장정보가 들어있음)
+        let rawRows = null, det = {trackIdx:-1};
+        for (const sn of wb.SheetNames) {
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:''});
+          const d = _invDetectTrackHeader(rows);
+          if (d.trackIdx >= 0 && (d.nameIdx >= 0 || d.orderCodeIdx >= 0)) { rawRows = rows; det = d; break; }
+          if (!rawRows) { rawRows = rows; det = d; } // 실패해도 에러 메시지용으로 첫 시트는 보관
         }
-        // 폴백: 발주서 회신형(에이팩 등) — 헤더에 운송장 컬럼명은 없지만
-        // 수령인 컬럼이 있고, 데이터 행 오른쪽에 헤더 없는 9~15자리 숫자 컬럼이 운송장번호
-        if (trackIdx < 0) {
-          for (let ri = 0; ri < Math.min(20, rawRows.length); ri++) {
-            const row = rawRows[ri];
-            const ni = row.findIndex(isNameCol);
-            if (ni < 0) continue;
-            const dataRows = rawRows.slice(ri + 1).filter(r => r && r.some(c => String(c).trim() !== ''));
-            if (!dataRows.length) break;
-            const maxLen = Math.max(row.length, ...dataRows.map(r => r.length));
-            for (let c = maxLen - 1; c >= 0; c--) {
-              const hdr = norm(row[c] || '');
-              if (/전화|연락처|우편|수량|주문/.test(hdr)) continue;
-              const vals = dataRows.map(r => String(r[c] == null ? '' : r[c]).replace(/\s/g,'')).filter(v => v !== '');
-              if (!vals.length) continue;
-              // 운송장번호에 하이픈이 섞여 오는 경우(예: 롯데택배 2683-7772-3235)도 인식
-              const hits = vals.filter(v => /^[\d-]{9,20}$/.test(v) && /^\d{9,15}$/.test(v.replace(/-/g,''))).length;
-              if (hits >= Math.max(1, Math.ceil(vals.length * 0.5))) {
-                trackIdx = c; nameIdx = ni; hdrRow = ri;
-                courierIdx = row.findIndex(isCourierCol);
-                addrIdx = row.findIndex(isRecvAddrCol);
-                if (addrIdx < 0) addrIdx = row.findIndex(isAddrCol);
-                break;
-              }
-            }
-            if (trackIdx >= 0) break;
-          }
-        }
+        const {trackIdx, nameIdx, orderCodeIdx, courierIdx, addrIdx, hdrRow} = det;
         if (trackIdx < 0 || (nameIdx < 0 && orderCodeIdx < 0)) {
-          const hdrSample = rawRows.length > 0 ? rawRows[0].filter(c=>c).slice(0,8).join(' / ') : '(행 없음)';
+          const hdrSample = rawRows && rawRows.length > 0 ? rawRows[0].filter(c=>c).slice(0,8).join(' / ') : '(행 없음)';
           invShowTrackError(file.name,
             (trackIdx < 0 ? '❌운송장 컬럼 없음' : '✅운송장OK') + ' | ' +
             (nameIdx  < 0 ? '❌수령인 컬럼 없음' : '✅수령인OK') +
             '\n읽힌 헤더: ' + hdrSample +
-            ' (총 ' + (rawRows[0]||[]).length + '열, ' + rawRows.length + '행)');
+            ' (총 ' + (rawRows&&rawRows[0]||[]).length + '열, ' + (rawRows?rawRows.length:0) + '행)');
           return;
         }
         // map: 수령인 → [{no, courier, addr}]  |  orderCodeMap: 주문번호 → [{no, courier}]
@@ -7881,7 +7900,10 @@ function invLoadTracks(files, vendorHint) {
           const name      = nameIdx      >= 0 ? _normName(row[nameIdx]).trim() : '';
           const orderCode = orderCodeIdx >= 0 ? String(row[orderCodeIdx]||'').replace(/\s+/g,'').trim() : '';
           const no        = String(row[trackIdx]||'').replace(/\s+/g,'').trim();
-          if (!no) return;
+          // 병합된 헤더 셀은 SheetJS가 하위 행에도 값을 그대로 채워 넣어서(예: "운송장번호"가 데이터
+          // 행처럼 보이는 두 번째 헤더 줄에도 나타남) 실제 운송장번호가 아닌 걸 걸러내기 위해
+          // 숫자가 하나도 없는 값은(진짜 운송장번호는 항상 숫자를 포함) 무시
+          if (!no || !/\d/.test(no)) return;
           const courier = courierIdx >= 0 ? normalizeCourier(row[courierIdx]) : '';
           const addr    = addrIdx    >= 0 ? String(row[addrIdx]||'').trim()    : '';
           if (name)      (map[name]           || (map[name]           = [])).push({no, courier, addr});
@@ -8224,6 +8246,15 @@ function invAddrScoreLoose(a, b) {
   if (!x || !y) return 0;
   return _lcsLen(x, y);
 }
+// 일부 발주처 회신파일은 개인정보 보호를 위해 주소 뒷부분을 "****"로 가려서 보냄(예: 참맛더드림) —
+// 마스킹 시작 지점 이후는 비교해봤자 의미가 없으니 앞부분(가려지지 않은 부분)까지만 잘라서 비교
+function _invAddrTruncateMasked(s) {
+  const i = String(s||'').indexOf('*');
+  return i >= 0 ? String(s).slice(0, i) : String(s||'');
+}
+function invAddrScoreSmart(a, b) {
+  return invAddrScoreLoose(_invAddrTruncateMasked(a), _invAddrTruncateMasked(b));
+}
 
 // 회신파일의 발주처 라벨과 주문 행의 발주처 표기가 같은 발주처의 다른 별칭/표기인지 판단하기 위해
 // VENDOR_PREFIXES(및 사용자 등록 발주처)를 이용해 대표 이름으로 정규화
@@ -8257,7 +8288,12 @@ function invProcess() {
       }
       return fallback;
     };
-    const nameCol      = _findCol(['수령자','받는분성명','수취인명','수령인','수화인','수하인'], '수령자');
+    // 정확히 일치하는 후보명이 없어도(예: "수하인명"처럼 뒤에 다른 글자가 더 붙은 경우) 놓치지 않도록
+    // 주소컬럼 탐지와 동일하게 정규식 포함 매칭을 우선 시도하고, 못 찾으면 기존 후보 목록으로 폴백
+    const nameCol      = Object.keys(sample).find(k => {
+      const n = k.replace(/\s/g,'');
+      return /받는분|수취인명|수령자|수취인|받는사람|수신자|수령인|수화인|수하인/.test(n) && !/주소|전화|전번|연락처|우편|코드|번호/.test(n);
+    }) || _findCol(['수령자','받는분성명','수취인명','수령인','수화인','수하인'], '수령자');
     const addrCol      = Object.keys(sample).find(k => { const n = k.replace(/\s/g,''); return /주소/.test(n) && !/보내는|발송|출고|반품|반송/.test(n); }) || '';
     const codeCol      = _findCol(['판매자상품코드','상품코드'], '판매자상품코드');
     const courierCol   = _findCol(['택배사'], '택배사');
@@ -8336,9 +8372,11 @@ function invProcess() {
           entry = entries[0];                       // 동일 이름 1건 → 모호하지 않음
         } else {
           // 동명이인: 수취인 주소가 가장 잘 맞는 항목 선택. 확실히 구분될 때만 채택.
+          // (회신파일 주소가 "****"로 일부 가려져 오거나 표기가 달라도(전북 vs 전라북도 등)
+          //  가려지지 않은 앞부분만으로 비교하도록 invAddrScoreSmart 사용)
           if (oAddr) {
-            const scored = entries.map(e => ({e, s: invAddrScore(e.addr, oAddr)})).sort((p,q) => q.s - p.s);
-            if (scored[0].s >= 8 && (scored.length < 2 || scored[0].s > scored[1].s)) entry = scored[0].e;
+            const scored = entries.map(e => ({e, s: invAddrScoreSmart(e.addr, oAddr)})).sort((p,q) => q.s - p.s);
+            if (scored[0].s >= 6 && (scored.length < 2 || scored[0].s > scored[1].s)) entry = scored[0].e;
           }
           if (!entry) {
             // 주소로 못 가림 → 자동매칭 대신 사용자가 직접 선택하도록 후보 보관
