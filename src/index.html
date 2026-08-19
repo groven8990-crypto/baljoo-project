@@ -827,6 +827,8 @@
     <button class="btn btn-primary" onclick="invProcess()" id="invProcessBtn" disabled>🔄 매칭 실행</button>
     <button class="btn btn-green" onclick="invDownload()" id="invDownloadBtn" disabled>⬇️ 완성 파일 다운로드</button>
     <button class="btn" onclick="invReset()">🔁 초기화</button>
+    <button class="btn" onclick="pickInvSaveFolder()" style="background:var(--bg2);border:1px solid var(--border)">📁 저장 폴더 설정</button>
+    <span id="invSaveFolderName" style="font-size:12px;color:var(--text3);align-self:center">저장 폴더 미설정</span>
   </div>
   <div id="invStatus" style="margin-top:10px;font-size:13px;color:var(--text2)"></div>
 
@@ -8234,7 +8236,66 @@ function invResolveDup(rowIdx, ci) {
   invRenderResult();
 }
 
-function invDownload() {
+// ── 송장입력 완성파일 저장 폴더 (발주서와 동일 패턴 — 서브폴더 없이 선택 폴더에 바로 저장) ──
+let _invSaveDirHandle = null;
+async function _updateInvFolderLabel(){
+  const nameEl = document.getElementById('invSaveFolderName');
+  if (!nameEl) return;
+  if (_invSaveDirHandle) {
+    nameEl.textContent = '📂 ' + _invSaveDirHandle.name + ' (선택 폴더에 바로 저장)';
+    nameEl.style.color = 'var(--primary)';
+  } else {
+    nameEl.textContent = '저장 폴더 미설정';
+    nameEl.style.color = '';
+  }
+}
+async function _restoreInvSaveFolder(){
+  try {
+    const handle = await _idbGet('invSaveDirHandle');
+    if (!handle) return;
+    const perm = await handle.queryPermission({mode:'readwrite'});
+    _invSaveDirHandle = handle;
+    const nameEl = document.getElementById('invSaveFolderName');
+    if (nameEl) {
+      if (perm === 'granted') {
+        nameEl.textContent = '📂 ' + handle.name + ' (선택 폴더에 바로 저장)';
+        nameEl.style.color = 'var(--success)';
+      } else {
+        nameEl.textContent = '📂 ' + handle.name + ' (재실행 시 승인 필요 — 다운로드 시 자동 요청)';
+        nameEl.style.color = 'var(--warn)';
+      }
+    }
+  } catch(e) { /* 무시 */ }
+}
+async function pickInvSaveFolder(){
+  try {
+    if (!window.showDirectoryPicker) {
+      alert('이 브라우저는 폴더 직접 저장을 지원하지 않습니다.\n완성 파일이 Downloads 폴더에 저장됩니다.');
+      return;
+    }
+    const handle = await window.showDirectoryPicker({mode:'readwrite', startIn:'desktop'});
+    _invSaveDirHandle = handle;
+    await _idbPut('invSaveDirHandle', handle);
+    await _updateInvFolderLabel();
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('폴더 선택 오류: ' + e.message);
+  }
+}
+async function _getInvSaveDirHandle(){
+  if (!_invSaveDirHandle) return null;
+  try {
+    const perm = await _invSaveDirHandle.queryPermission({mode:'readwrite'});
+    if (perm === 'prompt') {
+      const granted = await _invSaveDirHandle.requestPermission({mode:'readwrite'});
+      if (granted !== 'granted') return null;
+    } else if (perm !== 'granted') return null;
+    return _invSaveDirHandle;
+  } catch(e) {
+    console.warn('송장입력 폴더 접근 실패:', e);
+    return null;
+  }
+}
+async function invDownload() {
   try {
     if (!invResultData || !invOrderWb) return;
     const unresolved = invPreviewRows.filter(r => r.status==='dup' && !r.track).length;
@@ -8320,10 +8381,27 @@ function invDownload() {
       ? vendorNames.join('_')
       : (((invOrderFileName||'').split(' + ')[0] || '송장입력').replace(/\.(xls|xlsx)$/i, ''));
     const fname = base.replace(/[\\/:*?"<>|]/g, '_') + '_송장입력.xlsx';
-    XLSX.writeFile(wbCopy, fname);
 
     const statusEl = document.getElementById('invStatus');
-    if (statusEl) statusEl.textContent = '✅ 다운로드 완료: ' + fname + ' (매칭 ' + matchedCnt + '건' + (unmatchedCnt > 0 ? ', 미매칭 ' + unmatchedCnt + '건 제외' : '') + ')';
+    const subDir = await _getInvSaveDirHandle();
+    let savedMsg;
+    if (subDir) {
+      try {
+        const u8 = XLSX.write(wbCopy, {type:'array', bookType:'xlsx'});
+        const blob = new Blob([u8], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        const fh = await subDir.getFileHandle(fname, {create:true});
+        const w = await fh.createWritable();
+        await w.write(blob); await w.close();
+        savedMsg = '✅ 폴더에 저장됨: ' + (_invSaveDirHandle?.name||'?') + '/' + fname;
+      } catch(e) {
+        console.warn('송장입력 폴더 저장 실패, 다운로드로 폴백:', e);
+      }
+    }
+    if (!savedMsg) {
+      XLSX.writeFile(wbCopy, fname);
+      savedMsg = '✅ 다운로드 완료: ' + fname;
+    }
+    if (statusEl) statusEl.textContent = savedMsg + ' (매칭 ' + matchedCnt + '건' + (unmatchedCnt > 0 ? ', 미매칭 ' + unmatchedCnt + '건 제외' : '') + ')';
   } catch(e) {
     console.error('invDownload 오류:', e);
     const statusEl = document.getElementById('invStatus');
@@ -9944,7 +10022,7 @@ function switchTab(name){
     if(name==='codes'){try{renderCodeList();}catch(e){console.error(e);}try{renderOptMapList();}catch(e){console.error(e);}try{renderUnmatchedHints();}catch(e){console.error(e);}try{renderOmPreview();}catch(e){console.error(e);}try{renderCodeMappingList();}catch(e){console.error(e);}}
     if(name==='expense'){try{initExpenseTab();}catch(e){console.error(e);}}
     if(name==='income'){try{initIncomeTab();}catch(e){console.error(e);}}
-    if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}try{_invGmailRenderSenderChip();}catch(e){}}
+    if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}try{_invGmailRenderSenderChip();}catch(e){}try{_restoreInvSaveFolder();}catch(e){}}
     if(name==='recon'){try{reconInitIfNeeded();}catch(e){console.error(e);}}
     if(name==='report'){try{const d=document.getElementById('rptDate');if(d&&!d.value)d.value=_localISO();}catch(e){console.error(e);}}
     if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
