@@ -369,7 +369,7 @@
     <button class="sub-tab-btn active" id="stab-code" onclick="switchSubTab('code')">🔑 코드 등록</button>
     <button class="sub-tab-btn" id="stab-codemap" onclick="switchSubTab('codemap')">📋 변환 코드 목록</button>
     <button class="sub-tab-btn" id="stab-optmap" onclick="switchSubTab('optmap')">🔀 옵션 변환 규칙</button>
-    <button class="sub-tab-btn" id="stab-vendortpl" onclick="switchSubTab('vendortpl');renderCustomVendorList()">📇 발주처 양식</button>
+    <button class="sub-tab-btn" id="stab-vendortpl" onclick="switchSubTab('vendortpl');renderCustomVendorList();renderCustomFormatList()">📇 발주처 양식</button>
     <button class="sub-tab-btn" id="stab-gmail" onclick="switchSubTab('gmail');renderGmailSettingsArea()">📧 Gmail 자동발송</button>
   </div>
 
@@ -628,6 +628,36 @@
   <!-- 서브탭: 발주처 양식 ─────────────────────────────── -->
   <div class="sub-content" id="subtab-vendortpl">
     <div class="card">
+      <div class="card-title">🧩 새 양식 만들기 (엑셀 템플릿으로 직접)</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+        발주처가 요구하는 엑셀 양식 파일을 올리면 첫 줄(헤더)을 자동으로 읽어와요. 각 열이 어떤 정보인지 골라서 저장하면,
+        코드 수정 없이 바로 아래 "베이스 양식" 목록에 추가돼요.
+      </p>
+      <div class="upload-zone" id="cfUploadZone" onclick="document.getElementById('cfFile').click()"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="cfDropFile(event)">
+        <div style="font-size:13px">📄 엑셀 템플릿 파일을 끌어다 놓거나 클릭 (첫 줄 = 헤더로 인식)</div>
+        <input type="file" id="cfFile" accept=".xls,.xlsx" style="display:none" onchange="cfLoadFile(this.files[0]); this.value='';">
+      </div>
+      <button class="btn btn-sm" style="margin-top:8px" onclick="cfAddBlankColumn()">+ 열 직접 추가 (파일 없이)</button>
+      <div id="cfMapTable" style="margin-top:14px"></div>
+      <div id="cfSaveRow" style="display:none;gap:8px;align-items:end;margin-top:14px">
+        <div style="flex:1">
+          <label style="font-size:11px;color:var(--text3);font-weight:500">양식 이름</label>
+          <input class="inp" id="cfFormatName" placeholder="예: 튼튼마트">
+        </div>
+        <button class="btn btn-primary" onclick="cfSaveFormat()" style="height:36px">💾 이 양식 저장</button>
+      </div>
+      <div id="cfSaveErr" style="font-size:12px;color:var(--danger);margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🧩 직접 만든 양식 목록</div>
+      <div id="customFormatList"><p style="font-size:13px;color:var(--text3)">만든 양식이 없습니다.</p></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">📇 발주처 양식 추가</div>
       <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
         새 발주처를 코드 없이 등록할 수 있어요. 베이스 양식을 골라서 발주처 이름·코드 prefix 만 입력하면 발주서 생성에 바로 반영됩니다.<br>
@@ -651,7 +681,7 @@
       <div id="customVendorList"><p style="font-size:13px;color:var(--text3)">등록된 발주처 양식이 없습니다.</p></div>
     </div>
     <div class="alert alert-info" style="font-size:12px">
-      ℹ <b>베이스 양식</b>이란 발주서 컬럼 구조예요. 같은 베이스를 쓰는 발주처들은 똑같은 컬럼/순서로 엑셀이 만들어져요. 새 양식이 필요하면 코드 추가가 필요하니 알려주세요.<br>
+      ℹ <b>베이스 양식</b>이란 발주서 컬럼 구조예요. 같은 베이스를 쓰는 발주처들은 똑같은 컬럼/순서로 엑셀이 만들어져요. 기존 발주처와 컬럼 구조가 다르면 위 "🧩 새 양식 만들기"로 직접 만들 수 있어요.<br>
       <b>내장 발주처(별도 등록 불필요):</b> 일비 · 최고집 · 늘푸른우리 · 거풍푸드 · 생선상륙 · 일해수산 · 충남마른김수협 · 푸드엔드베스트 · 한마당식품 · 남부파머스 · 해담별 · 공덕농협 · 도매꾹 · 동일 · 그린캠 · <b>에이팩</b>(코드 prefix: 에이팩] 또는 사무실])
     </div>
   </div>
@@ -1527,6 +1557,50 @@ const VENDOR_PREFIXES = {
   '에이팩':        ['에이팩]','에이팩-','에이팩_','사무실]','사무실-','사무실_'],
   '우리뜰':        ['bfc]','bfc-','bfc_','우리뜰]','우리뜰-','우리뜰_'],
 };
+// 사용자가 직접 엑셀 양식을 올려서 만드는 "커스텀 양식" — 코드 수정 없이 새 컬럼 구조를 정의
+// 저장 형식: { '양식이름': { columns: [{header:'받는분성명', field:'recv_name', const:''}, ...] } }
+const LS_CUSTOM_FORMATS = 'yb_custom_formats';
+const CUSTOM_FORMAT_FIELDS = [
+  {key:'recv_name',     label:'받는사람 성명'},
+  {key:'recv_phone',    label:'받는사람 전화번호'},
+  {key:'recv_zip',      label:'받는사람 우편번호'},
+  {key:'recv_addr',     label:'받는사람 주소'},
+  {key:'item_name',     label:'상품명'},
+  {key:'option_name',   label:'옵션명'},
+  {key:'item_combined', label:'상품명+옵션 합침'},
+  {key:'qty',           label:'수량'},
+  {key:'memo',          label:'배송메세지'},
+  {key:'carrier',       label:'택배사'},
+  {key:'order_no',      label:'주문번호'},
+  {key:'vendor_code',   label:'원본 판매자상품코드'},
+  {key:'sender_name',   label:'보내는사람(우리) 성명'},
+  {key:'sender_phone',  label:'보내는사람(우리) 전화번호'},
+  {key:'sender_zip',    label:'보내는사람(우리) 우편번호'},
+  {key:'sender_addr',   label:'보내는사람(우리) 주소'},
+  {key:'__const__',     label:'— 고정값(항상 같은 값) —'},
+  {key:'__blank__',     label:'— 빈칸으로 둠 —'},
+];
+function loadCustomFormats(){ try{ return JSON.parse(localStorage.getItem(LS_CUSTOM_FORMATS)||'{}'); }catch{ return {}; } }
+function saveCustomFormats(map){ try{ localStorage.setItem(LS_CUSTOM_FORMATS, JSON.stringify(map)); }catch(e){} }
+// 커스텀 양식 컬럼 정의대로 주문 목록 → 시트 rows 배열 생성 (buildRows의 다른 case들과 동일한 반환 형태)
+function _buildFromCustomFormat(fmt, orders, alias){
+  const s = getSender(alias);
+  const GETTERS = {
+    recv_name: o=>o.recv_name, recv_phone: o=>o.recv_phone, recv_zip: o=>o.zip, recv_addr: o=>o.addr,
+    item_name: o=>o.item_name, option_name: o=>o.option_name, item_combined: o=>combined(o),
+    qty: o=>effQty(o), memo: o=>o.memo, carrier: o=>o.carrier||'', order_no: o=>o.order_no, vendor_code: o=>o.vendor_code,
+    sender_name: ()=>s.name, sender_phone: ()=>s.phone, sender_zip: ()=>s.zip, sender_addr: ()=>s.addr,
+  };
+  const cols = Array.isArray(fmt?.columns) ? fmt.columns : [];
+  const headers = cols.map(c => c.header || '');
+  const rows = orders.map(o => cols.map(c => {
+    if (!c || c.field === '__const__') return (c && c.const) || '';
+    if (c.field === '__blank__' || !c.field) return '';
+    const g = GETTERS[c.field];
+    return g ? (g(o) ?? '') : '';
+  }));
+  return [headers, ...rows];
+}
 // 사용자 등록 발주처 (UI 에서 추가) — 기존 양식을 베이스로 발주처 이름/prefix 만 새로
 // 저장 형식: { '발주처명': { prefixes: ['x]','x_'], baseFormat: '일비' } }
 const LS_CUSTOM_VENDORS = 'yb_custom_vendors';
@@ -1549,7 +1623,7 @@ function addCustomVendor(name, prefixesStr, baseFormat){
     alert(`'${name}' 은 이미 내장된 발주처예요. 다른 이름을 써주세요.`);
     return false;
   }
-  if (!BASE_FORMAT_OPTIONS.includes(baseFormat)) { alert('베이스 양식을 선택해 주세요.'); return false; }
+  if (!BASE_FORMAT_OPTIONS.includes(baseFormat) && !loadCustomFormats()[baseFormat]) { alert('베이스 양식을 선택해 주세요.'); return false; }
   const prefixes = String(prefixesStr||'').split(',').map(s=>s.trim()).filter(Boolean);
   if (!prefixes.length) { alert('코드 prefix 를 한 개 이상 입력해 주세요. (콤마 구분)'); return false; }
   const cv = loadCustomVendors();
@@ -1570,8 +1644,15 @@ function fillBaseFormatSelect(){
   const sel = document.getElementById('cvBaseFormat');
   if (!sel) return;
   const cur = sel.value;
-  sel.innerHTML = '<option value="">선택…</option>' +
+  const customNames = Object.keys(loadCustomFormats()).sort();
+  let html = '<option value="">선택…</option>' +
     BASE_FORMAT_OPTIONS.map(b => `<option value="${b}" ${cur===b?'selected':''}>${b} 양식</option>`).join('');
+  if (customNames.length) {
+    html += '<optgroup label="직접 만든 양식">' +
+      customNames.map(n => `<option value="${escHtml(n)}" ${cur===n?'selected':''}>${escHtml(n)}</option>`).join('') +
+      '</optgroup>';
+  }
+  sel.innerHTML = html;
 }
 function onAddCustomVendor(){
   const errEl = document.getElementById('cvAddError');
@@ -1629,6 +1710,151 @@ function renderCustomVendorList(){
       </tr>`;
     }).join('')}</tbody>
   </table>`;
+}
+// ── 🧩 새 양식 만들기 (엑셀 템플릿 업로드 → 컬럼 매핑) ──
+let _cfColumns = [];
+function cfDropFile(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) cfLoadFile(f);
+}
+function cfLoadFile(file){
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      const headerRow = rows[0] || [];
+      let lastIdx = -1;
+      headerRow.forEach((v,i) => { if (String(v||'').trim()) lastIdx = i; });
+      if (lastIdx < 0) { alert('첫 줄(헤더)에서 값을 찾지 못했어요.'); return; }
+      _cfColumns = headerRow.slice(0, lastIdx+1).map(h => ({header: String(h||'').trim(), field:'', const:''}));
+      cfRenderMapTable();
+    } catch(err) {
+      alert('파일을 읽지 못했어요: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+// 화면(입력칸들)에 있는 현재 편집 내용을 _cfColumns로 되읽어옴 — 행 추가/삭제 전에 다른 행 편집분을 잃지 않기 위함
+function _cfSyncFromDom(){
+  const headerInputs = document.querySelectorAll('#cfMapTable .cf-header');
+  if (!headerInputs.length) return;
+  const next = [];
+  headerInputs.forEach(inp => {
+    const idx = parseInt(inp.dataset.idx);
+    const fieldSel = document.querySelector(`#cfMapTable .cf-field[data-idx="${idx}"]`);
+    const constInp = document.querySelector(`#cfMapTable .cf-const[data-idx="${idx}"]`);
+    next[idx] = { header: inp.value, field: fieldSel ? fieldSel.value : '', const: constInp ? constInp.value : '' };
+  });
+  _cfColumns = next.filter(Boolean);
+}
+function cfAddBlankColumn(){
+  _cfSyncFromDom();
+  _cfColumns.push({header:'', field:'', const:''});
+  cfRenderMapTable();
+}
+function cfRemoveColumn(idx){
+  _cfSyncFromDom();
+  _cfColumns.splice(idx,1);
+  cfRenderMapTable();
+}
+function cfOnFieldChange(sel){
+  const constInp = document.querySelector(`#cfMapTable .cf-const[data-idx="${sel.dataset.idx}"]`);
+  if (constInp) constInp.disabled = (sel.value !== '__const__');
+}
+function cfRenderMapTable(){
+  const el = document.getElementById('cfMapTable');
+  const saveRow = document.getElementById('cfSaveRow');
+  if (!el) return;
+  if (!_cfColumns.length) {
+    el.innerHTML = '';
+    if (saveRow) saveRow.style.display = 'none';
+    return;
+  }
+  if (saveRow) saveRow.style.display = 'flex';
+  const fieldOptions = CUSTOM_FORMAT_FIELDS.map(f => `<option value="${f.key}">${escHtml(f.label)}</option>`).join('');
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:#F3F4F6;color:#374151">
+      <th style="padding:6px 8px;text-align:left">열 이름(헤더)</th>
+      <th style="padding:6px 8px;text-align:left">어떤 정보인가요?</th>
+      <th style="padding:6px 8px;text-align:left">고정값(선택 시만)</th>
+      <th style="padding:6px 8px"></th>
+    </tr></thead>
+    <tbody>
+      ${_cfColumns.map((c,i) => `<tr style="border-bottom:1px solid #F3F4F6">
+        <td style="padding:4px 6px"><input class="inp cf-header" data-idx="${i}" value="${escHtml(c.header||'')}" style="font-size:12px"></td>
+        <td style="padding:4px 6px"><select class="inp cf-field" data-idx="${i}" onchange="cfOnFieldChange(this)" style="font-size:12px">
+          <option value="">선택…</option>${fieldOptions}
+        </select></td>
+        <td style="padding:4px 6px"><input class="inp cf-const" data-idx="${i}" value="${escHtml(c.const||'')}" ${c.field==='__const__'?'':'disabled'} style="font-size:12px"></td>
+        <td style="padding:4px 6px;text-align:right"><button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="cfRemoveColumn(${i})">×</button></td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+  // select는 innerHTML로 만들면 값이 초기화되므로 다시 세팅
+  _cfColumns.forEach((c,i) => {
+    const sel = document.querySelector(`#cfMapTable .cf-field[data-idx="${i}"]`);
+    if (sel) sel.value = c.field || '';
+  });
+}
+function cfSaveFormat(){
+  _cfSyncFromDom();
+  const errEl = document.getElementById('cfSaveErr');
+  if (errEl) errEl.textContent = '';
+  const name = (document.getElementById('cfFormatName').value||'').trim();
+  if (!name) { if (errEl) errEl.textContent = '양식 이름을 입력해 주세요.'; return; }
+  if (!_cfColumns.length) { if (errEl) errEl.textContent = '열이 하나도 없어요. 파일을 올리거나 열을 추가해 주세요.'; return; }
+  if (_cfColumns.some(c => !c.field)) { if (errEl) errEl.textContent = '모든 열에 어떤 정보인지 선택해 주세요.'; return; }
+  const formats = loadCustomFormats();
+  if (VENDOR_PREFIXES[name] && !formats[name]) {
+    if (errEl) errEl.textContent = `'${name}' 은 이미 다른 발주처/양식 이름으로 쓰이고 있어요. 다른 이름을 써주세요.`;
+    return;
+  }
+  formats[name] = { columns: _cfColumns.map(c => ({header: c.header||'', field: c.field, const: c.const||''})) };
+  saveCustomFormats(formats);
+  _cfColumns = [];
+  document.getElementById('cfFormatName').value = '';
+  cfRenderMapTable();
+  renderCustomFormatList();
+  fillBaseFormatSelect();
+  try { _poShowToast(`✅ '${name}' 양식 저장됨 — 발주처 추가할 때 베이스 양식으로 고르시면 돼요`); } catch(e){}
+}
+function removeCustomFormat(name){
+  const cv = loadCustomVendors();
+  const affected = Object.entries(cv).filter(([,d]) => d && d.baseFormat === name).map(([n]) => n);
+  const warn = affected.length ? `\n\n⚠ 이 양식을 쓰는 발주처: ${affected.join(', ')} — 삭제하면 기본 양식으로 바뀌어요.` : '';
+  if (!confirm(`'${name}' 양식을 삭제할까요?${warn}`)) return;
+  const formats = loadCustomFormats();
+  delete formats[name];
+  saveCustomFormats(formats);
+  renderCustomFormatList();
+  fillBaseFormatSelect();
+}
+function renderCustomFormatList(){
+  const el = document.getElementById('customFormatList');
+  if (!el) return;
+  const formats = loadCustomFormats();
+  const names = Object.keys(formats).sort();
+  if (!names.length) {
+    el.innerHTML = '<p style="font-size:13px;color:var(--text3)">만든 양식이 없습니다.</p>';
+    return;
+  }
+  el.innerHTML = names.map(n => {
+    const cols = formats[n].columns || [];
+    const preview = cols.map(c => escHtml(c.header || '(무제)')).join(', ');
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-weight:700;font-size:13px">${escHtml(n)}</span>
+        <span style="font-size:11px;color:var(--text3)">(${cols.length}열)</span>
+        <button class="btn btn-sm" style="margin-left:auto;color:var(--danger);border-color:var(--danger)" onclick="removeCustomFormat('${esc(n)}')">삭제</button>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">${preview}</div>
+    </div>`;
+  }).join('');
 }
 // 발주 마감시간 우선순위 (작을수록 빨리 마감 → 위에 정렬)
 const VENDOR_CUTOFF_PRIORITY = {
@@ -4859,6 +5085,11 @@ function buildRows(vk,orders,alias){
   if (defCarrier) {
     const isKnown = c => /롯데|cj|대한통운|우체국|한진|로젠|경동/i.test(String(c||'').trim());
     orders = orders.map(o => isKnown(o.carrier) ? o : {...o, carrier: defCarrier});
+  }
+  // 사용자가 직접 만든(컬럼 매핑) 양식이면 그걸로 생성
+  const _customFormats = loadCustomFormats();
+  if (_customFormats[vk]) {
+    return _buildFromCustomFormat(_customFormats[vk], orders, alias);
   }
   const s=getSender(alias);
   switch(vk){
