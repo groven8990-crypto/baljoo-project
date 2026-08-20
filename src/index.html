@@ -1590,7 +1590,7 @@ function _buildFromCustomFormat(fmt, orders, alias){
     recv_name: o=>o.recv_name, recv_phone: o=>o.recv_phone, recv_zip: o=>o.zip, recv_addr: o=>o.addr,
     item_name: o=>o.item_name, option_name: o=>o.option_name, item_combined: o=>combined(o),
     qty: o=>effQty(o), memo: o=>o.memo, carrier: o=>o.carrier||'', order_no: o=>o.order_no, vendor_code: o=>o.vendor_code,
-    sender_name: ()=>s.name, sender_phone: ()=>s.phone, sender_zip: ()=>s.zip, sender_addr: ()=>s.addr,
+    sender_name: o=>effSenderName(o,s), sender_phone: o=>effSenderPhone(o,s), sender_zip: ()=>s.zip, sender_addr: ()=>s.addr,
   };
   const cols = Array.isArray(fmt?.columns) ? fmt.columns : [];
   const headers = cols.map(c => c.header || '');
@@ -3032,6 +3032,7 @@ function _addSikjaeOrdersFromRows(rows, hr){
     mm: findCol('고객메모'),
     vc: findCol('상품관리코드'),
     sl: findCol('택배발송자명'),
+    sc: findCol('택배발송자연락처'),
   };
   const existingOrderNos = new Set(allOrders.map(o => String(o.order_no||'').trim()).filter(Boolean));
   let added = 0, dupSkipped = 0;
@@ -3079,6 +3080,9 @@ function _addSikjaeOrdersFromRows(rows, hr){
       carrier: '',
       order_amt,
       order_date: '',
+      // 발주서의 보내는분성명/전화번호는 우리 회사 정보 대신 이 값을 씀(주소는 그대로 우리 회사 주소 유지)
+      ship_sender_name: String(r[C.sl]||'').trim(),
+      ship_sender_phone: String(r[C.sc]||'').trim(),
     };
     allOrders.push(order);
     if (vk) {
@@ -4948,6 +4952,10 @@ ${today} 발주 건 송부드립니다.
 function combined(o){return o.option_name?o.item_name+' '+o.option_name:o.item_name;}
 // 유효 수량 = 실주문수량 × 코드내장수량
 function effQty(o){return (o.qty||1)*(o.code_qty||1);}
+// 보내는분 성명/전화번호 — 식자재코리아처럼 주문 건마다 택배발송자(명/연락처)가 따로 지정된 경우
+// 그 값을 우선 쓰고, 없으면 평소처럼 발주처 공통 보내는사람(getSender) 값을 씀. 주소는 항상 공통 값 사용.
+function effSenderName(o, s){ return (o && o.ship_sender_name) ? o.ship_sender_name : s.name; }
+function effSenderPhone(o, s){ return (o && o.ship_sender_phone) ? o.ship_sender_phone : s.phone; }
 // 일비 박대 특수처리: 품목명 칸에 옵션명만
 function ilbiItem(o){
   if(o.item_name==='박대'||o.item_name==='박대/') return o.option_name||o.item_name;
@@ -5096,19 +5104,19 @@ function buildRows(vk,orders,alias){
   switch(vk){
     case '일비':case '일해수산':case '충남마른김수협':case '그린캠':case '에이팩':
       return [['받는분성명','받는분전화번호','받는분주소(전체, 분할)','품목명','수량','배송메세지','','택배사','보내는분성명','보내는분주소(전체, 분할)','보내는분전화번호'],
-        ...orders.map(o=>[o.recv_name,o.recv_phone,o.addr,ilbiItem(o),effQty(o),o.memo,'',o.carrier||'',s.name,s.addr,s.phone])];
+        ...orders.map(o=>[o.recv_name,o.recv_phone,o.addr,ilbiItem(o),effQty(o),o.memo,'',o.carrier||'',effSenderName(o,s),s.addr,effSenderPhone(o,s)])];
     case '최고집':
       return [['고객주문번호','상품코드','품목명','수량','주문자성명','주문자전화번호','받는분성명','받는분전화번호','받는분우편번호','받는분주소(전체)','배송메세지','공급가','택배사','송장번호'],
-        ...orders.map(o=>[o.order_no,'',combined(o),effQty(o),s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,o.memo,'','',''])];
+        ...orders.map(o=>[o.order_no,'',combined(o),effQty(o),effSenderName(o,s),effSenderPhone(o,s),o.recv_name,o.recv_phone,o.zip,o.addr,o.memo,'','',''])];
     case '늘푸른우리':
       return [['제품명','옵션명(옵션 없을시 공란)','수량','수령인','우편번호',' 주  소','전화번호','배송메세지','업체명(필수)','업체주소(필수)','업체전화(필수)','주문번호(없을시 공란)'],
-        ...orders.map(o=>[o.item_name,o.option_name,effQty(o),o.recv_name,o.zip,o.addr,o.recv_phone,o.memo,s.name,s.addr,s.phone,o.order_no])];
+        ...orders.map(o=>[o.item_name,o.option_name,effQty(o),o.recv_name,o.zip,o.addr,o.recv_phone,o.memo,effSenderName(o,s),s.addr,effSenderPhone(o,s),o.order_no])];
     case '거풍푸드':
       return [['구매자','구매자전화번호','보내는분주소','노출상품명(옵션명)','수량','수취인','수취인전화번호','수취인 주소','배송메세지'],
-        ...orders.map(o=>[s.name,s.phone,s.addr,combined(o),effQty(o),o.recv_name,o.recv_phone,o.addr,o.memo])];
+        ...orders.map(o=>[effSenderName(o,s),effSenderPhone(o,s),s.addr,combined(o),effQty(o),o.recv_name,o.recv_phone,o.addr,o.memo])];
     case '생선상륙':
       return [['상품명 ','수량','수화인','수화인전번','수화인주소','배송메모','지불조건','운임타입','송화인','송화인전번','송화인주소'],
-        ...orders.map(o=>[combined(o),effQty(o),o.recv_name,o.recv_phone,o.addr,o.memo,'','',s.name,s.phone,s.addr])];
+        ...orders.map(o=>[combined(o),effQty(o),o.recv_name,o.recv_phone,o.addr,o.memo,'','',effSenderName(o,s),effSenderPhone(o,s),s.addr])];
     case '공덕농협':
       return [['고객주문번호','품목명','박스수량','주문자성명','주문자전화번호','주문자주소(전체, 분할)','받는분성명','받는분전화번호','받는분기타연락처','받는분주소(전체, 분할)','배송메세지1','박스타입'],
         ...orders.map(o => {
@@ -5117,23 +5125,23 @@ function buildRows(vk,orders,alias){
           const um = String(o.product||'').match(/\d+\s*(봉|박스|팩|개|병|세트|set|EA)/i);
           const unit = um ? um[1] : '개';
           const itemFull = combined(o) + ' ' + effQty(o) + unit;
-          return [o.order_no, itemFull, '', s.name, s.phone, s.addr, o.recv_name, o.recv_phone, '', o.addr, o.memo, ''];
+          return [o.order_no, itemFull, '', effSenderName(o,s), effSenderPhone(o,s), s.addr, o.recv_name, o.recv_phone, '', o.addr, o.memo, ''];
         })];
     case '푸드엔드베스트':
       return [['예약구분','집하예정일','보내는분성명','보내는분전화번호','보내는분기타연락처','보내는분우편번호','보내는분주소(전체, 분할)','받는분성명','받는분전화번호','받는분기타연락처','받는분우편번호','받는분주소(전체, 분할)','운송장번호','고객주문번호','품목명','박스수량','박스타입','기본운임','배송메세지1','배송메세지2','운임구분'],
-        ...orders.map(o=>['','',s.name,s.phone,'',s.zip,s.addr,o.recv_name,o.recv_phone,'',o.zip,o.addr,'',o.order_no,foodenItem(o),1,'','',o.memo,'',''])];
+        ...orders.map(o=>['','',effSenderName(o,s),effSenderPhone(o,s),'',s.zip,s.addr,o.recv_name,o.recv_phone,'',o.zip,o.addr,'',o.order_no,foodenItem(o),1,'','',o.memo,'',''])];
     case '우리뜰':
       return [['품목명','수량','보내는분성명','보내는분연락처','받는분성명','받는분전화번호','받는분기타연락처','받는분주소(전체, 분할)','배송메세지1'],
-        ...orders.map(o=>[combined(o),effQty(o),s.name,s.phone,o.recv_name,o.recv_phone,'',o.addr,o.memo])];
+        ...orders.map(o=>[combined(o),effQty(o),effSenderName(o,s),effSenderPhone(o,s),o.recv_name,o.recv_phone,'',o.addr,o.memo])];
     case '한마당식품':
       return [['주문번호','주문상품고유번호','주문일','주문자명','주문자연락처','수령인명','수령인연락처','우편번호','주소','상품코드','상품명','고객선택옵션','주문수량','','','','배송비타입','배송비','추가배송비','배송시요청사항','추가구성상품','택배사**','배송번호','송하인정보','송하인전화번호','송하인 주소','묶음설정','패키지명','관리자메모'],
-        ...orders.map(o=>[o.order_no,'','',s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,'',o.item_name,o.option_name,effQty(o),'','','','','0','0',o.memo,'','','',s.name,s.phone,s.addr,'','',''])];
+        ...orders.map(o=>[o.order_no,'','',effSenderName(o,s),effSenderPhone(o,s),o.recv_name,o.recv_phone,o.zip,o.addr,'',o.item_name,o.option_name,effQty(o),'','','','','0','0',o.memo,'','','',effSenderName(o,s),effSenderPhone(o,s),s.addr,'','',''])];
     case '남부파머스':
       return [['보내는분성명','보내는분전화번호','보내는분기타연락처','보내는분우편번호','보내는분주소(전체, 분할)','받는분성명','받는분전화번호','받는분기타연락처','받는분우편번호','받는분주소(전체, 분할)','품목명','수량','배송메세지1','주문번호'],
-        ...orders.map(o=>[s.name,s.phone,'',s.zip,s.addr,o.recv_name,o.recv_phone,'',o.zip,o.addr,combined(o),effQty(o),o.memo,o.order_no])];
+        ...orders.map(o=>[effSenderName(o,s),effSenderPhone(o,s),'',s.zip,s.addr,o.recv_name,o.recv_phone,'',o.zip,o.addr,combined(o),effQty(o),o.memo,o.order_no])];
     case '해담별':
       return [['주문일시','품목명','박스수량','주문자\r\n성명','주문자\r\n전화번호','받는분\r\n성명','받는분\r\n전화번호','받는분\r\n우편번호','받는분주소\r\n(전체, 분할)','배송메세지1','공급가','택배사','송장번호','코드','고객주문번호','주문자주소'],
-        ...orders.map(o=>['',combined(o),effQty(o),s.name,s.phone,o.recv_name,o.recv_phone,o.zip,o.addr,o.memo,'','','','',o.order_no,s.addr])];
+        ...orders.map(o=>['',combined(o),effQty(o),effSenderName(o,s),effSenderPhone(o,s),o.recv_name,o.recv_phone,o.zip,o.addr,o.memo,'','','','',o.order_no,s.addr])];
     case '도매꾹': {
       // 형식: 도매꾹]상품번호/옵션코드:옵션명-수량  또는  상품번호:옵션명-수량
       //  - ] 없으면 전체 코드가 상품번호 후보
@@ -5188,7 +5196,7 @@ function buildRows(vk,orders,alias){
         const totalKg = _dongilTotalKg(o);
         // 3kg 초과 시 균등 분할: ceil(total/3)개 박스, 각 박스 최대 3kg
         for (const chunkKg of _splitDongilKg(totalKg)) {
-          dataRows.push([o.recv_name, o.recv_phone, '', o.zip, o.addr, chunkKg, '깐마늘 1kg', s.name, s.phone, s.addr, o.memo, o.order_no, '', '']);
+          dataRows.push([o.recv_name, o.recv_phone, '', o.zip, o.addr, chunkKg, '깐마늘 1kg', effSenderName(o,s), effSenderPhone(o,s), s.addr, o.memo, o.order_no, '', '']);
         }
       }
       return [hdr, ...dataRows];
