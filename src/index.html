@@ -8754,6 +8754,20 @@ async function invDownload() {
       savedMsg = '✅ 다운로드 완료: ' + fname;
     }
     if (statusEl) statusEl.textContent = savedMsg + ' (매칭 ' + matchedCnt + '건' + (unmatchedCnt > 0 ? ', 미매칭 ' + unmatchedCnt + '건 제외' : '') + ')';
+
+    // 다운로드 완료 후 운송장 회신파일 업로드 목록은 초기화 — 주문 파일(invOrderData)은 그대로 둬서
+    // 다음에 도착하는 회신파일을 이어서 같은 주문에 매칭할 수 있게 함
+    invTrackFiles = [];
+    invResultData = null;
+    invPreviewRows = [];
+    invResolveCtx = null;
+    const previewCard = document.getElementById('invPreviewCard');
+    if (previewCard) previewCard.style.display = 'none';
+    const dlBtn = document.getElementById('invDownloadBtn');
+    if (dlBtn) dlBtn.disabled = true;
+    invRenderTrackList();
+    invRenderVendorCard();
+    invCheckReady();
   } catch(e) {
     console.error('invDownload 오류:', e);
     const statusEl = document.getElementById('invStatus');
