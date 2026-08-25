@@ -154,6 +154,7 @@
   <button class="tab-btn" id="tabBtn-price" onclick="switchTab('price')">📊 매입단가표</button>
   <button class="tab-btn" id="tabBtn-salesreport" onclick="switchTab('salesreport')">📈 매출 보고용</button>
   <button class="tab-btn" id="tabBtn-weeklyreport" onclick="switchTab('weeklyreport')">📆 주간 매출·매입</button>
+  <button class="tab-btn" id="tabBtn-handover" onclick="switchTab('handover')">📘 인수인계</button>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -10319,6 +10320,13 @@ function switchSubTab(name){
   document.getElementById('stab-'+name).classList.add('active');
   if(name==='codemap') renderCodeMappingList();
 }
+// 인수인계 탭 전용 서브탭 전환 — switchSubTab과 분리해서 코드관리 등 다른 탭의 서브탭 상태를 안 건드림
+function switchHoSubTab(name){
+  document.querySelectorAll('.ho-sub-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.ho-sub-tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('hosubtab-'+name).classList.add('active');
+  document.getElementById('hostab-'+name).classList.add('active');
+}
 function goStep(n){
   // 2→3 진입 시 비표준 코드 확인 안 끝났으면 경고만 띄우고 진행 허용
   if (n === 3) {
@@ -13942,6 +13950,351 @@ function reconExportXlsx() {
   </div>
 </div>
 </div><!-- /tab-weeklyreport -->
+
+<!-- ══════════════════════════════════════════════════════════
+     TAB: 인수인계
+══════════════════════════════════════════════════════════ -->
+<div class="tab-content" id="tab-handover">
+<div class="container">
+
+  <div class="card">
+    <div class="card-title">📘 발주 자동화 인수인계 가이드</div>
+    <p style="font-size:13px;color:var(--text2);line-height:1.7">
+      이 페이지 전체(발주서 생성부터 주간 매출·매입까지)가 하는 일과, 다음 담당자가 화면만 봐서는
+      알기 어려운 동작 방식·주의사항을 정리했어요. 문제가 생기면 여기부터 확인해보세요.
+    </p>
+    <div class="alert alert-info" style="margin-top:12px">
+      <b>용어 먼저</b> — <b>그로븐</b> = 로또상회 · <b>옐로우브릿지</b> = 자꾸가게 (사업자명 ↔ 스토어명) ·
+      <b>발주처</b> = 실제 상품을 공급하는 공급사(일비·동일·해담별 등) · <b>샵마인</b> = 여러 오픈마켓 주문을
+      한 파일로 모아주는 주문수집 툴, 여기서 받는 "발송대기" 파일이 모든 흐름의 시작점 ·
+      <b>디네트</b> = 박대를 우리에게서 사가는 B2B 판매처
+    </div>
+  </div>
+
+  <div class="sub-tab-nav">
+    <button class="sub-tab-btn ho-sub-tab-btn active" id="hostab-guide" onclick="switchHoSubTab('guide')">📋 탭별 가이드</button>
+    <button class="sub-tab-btn ho-sub-tab-btn" id="hostab-infra" onclick="switchHoSubTab('infra')">🔌 외부연동 · 데이터</button>
+    <button class="sub-tab-btn ho-sub-tab-btn" id="hostab-trouble" onclick="switchHoSubTab('trouble')">🛠 트러블슈팅 · 체크리스트</button>
+  </div>
+
+  <!-- 서브탭: 탭별 가이드 -->
+  <div class="sub-content ho-sub-content active" id="hosubtab-guide">
+
+    <div class="card">
+      <div class="card-title">빠른 참조</div>
+      <table>
+        <thead><tr><th>탭</th><th>한 줄 요약</th></tr></thead>
+        <tbody>
+          <tr><td style="font-weight:600;white-space:nowrap">📋 발주서 생성</td><td>샵마인 파일 → 발주처별 발주서 엑셀 생성 + 자동발송. 시스템의 핵심.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">⚙️ 코드 관리</td><td>비표준 상품코드 매핑, 옵션 변환 규칙, 새 발주처/양식 등록</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">🚚 송장입력</td><td>택배사 회신파일의 운송장번호를 주문에 매칭해 완성 파일 생성</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">📝 지출결의서</td><td>나가는 돈 기록 + 이미지 보관. 구글시트/Supabase 동기화 있음</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">📥 입금결의서</td><td>들어오는 돈 기록. 지출결의서와 계좌 목록 공유, 동기화는 없음</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">📊 매입단가표</td><td>채널별 매입 원가표 관리 (매입/순이익 계산의 기초 데이터)</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">📈 매출 보고용</td><td>일일 매출 보고 + 매입/순이익 + 예치금 현황 (3개 서브탭)</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">📆 주간 매출·매입</td><td>매출 보고에서 "이력 저장"한 날짜들을 주간(월~일) 단위로 합산</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📋 발주서 생성</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
+        샵마인 발송대기 파일을 업로드하면 상품 코드를 발주처별로 자동 분류하고, 발주처마다 다른
+        엑셀 양식으로 발주서를 만들어 다운로드하거나 자동 발송합니다. 이 시스템 전체의 출발점 —
+        다른 대부분의 탭이 여기서 만들어진 주문 데이터를 그대로 재사용해요.
+      </p>
+      <b style="font-size:12px">4단계 워크플로우</b>
+      <ol style="font-size:13px;color:var(--text2);margin:8px 0 12px 18px;line-height:1.8">
+        <li><b>업로드</b> — 여러 파일 한번에 올리면 자동 합산. 최근 10개는 원본까지 저장돼 재처리 가능.</li>
+        <li><b>분석</b> — 발주처×별칭 표, 미매칭 코드 경고, 표준 코드 형식(<span class="code-tag">발주처]품목명/옵션-수량</span>)이 아닌 "비표준 코드" 확인 절차, 같은 수령인+주소를 묶는 "합배송 후보" 자동 탐지, 주문 품목·옵션·수량 인라인 수정(같은 코드에 계속 재적용됨).</li>
+        <li><b>생성</b> — "🔍 자동 검토"가 원본 선택사항/노출상품명과 대조해 수량·옵션 불일치 경고. 저장 폴더 지정 시 다이얼로그 없이 바로 저장. "🚀 전체 자동 발송"으로 일괄 처리.</li>
+        <li><b>완료</b> — 생성 결과 요약과 파일 목록.</li>
+      </ol>
+      <b style="font-size:12px">자동 발송이 하는 일</b>
+      <p style="font-size:13px;color:var(--text2);margin:8px 0 12px">
+        발주처별로 등록된 <b>전달방식</b>(이메일/카카오톡/사이트)에 따라 갈라짐 — 이메일이면 Gmail로 실제
+        발송(같은 발주처인데 사업자가 다른 주문은 첨부파일 여러 개로 합쳐서 한 통), 카카오/사이트면 파일만
+        저장해두고 화면에 수동 발송 알림. "📇 발주처 전달방식 등록"에서 발주처별 방식을 지정해요.
+      </p>
+      <div class="alert alert-warn">
+        ⚠ 좌측 고정 패널의 발주처별 마감시간(늘푸른우리·최고집·도매꾹 09:00~09:30, 동일 11:00,
+        푸드엔드베스트 12:00 등)은 <b>안내용일 뿐 시스템이 강제하지 않아요.</b> 마감을 넘긴 주문도 그냥
+        생성·발송됩니다 — 사람이 시간을 챙겨야 해요.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚙️ 코드 관리</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
+        비표준 상품코드를 발주처/상품으로 매핑하고, 옵션 표기를 정리하고, 새 발주처와 발주서 양식을
+        코드 수정 없이 등록하는 관리자 콘솔. 5개 서브탭으로 구성돼요.
+      </p>
+      <table>
+        <tbody>
+          <tr><td style="font-weight:600;white-space:nowrap;width:110px">🔑 코드 등록</td><td style="font-size:13px;color:var(--text2)">원본 판매자상품코드 → 발주처 + 변경할 코드(+상품명/옵션 키워드) 매핑. "옵션 패턴 일괄 등록"으로 사이즈 230~290 같은 반복 패턴을 한번에 생성. "시간대별 발주처 규칙"으로 같은 코드도 주문 시각에 따라 다른 발주처로 보낼 수 있어요.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">📋 변환 코드 목록</td><td style="font-size:13px;color:var(--text2)">등록된 매핑 전체를 읽기 전용으로 조회.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">🔀 옵션 변환 규칙</td><td style="font-size:13px;color:var(--text2)">상품명 키워드 A + 선택사항 키워드 B(전부 포함) → 옵션 텍스트를 C로 치환. 마지막 업로드 파일 기준 실시간 미리보기.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">📇 발주처 양식</td><td style="font-size:13px;color:var(--text2)">새 발주처를 두 가지로 추가 — ① "🧩 새 양식 만들기": 엑셀 템플릿을 올리면 헤더 자동 인식 → 각 열 의미 지정 → 재사용 가능한 베이스 양식으로 저장. ② "발주처 양식 추가": 발주처 이름 + 코드 prefix + 기존 베이스 양식 선택.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">📧 Gmail 자동발송</td><td style="font-size:13px;color:var(--text2)">앱 전역 Gmail 연동 설정(Client ID, 제목/본문 템플릿, BCC).</td></tr>
+        </tbody>
+      </table>
+      <div class="alert alert-warn" style="margin-top:12px">
+        ⚠ 이 탭의 데이터(코드 매핑·옵션 규칙·커스텀 발주처/양식·계좌 목록)는 전부 <b>이 컴퓨터에만</b>
+        저장돼요. 다른 컴퓨터로 옮기려면 "전체 데이터 내보내기/가져오기"(JSON)를 반드시 써야 함 —
+        자동 동기화 안 됨 (지출결의서만 예외적으로 Supabase 동기화 있음).
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🚚 송장입력</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
+        택배사/발주처가 회신한 운송장번호를 그날 주문에 자동으로 매칭해서, 운송장번호가 채워진 완성
+        파일을 만들어요. 이름·주소로 대조하고, 헷갈리는 동명이인은 사람이 직접 고릅니다.
+      </p>
+      <b style="font-size:12px">회신파일을 가져오는 3가지 경로</b>
+      <ul style="font-size:13px;color:var(--text2);margin:8px 0 12px 18px;line-height:1.8">
+        <li><b>수동 업로드</b> — 엑셀 파일을 직접 끌어다 놓음</li>
+        <li><b>📧 Gmail 검색</b> — 발신자→거래처 매핑을 등록해두면 받은메일함에서 오늘 회신을 찾아 첨부 가져옴</li>
+        <li><b>📁 구글드라이브 검색</b> — 폴더명에 "발주관리"가 들어간 폴더에서 오늘 수정되었거나 파일명에 오늘 날짜가 들어간 파일을 찾음</li>
+      </ul>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
+        도매꾹은 배송알림 메일에 첨부파일이 없고 본문 텍스트에서 바로 파싱하는데, 수령인 이름이
+        마스킹되어 오기 때문에 <b>이름 없이 주소만으로</b> 매칭해요(확신 없으면 자동 채움 안 함).
+      </p>
+      <b style="font-size:12px">이름/주소 매칭 로직</b>
+      <p style="font-size:13px;color:var(--text2);margin:8px 0 0">
+        기본은 <b>이름 정확히 일치</b>로 매칭하고, 같은 이름이 여러 건일 때만 주소를 봐요. 회신파일이
+        여러 시트로 오거나(1번 시트=원본 사본, 2번 시트=실제 송장), 개인정보 보호로 주소 뒷부분이
+        <span class="code-tag">****</span>로 가려져 오는 경우까지 대응하도록 돼있어요 — 자세한 배경은
+        아래 "트러블슈팅" 탭 참고.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📝 지출결의서 / 📥 입금결의서</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
+        나가는 돈(지출)·들어오는 돈(입금)을 기록하고 이미지로 보관하는 결의서 작성 도구. 두 탭은
+        화면 구조가 거의 동일하고, <b>계좌 목록(🏦 계좌 관리)을 서로 공유</b>해요 — 한쪽에서 계좌를
+        수정하면 다른 쪽에도 바로 반영됩니다.
+      </p>
+      <b style="font-size:12px">작성 이력에서 되는 것</b>
+      <ul style="font-size:13px;color:var(--text2);margin:8px 0 12px 18px;line-height:1.8">
+        <li>거래처/내용 검색, 기간 필터, 회사(그로븐/옐로우브릿지/미지정) 필터</li>
+        <li>송금완료·증빙완료(입금결의서는 입금확인·증빙완료) 체크 및 필터</li>
+        <li>회사 미지정 건은 여러 개 선택해 일괄 지정 (지출결의서만)</li>
+        <li>이미지 재다운로드, 여러 건 묶어 "거래내역서" 생성 (지출결의서만)</li>
+        <li>"📦 발주서로 거래내역서" — 발주서 엑셀을 올리면 주문 건별로(합치지 않고) 거래내역서 생성 (지출결의서만)</li>
+      </ul>
+      <b style="font-size:12px">지출결의서만 있는 동기화</b>
+      <table style="margin-top:8px">
+        <tbody>
+          <tr><td style="font-weight:600;white-space:nowrap;width:90px">구글시트</td><td style="font-size:13px;color:var(--text2)">시트 URL 등록 시 저장할 때마다 행 자동 추가(A~M열: 날짜/증빙/분류/내용/업체명/공급가/세액/합계/주문건수/결제일/결제여부/사업자명/비고). 편집자 권한 필요.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">Supabase</td><td style="font-size:13px;color:var(--text2)"><span class="code-tag">exp_hist</span> 테이블로 업로드해 다른 컴퓨터에서도 보이게 함. <b>새 컴퓨터에서 처음 한 번은 "☁️ Supabase 업로드"를 눌러줘야 해요.</b></td></tr>
+        </tbody>
+      </table>
+      <div class="alert alert-warn" style="margin-top:12px">
+        ⚠ 입금결의서에는 <b>재무회계과 MEMO</b> 칸이 미리보기 오른쪽에 추가로 있어요(지출결의서엔 없음).
+        Supabase 프로젝트 URL/키가 코드에 하드코딩돼있고 테이블 RLS(행 단위 접근 제어)가 꺼져있는
+        점도 인지해두면 좋아요.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📊 매입단가표</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
+        채널별 매입 원가를 관리하는 브라우저 안 스프레드시트. 매출 보고용 탭의 "매입/순이익" 계산이
+        이 데이터를 그대로 사용해요.
+      </p>
+      <p style="font-size:13px;color:var(--text2)">
+        <b>시트 구성</b>: 📦 판매가(10%) · 🛒 도매꾹 · 🐟 B2B(과메기) · 🐟 박대공급 · ⭐ B2B(해담별) · 🐝 B2B(곽위)
+      </p>
+      <ul style="font-size:13px;color:var(--text2);margin:8px 0 0 18px;line-height:1.8">
+        <li>엑셀 파일을 통째로 올리면 시트별로 자동 분류돼 일괄 등록됨</li>
+        <li>개별 품목은 + 버튼으로 직접 추가, 각 행의 ✏️/✕로 수정·삭제</li>
+        <li>발주처 필터 + 검색으로 원하는 품목을 빠르게 찾을 수 있음</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📈 매출 보고용</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
+        발주서 생성 탭에서 이미 업로드된 샵마인 데이터를 재사용해 당일 매출 보고서를 만들어요.
+        로또상회/자꾸가게 자사 매출 + 디네트(B2B) 매출을 한 장으로 정리하고, 매입원가와 엮어
+        순이익까지 계산합니다. 서브탭 3개(📈 매출 보고 · 📦 매입/순이익 · 💳 예치금 현황).
+      </p>
+      <b style="font-size:12px">📈 매출 보고 서브탭</b>
+      <ul style="font-size:13px;color:var(--text2);margin:8px 0 12px 18px;line-height:1.8">
+        <li><b>🐟 디네트 발주서 업로드</b>(선택) — 규격(D열 4P/3P/2P+)·수량(E열)을 읽어 묶음 할인 자동 계산. "행사기간 단가" 체크박스로 평시/행사 단가 전환.</li>
+        <li><b>📋 리뷰주문 분리</b>(선택) — 깐마늘(동일)·그린캠 발주서에서 <b>엑셀 셀이 노란색(FFFF00)으로 칠해진 행</b>을 리뷰 주문으로 자동 인식해 분리 집계.</li>
+        <li><b>🏷️ 상품명 별칭 관리</b> — 샵마인이 상품명을 잘라서 보내는 문제를 보기 좋은 이름으로 매핑. 보고서의 제품명을 <b>클릭해서 바로</b> 고칠 수도 있음.</li>
+        <li><b>💲 매출금액 직접 지정</b> — 특정 판매자상품코드(+선택적으로 별칭)의 매출액을 고정값으로 덮어씀. 쿠팡처럼 쿠폰 할인이 원본 파일에 안 잡히는 경우에 사용.</li>
+        <li><b>✏️ 수동 이력 추가</b> — 자동 파이프라인을 못 쓰는 날을 위한 수기 입력 모달. 구글 Cloud Vision API로 보고서 스크린샷에서 숫자를 자동으로 읽어올 수 있음(사용자가 API 키 직접 등록 필요).</li>
+      </ul>
+      <div class="alert alert-warn">
+        ⚠ 저장 버튼이 두 개, 역할이 다름 — "💾 이력에 저장"은 <b>주간 매출·매입 탭에 누적</b>되는 것이고,
+        "🖼 이미지(PNG) 저장"은 그냥 그림 파일 다운로드예요. <b>이미지만 저장하면 주간 합산에는 안
+        들어갑니다</b> — 두 개 다 눌러야 해요. 실무에서 가장 자주 헷갈리는 지점.
+      </div>
+      <p style="font-size:13px;color:var(--text2);margin-top:12px">
+        <b>📦 매입/순이익</b>은 매입단가표 데이터 + 판매수수료(플랫폼별로 다름, 예: 일반 12%, 식자재코리아
+        0%, 톡딜 3.3%)를 매출에 적용해 순이익을 계산해요. <b>💳 예치금 현황</b>은 발주처별 선충전/사용
+        잔액을 관리하는 단순 원장(그로븐/YB 스토어별 구분)입니다.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📆 주간 매출·매입</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
+        매출 보고용 탭에서 "이력에 저장"한 일별 스냅샷을 월~일 단위로 합산해 주간 보고서 이미지를
+        만들어요. 이 탭 자체는 데이터를 만들지 않고, 매출 보고용 탭이 저장한 것만 봅니다.
+      </p>
+      <ol style="font-size:13px;color:var(--text2);margin:8px 0 12px 18px;line-height:1.8">
+        <li>아무 날짜나 입력 → 그 날이 속한 월~일 주간 자동 계산</li>
+        <li>"📊 주간 보고서 생성" → 일자별 요약 + 브랜드별/디네트 누적</li>
+        <li>"🖼 이미지(PNG) 저장"으로 다운로드</li>
+      </ol>
+      <p style="font-size:13px;color:var(--text2)">
+        "📋 누적 이력 보기"에서 저장된 날짜 목록을 확인할 수 있고, 수정 버튼을 누르면 매출 보고용
+        탭으로 이동해 그 날짜를 다시 생성+저장(자동 덮어쓰기)할 수 있어요.
+      </p>
+      <div class="alert alert-warn" style="margin-top:12px">
+        ⚠ "데이터가 안 보여요"의 99%는 이 이유 — 매출 보고용 탭에서 그날의 보고서를 "이력에 저장"하지
+        않고 넘어간 날은 <b>에러 없이 그냥 조용히 빠집니다.</b> 신규 담당자가 가장 먼저 헷갈리는 부분이라
+        따로 적어둬요.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🤖 페이지 내 비서</div>
+      <p style="font-size:13px;color:var(--text2)">
+        모든 탭 우측 하단에 떠 있는 채팅형 검색 위젯. <b>외부 API 호출이 전혀 없는 로컬 검색</b>으로,
+        이 브라우저 안의 데이터(계좌·매출이력·코드매핑·지출이력·옵션규칙·미인식코드·합배송후보)만
+        자연어로 찾아줘요. 예: "해담별 계좌", "오늘 매출", "5월 18일 송금", "미인식 코드".
+        "도움말"을 입력하면 자체 사용법을 출력합니다.
+      </p>
+    </div>
+
+  </div>
+
+  <!-- 서브탭: 외부연동 · 데이터 -->
+  <div class="sub-content ho-sub-content" id="hosubtab-infra">
+
+    <div class="card">
+      <div class="card-title">🔌 외부 연동 7가지</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+        서버 없이 브라우저에서 바로 붙는 연동들이라, OAuth 토큰이나 API 키가 전부 이 컴퓨터의
+        localStorage에 저장돼요. 새 컴퓨터에서는 매번 다시 연결해야 합니다.
+      </p>
+      <table>
+        <tbody>
+          <tr><td style="font-weight:600;white-space:nowrap;width:150px">📧 Gmail (OAuth)</td><td style="font-size:13px;color:var(--text2)">발주서 자동발송, 송장 회신 검색, 도매꾹 배송알림 파싱에 공용으로 쓰는 하나의 OAuth 연결. 필요 권한(scope)이 바뀌면 기존 토큰은 자동 무효화되고 재동의를 요구함.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">📁 Google Drive</td><td style="font-size:13px;color:var(--text2)">Gmail과 같은 토큰 재사용. 송장입력 탭에서 "발주관리"가 들어간 폴더의 오늘자 회신파일을 검색.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">📄 Google Sheets</td><td style="font-size:13px;color:var(--text2)">지출결의서 전용. 시트 URL 등록 시 저장할 때마다 행 자동 추가 + 전체 재동기화 기능.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">☁️ Supabase</td><td style="font-size:13px;color:var(--text2)">지출결의서 이력만 다른 컴퓨터와 공유. 프로젝트 URL/키 하드코딩, RLS 비활성 — 새 컴퓨터마다 최초 1회 업로드 필요.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">👁️ Google Cloud Vision</td><td style="font-size:13px;color:var(--text2)">매출 보고용 "수동 이력 추가"에서 스크린샷 OCR용. 사용자가 자기 API 키를 직접 등록해야 동작.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">💬 Kakao JS SDK</td><td style="font-size:13px;color:var(--text2)">발주처 전달방식이 "카톡"일 때 발송. 앱키 미설정 시 파일만 저장하고 화면에 수동 발송 알림.</td></tr>
+          <tr><td style="font-weight:600;white-space:nowrap">💾 File System Access API</td><td style="font-size:13px;color:var(--text2)">Chrome 전용 "폴더 지정하면 앞으로 계속 그 폴더에 저장" 기능. PO·정산내역서·견적서·송장완성파일·지출/입금 이미지·매출/주간 보고 PNG 등 최소 8곳에서 각자 독립적으로 폴더를 기억함. 미지원 브라우저에선 일반 다운로드로 대체됨.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title">💾 데이터 저장 위치</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+        이 앱은 <b>DB가 없어요.</b> 거의 모든 데이터는 브라우저 localStorage에 있고, 컴퓨터를 바꾸면
+        기본적으로 아무것도 안 따라옵니다. 아래는 주요 저장 키(전체 목록 아님).
+      </p>
+      <table>
+        <thead><tr><th>키</th><th>내용</th></tr></thead>
+        <tbody>
+          <tr><td class="code-tag" style="white-space:nowrap">yb_codes / yb_optmap</td><td style="font-size:13px;color:var(--text2)">코드→발주처/상품 매핑, 옵션 변환 규칙</td></tr>
+          <tr><td class="code-tag" style="white-space:nowrap">yb_custom_vendors / yb_custom_formats</td><td style="font-size:13px;color:var(--text2)">사용자가 추가한 발주처 &amp; 엑셀 양식 템플릿</td></tr>
+          <tr><td class="code-tag" style="white-space:nowrap">yb_overrides / yb_merge_decisions</td><td style="font-size:13px;color:var(--text2)">주문 수동 수정값, 합배송 결정 — 같은 코드에 자동 재적용됨</td></tr>
+          <tr><td class="code-tag" style="white-space:nowrap">yb_vendor_emails / yb_vendor_delivery</td><td style="font-size:13px;color:var(--text2)">발주처별 이메일 주소 &amp; 전달방식(이메일/카톡/사이트)</td></tr>
+          <tr><td class="code-tag" style="white-space:nowrap">yb_bankinfo</td><td style="font-size:13px;color:var(--text2)">계좌 목록 — 지출·입금결의서 공유</td></tr>
+          <tr><td class="code-tag" style="white-space:nowrap">yb_exphist / yb_inchist</td><td style="font-size:13px;color:var(--text2)">지출·입금결의서 작성 이력</td></tr>
+          <tr><td class="code-tag" style="white-space:nowrap">yb_sales_history</td><td style="font-size:13px;color:var(--text2)">매출 보고 일별 스냅샷 (주간 보고의 유일한 데이터 소스)</td></tr>
+          <tr><td class="code-tag" style="white-space:nowrap">yb_deposits</td><td style="font-size:13px;color:var(--text2)">예치금 원장</td></tr>
+          <tr><td class="code-tag" style="white-space:nowrap">yb_unit_prices / yb_purchase_prices</td><td style="font-size:13px;color:var(--text2)">매입단가표 &amp; 매입/순이익 원가 데이터</td></tr>
+          <tr><td class="code-tag" style="white-space:nowrap">yb_gmail_token / yb_gmail_client_id</td><td style="font-size:13px;color:var(--text2)">Gmail 연동 인증 정보</td></tr>
+        </tbody>
+      </table>
+      <b style="font-size:12px;display:block;margin-top:14px">컴퓨터를 옮길 때</b>
+      <ol style="font-size:13px;color:var(--text2);margin:8px 0 0 18px;line-height:1.8">
+        <li><b>코드 관리 → 전체 데이터 내보내기</b>로 JSON 백업 (코드/옵션규칙/가격표/발주처설정 등 대부분 포함)</li>
+        <li>새 컴퓨터에서 <b>가져오기</b>로 불러오기</li>
+        <li>지출결의서만 예외 — Supabase에 이미 올라가 있다면 "시트에서 불러오기"로 별도 복원</li>
+        <li>Gmail/Drive/Kakao/Vision API 연결은 각각 새로 인증해야 함 (토큰이 안 옮겨짐)</li>
+      </ol>
+    </div>
+
+  </div>
+
+  <!-- 서브탭: 트러블슈팅 · 체크리스트 -->
+  <div class="sub-content ho-sub-content" id="hosubtab-trouble">
+
+    <div class="card">
+      <div class="card-title">🛠 자주 나는 버그 패턴</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
+        실제로 있었던 이슈들을 유형별로 정리했어요. 새 발주처/플랫폼을 추가하거나 이상 동작을
+        조사할 때 먼저 이 패턴부터 의심해보면 빨라요.
+      </p>
+      <div class="preview-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <b style="font-size:13px">01 · 코드 prefix 등록 누락</b>
+        <span style="font-size:12.5px;color:var(--text2)">
+          발주처 이름은 있는데 실제 판매자상품코드 접두사가 등록 안 돼 있으면, 최후순위인 상품명
+          키워드 매칭으로 넘어가서 <b>다른 발주처로 잘못 분류</b>됩니다.<br>
+          <span class="code-tag" style="margin-top:4px;display:inline-block">예: 우리뜰 코드가 "우리뜰]"로 시작하는데 등록된 prefix는 "bfc]"뿐이라 깐마늘류를 다루는 '동일'로 잘못 잡힘</span>
+        </span>
+      </div>
+      <div class="preview-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <b style="font-size:13px">02 · 대소문자 불일치</b>
+        <span style="font-size:12.5px;color:var(--text2)">
+          화면 안내 문구와 실제 매칭 로직의 대소문자가 다르면 인식률 0건이 됩니다.<br>
+          <span class="code-tag" style="margin-top:4px;display:inline-block">예: 안내는 "4P/3P/2P+"인데 내부 기준표는 "4p/3p/2p+" 소문자라 전부 걸러짐</span>
+        </span>
+      </div>
+      <div class="preview-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <b style="font-size:13px">03 · 새 플랫폼의 특이 구조</b>
+        <span style="font-size:12.5px;color:var(--text2)">
+          신규 발주처/마켓마다 파일 구조가 조금씩 다릅니다. 미리 물어보고 실제 샘플 파일로 검증하는 게 빨라요.<br>
+          <span class="code-tag" style="margin-top:4px;display:inline-block">예: 참맛더드림 회신파일은 1번 시트가 원본 사본이고 실제 송장은 2번 시트에 있음 / 식자재코리아는 보내는사람 정보를 원본 파일의 "택배발송자명" 컬럼에서 가져와야 함</span>
+        </span>
+      </div>
+      <div class="preview-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <b style="font-size:13px">04 · 무료 엑셀 라이브러리(SheetJS)의 한계</b>
+        <span style="font-size:12.5px;color:var(--text2)">
+          사용 중인 엑셀 라이브러리 무료판은 <b>셀 배경색 저장을 지원하지 않아요</b>(Pro 전용 기능).
+          색을 채워 저장해도 파일엔 반영이 안 됨 — 실제로는 저장된 파일을 JSZip으로 직접 열어 xlsx
+          내부 XML에 스타일을 심어야 색이 들어감(합배송 색채움 기능이 이 방식으로 우회 구현돼있음).
+        </span>
+      </div>
+      <div class="preview-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <b style="font-size:13px">05 · 플랫폼별 판매수수료가 다 다름</b>
+        <span style="font-size:12.5px;color:var(--text2)">
+          매입/순이익 계산의 수수료율은 플랫폼마다 다릅니다(일반 12%, 식자재코리아 0%, 톡딜 3.3% 등).
+          새 판매채널이 생기면 수수료율부터 확인해야 순이익이 안 틀어져요.
+        </span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">✅ 신규 담당자 체크리스트</div>
+      <ul style="font-size:13px;color:var(--text2);margin:0 0 0 18px;line-height:2.2">
+        <li><b>코드 관리 → 전체 데이터 내보내기</b>로 현재 상태 백업본을 먼저 하나 받아두기 (문제 생겼을 때 되돌릴 기준점)</li>
+        <li>Gmail·구글드라이브 연동을 <b>본인 계정으로 다시 인증</b> — 토큰은 컴퓨터를 안 넘어옴</li>
+        <li>매출 보고용에서 <b>"이력에 저장"을 매일 누르는 습관</b> 들이기 — 안 누르면 주간 보고에 조용히 빠짐</li>
+        <li>새 발주처/플랫폼 추가 전에 <b>실제 샘플 파일</b>부터 받아서 컬럼 구조 확인 (헤더 대소문자, 시트 개수, 병합 셀 여부까지)</li>
+        <li>지출결의서는 Supabase로 동기화되지만 <b>새 컴퓨터에서 최초 1회 업로드를 직접 눌러줘야</b> 반영됨</li>
+        <li>발주처별 마감시간은 시스템이 안 챙겨줌 — 좌측 패널을 사람이 계속 확인</li>
+      </ul>
+    </div>
+
+  </div>
+
+</div>
+</div><!-- /tab-handover -->
 
 
 <script>
