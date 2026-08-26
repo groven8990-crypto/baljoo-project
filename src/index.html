@@ -10369,6 +10369,13 @@ async function saveExpImgFromHist(i) {
         const a = document.createElement('a');
         a.download = fname; a.href = canvas.toDataURL('image/png'); a.click();
       }
+      // 저장된 항목에 이미지 저장 날짜 기록 (선택 다운로드와 동일하게) — 이게 빠져있어서
+      // 개별 📷 버튼으로 저장해도 목록에 저장일 뱃지가 안 뜨던 문제
+      if (d.id) {
+        const hist2 = loadExpHist();
+        const idx2 = hist2.findIndex(x => x && x.id === d.id);
+        if (idx2 >= 0) { hist2[idx2].imgSavedAt = _localISO(); saveExpHist(hist2); renderExpHistList(); }
+      }
       document.getElementById('expModal').style.display = 'none';
     });
   }, 100);
