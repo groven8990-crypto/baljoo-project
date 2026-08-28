@@ -194,6 +194,10 @@
       </div>
       <input type="file" id="fileInput" accept=".xlsx,.xls" multiple style="display:none">
       <div id="status"></div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-top:10px;cursor:pointer">
+        <input type="checkbox" id="gmarketCouponHalfChk" onchange="onGmarketCouponHalfChange(this)" style="width:14px;height:14px">
+        🎟️ 지마켓/옥션 구매쿠폰 반반부담 행사 중 (체크: 정산추가정보의 구매쿠폰적용금액 <b>절반</b>만 주문금액에 반영 · 평소엔 전액 반영 · 지금 업로드하는 파일부터 적용 — 이미 업로드한 파일은 다시 업로드해야 반영돼요)
+      </label>
     </div>
 
     <div class="alert alert-info">
@@ -721,10 +725,6 @@
       ➕ 추가 샵마인 파일을 끌어다 놓거나 클릭하여 선택 (기존 주문에 합산됩니다 · 여러 개 가능)
     </div>
     <input type="file" id="invOrderAddFile" accept=".xls,.xlsx" multiple style="display:none" onchange="invLoadOrderAdd(this.files); this.value='';">
-    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-top:10px;cursor:pointer">
-      <input type="checkbox" id="gmarketCouponHalfChk" onchange="onGmarketCouponHalfChange(this)" style="width:14px;height:14px">
-      🎟️ 지마켓/옥션 구매쿠폰 반반부담 행사 중 (체크: 정산추가정보의 구매쿠폰적용금액 <b>절반</b>만 주문금액에 반영 · 평소엔 전액 반영 · 지금 업로드하는 파일부터 적용)
-    </label>
   </div>
 
   <div class="card" style="padding:10px 16px">
