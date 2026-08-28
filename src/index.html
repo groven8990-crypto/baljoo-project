@@ -3074,8 +3074,10 @@ function _isSikjaeRows(rows){
   return false;
 }
 // 식자재코리아 "상품관리코드" → 발주처 매핑 (예: dongil2 → 동일). 모르는 코드는 상품명 키워드로 재시도.
+// dongil3 만 예외적으로 우리뜰 상품이라 별도 처리 (같은 "dongil" 계열 코드라도 실제 공급처가 다름)
 function _sikjaeVendorFromCode(code, pn){
   const c = String(code||'').trim().toLowerCase();
+  if (c.startsWith('dongil3')) return '우리뜰';
   if (c.startsWith('dongil')) return '동일';
   return (typeof detectVendor === 'function') ? detectVendor(code, pn) : null;
 }
