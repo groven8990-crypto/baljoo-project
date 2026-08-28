@@ -3302,7 +3302,10 @@ function handleFile(file, onDone) {
           const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
           const _smRaw=C.sm>=0?String(r[C.sm]||'').trim():'';
           const _siRaw=C.si>=0?String(r[C.si]||''):'';
-          const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
+          // "쇼핑몰" 열이 따로 없는 양식(예: "별칭(쇼핑몰계정)"에 "옥션-로또상회"처럼 상호랑 같이 찍혀오는 경우)도
+          // 있어서, 쇼핑몰 열만 보면 지마켓/옥션 판별이 항상 실패함 — 별칭 원본까지 같이 검사
+          const _aliasRaw=C.al>=0?String(r[C.al]||'').trim():'';
+          const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw+' '+_aliasRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
           const _bcAmt=_bcM?parseInt(_bcM[1].replace(/,/g,'')):0;
           const _bcAdj=_bcM?Math.round(_gmarketCouponHalfOn()?_bcAmt/2:_bcAmt):0;
           const _order_amt_full=Math.round(_ab - _ai + _ah + _bcAdj);
@@ -10553,7 +10556,10 @@ function handleFileAdd(file, onDone){
           const _ab=parseFloat(r[27])||0,_ah=parseFloat(r[33])||0,_ai=parseFloat(r[34])||0;
           const _smRaw=C.sm>=0?String(r[C.sm]||'').trim():'';
           const _siRaw=C.si>=0?String(r[C.si]||''):'';
-          const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
+          // "쇼핑몰" 열이 따로 없는 양식(예: "별칭(쇼핑몰계정)"에 "옥션-로또상회"처럼 상호랑 같이 찍혀오는 경우)도
+          // 있어서, 쇼핑몰 열만 보면 지마켓/옥션 판별이 항상 실패함 — 별칭 원본까지 같이 검사
+          const _aliasRaw=C.al>=0?String(r[C.al]||'').trim():'';
+          const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw+' '+_aliasRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
           const _bcAmt=_bcM?parseInt(_bcM[1].replace(/,/g,'')):0;
           const _bcAdj=_bcM?Math.round(_gmarketCouponHalfOn()?_bcAmt/2:_bcAmt):0;
           const _order_amt_full=Math.round(_ab - _ai + _ah + _bcAdj);
