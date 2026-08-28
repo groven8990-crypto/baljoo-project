@@ -6621,7 +6621,13 @@ function removeTimeVendorRule(i){
 function rematchAllOrders(){
   groupedOrders={};unmatchedList=[];
   for(const o of allOrders){
-    let vk=detectVendor(o.vendor_code, o.product, o.select_opt);
+    // 식자재코리아 주문은 판매자상품코드가 아니라 상품관리코드(dongil3 등) 체계라
+    // 발주처 재감지도 전용 로직(_sikjaeVendorFromCode)을 다시 태워야 함 — 그냥 detectVendor를 쓰면
+    // dongil3→우리뜰 같은 예외 규칙이 무시돼서, 주문 직접수정/코드 등록 후 재매칭될 때마다
+    // 엉뚱한 발주처(동일)로 되돌아가버림
+    let vk = (o.shop_mall === '식자재코리아')
+      ? _sikjaeVendorFromCode(o.vendor_code, o.product)
+      : detectVendor(o.vendor_code, o.product, o.select_opt);
     const parsed=parseParts(o.vendor_code, o.vendor_opt||'', o.product, o.select_opt, '');
     vk=_applyTimeVendorRule(o, vk);
     o.vendor_key=vk;
