@@ -9865,6 +9865,21 @@ function setUnitPrice(vendor, item, option, price){
   if (i >= 0) arr[i] = e; else arr.push(e);
   saveUnitPrices(arr);
 }
+// 배송비도 단가와 동일하게 발주처+품목+옵션 단위로 기억해뒀다가 다음 거래내역서 생성 때 자동으로 채움
+const LS_SHIP_FEES = 'yb_ship_fees';
+function loadShipFees(){ try{return JSON.parse(localStorage.getItem(LS_SHIP_FEES)||'[]');}catch{return [];}}
+function saveShipFees(arr){ try{localStorage.setItem(LS_SHIP_FEES, JSON.stringify(arr));}catch(e){}}
+function getShipFee(vendor, item, option){
+  const arr = loadShipFees();
+  return arr.find(p => p.vendor===vendor && p.item===item && (p.option||'')===(option||''));
+}
+function setShipFee(vendor, item, option, ship){
+  const arr = loadShipFees();
+  const i = arr.findIndex(p => p.vendor===vendor && p.item===item && (p.option||'')===(option||''));
+  const e = {vendor, item, option:option||'', ship: Number(ship)||0};
+  if (i >= 0) arr[i] = e; else arr.push(e);
+  saveShipFees(arr);
+}
 
 let _poStmtState = null;
 function poStmtUpload(input){
@@ -10026,6 +10041,8 @@ function poStmtShowModal(){
     const rows = g.items.map((it, ii) => {
       const saved = getUnitPrice(g.vendor, it.item, it.option);
       const price = saved ? saved.price : '';
+      const savedShip = getShipFee(g.vendor, it.item, it.option);
+      const ship = savedShip ? savedShip.ship : '';
       const rowDate = it.date || g.defaultDate || date;
       return `<tr data-gi="${gi}" data-ii="${ii}">
         <td style="padding:4px 6px;border-bottom:1px solid #eee"><input class="pos-date" type="date" value="${escHtml(rowDate)}" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid #ddd;border-radius:3px"></td>
@@ -10033,7 +10050,7 @@ function poStmtShowModal(){
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;color:#666">${escHtml(it.option||'')}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right">${it.qty.toLocaleString()}</td>
         <td style="padding:4px 6px;border-bottom:1px solid #eee"><input class="pos-price" type="number" min="0" value="${price}" placeholder="0" style="width:100%;padding:4px 6px;font-size:12px;text-align:right;border:1px solid #ddd;border-radius:3px" oninput="poStmtCalc()"></td>
-        <td style="padding:4px 6px;border-bottom:1px solid #eee"><input class="pos-ship" type="number" min="0" value="" placeholder="0" style="width:100%;padding:4px 6px;font-size:12px;text-align:right;border:1px solid #ddd;border-radius:3px" oninput="poStmtCalc()"></td>
+        <td style="padding:4px 6px;border-bottom:1px solid #eee"><input class="pos-ship" type="number" min="0" value="${ship}" placeholder="0" style="width:100%;padding:4px 6px;font-size:12px;text-align:right;border:1px solid #ddd;border-radius:3px" oninput="poStmtCalc()"></td>
         <td class="pos-amount" style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right;color:#1A56DB;font-weight:600">0</td>
       </tr>`;
     }).join('');
@@ -10140,6 +10157,7 @@ function poStmtGenerate(){
       const shipRaw = tr.querySelector('.pos-ship').value;
       const ship = shipRaw === '' ? null : (parseFloat(shipRaw) || 0);
       if (price > 0) setUnitPrice(g.vendor, it.item, it.option, price);
+      if (ship !== null) setShipFee(g.vendor, it.item, it.option, ship);
       const amt = it.qty * (price + (ship||0));
       supply += amt;
       rows.push({...it, date:rowDate, price, ship, amt});
