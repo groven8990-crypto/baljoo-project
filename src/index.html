@@ -9048,7 +9048,7 @@ function renderExpHistList() {
         ? '<button class="btn btn-sm" style="padding:2px 8px;background:#10b981;color:#fff;border-color:#10b981;white-space:nowrap" title="' + imgTitle + '" onclick="saveExpImgFromHist(' + realIdx + ')">📷 ' + (d.imgSavedAt.slice(5)||'') + '</button>'
         : '<button class="btn btn-sm" style="padding:2px 8px" title="' + imgTitle + '" onclick="saveExpImgFromHist(' + realIdx + ')">📷</button>';
       const descStyle = 'font-size:13px;cursor:pointer';
-      html += '<div id="exphi_' + realIdx + '" style="display:grid;grid-template-columns:24px 90px 1fr auto auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;' + rowBg + '">' +
+      html += '<div id="exphi_' + realIdx + '" style="display:grid;grid-template-columns:24px 90px 1fr auto auto auto auto auto auto auto auto;gap:8px;align-items:center;padding:7px 8px;border-radius:6px;margin-bottom:4px;' + rowBg + '">' +
         '<input type="checkbox" class="exp-hist-chk" data-idx="' + realIdx + '" style="width:15px;height:15px;cursor:pointer" onchange="updateExpHistSelCount()">' +
         '<span style="font-size:11px;color:var(--text3);cursor:pointer" onclick="previewHistItem(' + realIdx + ')">' + escHtml(d.date||'') + '</span>' +
         '<span style="' + descStyle + '" onclick="previewHistItem(' + realIdx + ')">' + escHtml(d.desc||'') + '</span>' +
@@ -9058,6 +9058,7 @@ function renderExpHistList() {
         attachBtn +
         imgBtn +
         '<button class="btn btn-sm" style="padding:2px 8px;color:var(--accent);border-color:var(--accent)" onclick="editExpHist(' + realIdx + ')">✏️</button>' +
+        '<button class="btn btn-sm" style="padding:2px 8px;color:var(--purple);border-color:var(--purple)" title="이 항목을 날짜·금액이 다른 두 건으로 나누기" onclick="openSplitExpModal(' + realIdx + ')">✂️</button>' +
         '<button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger);padding:2px 8px" onclick="deleteExpHist(' + realIdx + ')">삭제</button>' +
       '</div>';
     });
@@ -9088,6 +9089,94 @@ function deleteExpHist(i) {
     expSheetsDeleteRow(item.id).catch(()=>{});
   }
   renderExpHistList();
+}
+
+// ─── 지출결의서 항목 나누기 (예: "8/31~9/1상품매입" 한 건을 8/31/9/1 두 건으로) ───
+function openSplitExpModal(i){
+  const hist = loadExpHist();
+  const d = hist[i];
+  if (!d) return;
+  document.getElementById('splitExpOverlay')?.remove();
+  const total = Number(d.total)||0;
+  let date2Default = d.date||'';
+  try { const dt = new Date(d.date); dt.setDate(dt.getDate()+1); date2Default = _localISO(dt); } catch(e){}
+  const html = `<div id="splitExpOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:10px;padding:22px;width:100%;max-width:480px;max-height:88vh;overflow:auto">
+      <div style="font-weight:700;font-size:15px;margin-bottom:4px">✂️ 항목 나누기</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:16px">"${escHtml(d.desc||'')}" · 원래 합계 <b>${fmtNum(total)}원</b> — 두 건으로 나눠서 저장해요. 거래처·결제조건·증빙·송금여부 등 나머지 정보는 그대로 복사됩니다.</div>
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:8px">1번째</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div><label style="font-size:11px;color:var(--text3)">날짜</label><input class="inp" type="date" id="splitDate1" value="${escHtml(d.date||'')}"></div>
+          <div><label style="font-size:11px;color:var(--text3)">금액</label><input class="inp" type="number" id="splitAmt1" value="${total}" oninput="_splitExpUpdateSum()"></div>
+        </div>
+        <label style="font-size:11px;color:var(--text3)">내용</label><input class="inp" id="splitDesc1" value="${escHtml(d.desc||'')}">
+      </div>
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:8px">2번째</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div><label style="font-size:11px;color:var(--text3)">날짜</label><input class="inp" type="date" id="splitDate2" value="${escHtml(date2Default)}"></div>
+          <div><label style="font-size:11px;color:var(--text3)">금액</label><input class="inp" type="number" id="splitAmt2" value="0" oninput="_splitExpUpdateSum()"></div>
+        </div>
+        <label style="font-size:11px;color:var(--text3)">내용</label><input class="inp" id="splitDesc2" value="${escHtml(d.desc||'')}">
+      </div>
+      <div id="splitExpSumMsg" style="font-size:12px;margin-bottom:14px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="document.getElementById('splitExpOverlay').remove()">취소</button>
+        <button class="btn btn-primary btn-sm" onclick="_doSplitExpense(${i})">나누기 실행</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  _splitExpUpdateSum();
+}
+function _splitExpUpdateSum(){
+  const msgEl = document.getElementById('splitExpSumMsg');
+  if (!msgEl) return;
+  const a1 = parseFloat(document.getElementById('splitAmt1')?.value)||0;
+  const a2 = parseFloat(document.getElementById('splitAmt2')?.value)||0;
+  msgEl.innerHTML = `1번+2번 합계 <b>${fmtNum(a1+a2)}원</b>`;
+}
+function _doSplitExpense(i){
+  const hist = loadExpHist();
+  const d = hist[i];
+  if (!d) return;
+  const date1 = document.getElementById('splitDate1')?.value || d.date;
+  const date2 = document.getElementById('splitDate2')?.value || d.date;
+  const amt1  = Math.max(0, parseFloat(document.getElementById('splitAmt1')?.value) || 0);
+  const amt2  = Math.max(0, parseFloat(document.getElementById('splitAmt2')?.value) || 0);
+  const desc1 = (document.getElementById('splitDesc1')?.value||'').trim() || d.desc || '';
+  const desc2 = (document.getElementById('splitDesc2')?.value||'').trim() || d.desc || '';
+  if (amt1 <= 0 && amt2 <= 0) { alert('금액을 하나 이상 입력해주세요.'); return; }
+  if (!date1 || !date2) { alert('날짜를 입력해주세요.'); return; }
+
+  // 공급가/세액은 원래 항목의 비율대로 나눠 배분 (원래 세액이 0이면 나눈 항목도 0)
+  const origTotal  = Number(d.total)||0;
+  const origSupply = Number(d.supply)||0;
+  const prorate = (amt) => {
+    if (!origTotal) return {supply: amt, vat: 0};
+    const supply = Math.round(origSupply * amt / origTotal);
+    return {supply, vat: amt - supply};
+  };
+  const p1 = prorate(amt1), p2 = prorate(amt2);
+
+  // 1번째는 기존 id(및 첨부파일)를 그대로 이어받고, 2번째는 새 id로 신규 생성(첨부는 없음 —
+  // 원본 이미지는 1번째 항목에서 그대로 확인 가능)
+  const entry1 = { ...d, date: date1, desc: desc1, total: amt1, supply: p1.supply, vat: p1.vat, savedAt: new Date().toISOString() };
+  const entry2 = { ...d, id: Date.now()+1, date: date2, desc: desc2, total: amt2, supply: p2.supply, vat: p2.vat,
+    hasAttach: false, savedAt: new Date().toISOString() };
+
+  hist[i] = entry1;
+  hist.splice(i+1, 0, entry2);
+  saveExpHist(hist);
+  _sbUpsertExp(entry1).catch(()=>{});
+  expSheetsUpdateRow(entry1).catch(()=>{});
+  _sbUpsertExp(entry2).catch(()=>{});
+  expSheetsUpdateRow(entry2).catch(()=>{});
+
+  document.getElementById('splitExpOverlay')?.remove();
+  renderExpHistList();
+  _poShowToast(`✅ 두 건으로 나눴어요: ${fmtNum(amt1)}원 / ${fmtNum(amt2)}원`);
 }
 
 // ─── 지출결의서 작성이력 JSON 백업 / 가져오기 (집·회사 이동용) ───
