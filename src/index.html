@@ -28,6 +28,8 @@
   .sub-tab-btn:hover{background:var(--bg)}.sub-tab-btn.active{background:var(--text);color:#fff;border-color:var(--text)}
   #expco-gr.active{background:#16A34A;border-color:#16A34A;color:#fff}
   #expco-yb.active{background:#FFF176;border-color:#FDE047;color:#5C4A00}
+  #incco-gr.active{background:#16A34A;border-color:#16A34A;color:#fff}
+  #incco-yb.active{background:#FFF176;border-color:#FDE047;color:#5C4A00}
   .sub-content{display:none}.sub-content.active{display:block}
   .mgmt-menu{position:absolute;top:100%;left:0;margin-top:6px;background:#fff;border:1px solid var(--border2);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:220px;z-index:200;padding:8px;display:flex;flex-direction:column;gap:4px}
   .mgmt-menu button{display:flex;align-items:center}
@@ -1216,8 +1218,8 @@
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
         <div style="font-size:18px;font-weight:700">입금결의서</div>
         <div style="display:flex;gap:6px">
-          <button class="sub-tab-btn active" id="incco-yb" onclick="selectIncCo('옐로우브릿지')">옐로우브릿지</button>
           <button class="sub-tab-btn" id="incco-gr" onclick="selectIncCo('그로븐')">그로븐</button>
+          <button class="sub-tab-btn active" id="incco-yb" onclick="selectIncCo('옐로우브릿지')">옐로우브릿지</button>
         </div>
       </div>
 
