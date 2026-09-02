@@ -5684,8 +5684,8 @@ async function checkPoImportFolder(){
   }));
   if (statusEl) {
     statusEl.textContent = imported > 0
-      ? `✅ 새 파일 ${imported}건 자동으로 불러왔어요 (폴더 내 ${checked}개 확인)`
-      : (checked > 0 ? `변동 없음 (${checked}개 확인)` : '폴더에 엑셀 파일이 없어요');
+      ? `✅ 새 파일 ${imported}건 자동으로 불러왔어요 (오늘 파일 ${checked}개 확인)`
+      : (checked > 0 ? `변동 없음 (오늘 파일 ${checked}개 확인)` : '폴더에 오늘 날짜로 수정된 엑셀 파일이 없어요');
   }
 }
 async function _poWriteWorkbook(wb, fname, alias, wopts){
@@ -8769,8 +8769,8 @@ async function checkInvImportFolder(){
   });
   if (statusEl) {
     statusEl.textContent = imported > 0
-      ? `✅ 새 회신파일 ${imported}건 자동으로 불러왔어요 (폴더 내 ${checked}개 확인)`
-      : (checked > 0 ? `변동 없음 (${checked}개 확인)` : '폴더에 엑셀 파일이 없어요');
+      ? `✅ 새 회신파일 ${imported}건 자동으로 불러왔어요 (오늘 파일 ${checked}개 확인)`
+      : (checked > 0 ? `변동 없음 (오늘 파일 ${checked}개 확인)` : '폴더에 오늘 날짜로 수정된 엑셀 파일이 없어요');
   }
 }
 async function invDownload() {
@@ -9495,14 +9495,17 @@ async function _scanImportFolder(dirHandle, seenKey, onNewFile){
   if (!dirHandle) return {checked:0, imported:0};
   let seen = {};
   try { seen = JSON.parse(localStorage.getItem(seenKey)||'{}'); } catch(e){}
+  const todayStr = _localISO();
   let checked = 0, imported = 0;
   try {
     for await (const [name, handle] of dirHandle.entries()) {
       if (handle.kind !== 'file') continue;
       if (!/\.xlsx?$/i.test(name)) continue;
-      checked++;
       let file;
       try { file = await handle.getFile(); } catch(e) { continue; }
+      // 폴더에 예전 파일이 남아있어도 오늘 수정된 파일만 가져옴 (어제·그제 파일까지 다 불러오는 것 방지)
+      if (_localISO(new Date(file.lastModified)) !== todayStr) continue;
+      checked++;
       const mtime = file.lastModified;
       if (seen[name] === mtime) continue; // 파일명+수정시간이 그대로면 이미 처리한 파일
       try {
