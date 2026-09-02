@@ -200,6 +200,13 @@
         <input type="checkbox" id="gmarketCouponHalfChk" onchange="onGmarketCouponHalfChange(this)" style="width:14px;height:14px">
         🎟️ 지마켓/옥션 구매쿠폰 반반부담 행사 중 (체크: 정산추가정보의 구매쿠폰적용금액 <b>절반</b>만 주문금액에 반영 · 평소엔 전액 반영 · 지금 업로드하는 파일부터 적용 — 이미 업로드한 파일은 다시 업로드해야 반영돼요)
       </label>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <span style="font-size:12px;color:var(--text2);white-space:nowrap">📁 자동 가져오기 폴더</span>
+        <button class="btn btn-sm" onclick="pickPoImportFolder()" style="background:var(--bg2);border:1px solid var(--border)">폴더 설정</button>
+        <button class="btn btn-sm" onclick="checkPoImportFolder()">🔄 지금 확인</button>
+        <span id="poImportFolderName" style="font-size:12px;color:var(--text3)">가져오기 폴더 미설정</span>
+        <span id="poImportStatus" style="font-size:12px;color:var(--text3);width:100%"></span>
+      </div>
     </div>
 
     <div class="alert alert-info">
@@ -796,6 +803,13 @@
       <input type="file" id="invTrackFile" accept=".xls,.xlsx" multiple style="display:none" onchange="invLoadTracks(this.files)">
     </div>
     <div id="invTrackList" style="margin-top:10px"></div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+      <span style="font-size:12px;color:var(--text2);white-space:nowrap">📁 자동 가져오기 폴더</span>
+      <button class="btn btn-sm" onclick="pickInvImportFolder()" style="background:var(--bg2);border:1px solid var(--border)">폴더 설정</button>
+      <button class="btn btn-sm" onclick="checkInvImportFolder()">🔄 지금 확인</button>
+      <span id="invImportFolderName" style="font-size:12px;color:var(--text3)">가져오기 폴더 미설정</span>
+      <span id="invImportStatus" style="font-size:12px;color:var(--text3);width:100%"></span>
+    </div>
   </div>
 
   <div class="card" id="invCarrierSettingsCard">
@@ -2817,6 +2831,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(fa) fa.addEventListener('change',e=>{handleFileAdd(e.target.files[0]);fa.value='';});
   try{ populateVendorSelect(); }catch(e){}
   try{ renderCutoffPanel(); }catch(e){}
+  _restorePoImportFolder().then(()=>{ if (_poImportDirHandle) checkPoImportFolder(); }).catch(()=>{});
+  _restoreInvImportFolder().catch(()=>{});
   _sbSyncCodes().catch(()=>{});
   _sbSyncOptMaps().catch(()=>{});
   _sbSyncBankInfo().catch(()=>{});
@@ -5621,6 +5637,55 @@ async function _getPoSubDirHandle(alias){
   } catch(e) {
     console.warn('발주서 폴더 접근 실패:', e);
     return null;
+  }
+}
+// ── 발주서 생성용 "가져오기 폴더" — 지정해두면 새 샵마인 주문 파일을 자동으로 찾아서 추가해줌 ──
+let _poImportDirHandle = null;
+const LS_PO_IMPORT_SEEN = 'yb_po_import_seen';
+async function _updatePoImportFolderLabel(){
+  const el = document.getElementById('poImportFolderName');
+  if (!el) return;
+  el.textContent = _poImportDirHandle ? ('📂 ' + _poImportDirHandle.name) : '가져오기 폴더 미설정';
+  el.style.color = _poImportDirHandle ? 'var(--primary)' : '';
+}
+async function _restorePoImportFolder(){
+  try {
+    const handle = await _idbGet('poImportDirHandle');
+    if (!handle) return;
+    _poImportDirHandle = handle;
+    await _updatePoImportFolderLabel();
+  } catch(e) { /* 무시 */ }
+}
+async function pickPoImportFolder(){
+  try {
+    if (!window.showDirectoryPicker) { alert('이 브라우저는 폴더 자동 가져오기를 지원하지 않습니다.'); return; }
+    const handle = await window.showDirectoryPicker({mode:'read', startIn:'desktop'});
+    _poImportDirHandle = handle;
+    await _idbPut('poImportDirHandle', handle);
+    await _updatePoImportFolderLabel();
+    checkPoImportFolder();
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('폴더 선택 오류: ' + e.message);
+  }
+}
+async function checkPoImportFolder(){
+  if (!_poImportDirHandle) return;
+  const statusEl = document.getElementById('poImportStatus');
+  try {
+    let perm = await _poImportDirHandle.queryPermission({mode:'read'});
+    if (perm !== 'granted') perm = await _poImportDirHandle.requestPermission({mode:'read'});
+    if (perm !== 'granted') { if (statusEl) statusEl.textContent = '⚠ 폴더 접근 권한이 필요해요 (버튼을 다시 눌러주세요)'; return; }
+  } catch(e) { return; }
+  if (statusEl) statusEl.textContent = '⏳ 폴더 확인 중...';
+  const {checked, imported} = await _scanImportFolder(_poImportDirHandle, LS_PO_IMPORT_SEEN, file => new Promise(resolve => {
+    // 첫 파일이 아직 없으면 새로 업로드, 있으면 추가(합산) — 수동 업로드와 동일한 판단
+    if (!allOrders || allOrders.length === 0) handleFile(file, resolve);
+    else handleFileAdd(file, resolve);
+  }));
+  if (statusEl) {
+    statusEl.textContent = imported > 0
+      ? `✅ 새 파일 ${imported}건 자동으로 불러왔어요 (폴더 내 ${checked}개 확인)`
+      : (checked > 0 ? `변동 없음 (${checked}개 확인)` : '폴더에 엑셀 파일이 없어요');
   }
 }
 async function _poWriteWorkbook(wb, fname, alias, wopts){
@@ -8660,6 +8725,54 @@ async function _getInvSaveDirHandle(){
     return null;
   }
 }
+// ── 송장입력용 "가져오기 폴더" — 지정해두면 새 택배사 회신파일을 자동으로 찾아서 매칭에 추가해줌 ──
+let _invImportDirHandle = null;
+const LS_INV_IMPORT_SEEN = 'yb_inv_import_seen';
+async function _updateInvImportFolderLabel(){
+  const el = document.getElementById('invImportFolderName');
+  if (!el) return;
+  el.textContent = _invImportDirHandle ? ('📂 ' + _invImportDirHandle.name) : '가져오기 폴더 미설정';
+  el.style.color = _invImportDirHandle ? 'var(--primary)' : '';
+}
+async function _restoreInvImportFolder(){
+  try {
+    const handle = await _idbGet('invImportDirHandle');
+    if (!handle) return;
+    _invImportDirHandle = handle;
+    await _updateInvImportFolderLabel();
+  } catch(e) { /* 무시 */ }
+}
+async function pickInvImportFolder(){
+  try {
+    if (!window.showDirectoryPicker) { alert('이 브라우저는 폴더 자동 가져오기를 지원하지 않습니다.'); return; }
+    const handle = await window.showDirectoryPicker({mode:'read', startIn:'desktop'});
+    _invImportDirHandle = handle;
+    await _idbPut('invImportDirHandle', handle);
+    await _updateInvImportFolderLabel();
+    checkInvImportFolder();
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('폴더 선택 오류: ' + e.message);
+  }
+}
+async function checkInvImportFolder(){
+  if (!_invImportDirHandle) return;
+  const statusEl = document.getElementById('invImportStatus');
+  try {
+    let perm = await _invImportDirHandle.queryPermission({mode:'read'});
+    if (perm !== 'granted') perm = await _invImportDirHandle.requestPermission({mode:'read'});
+    if (perm !== 'granted') { if (statusEl) statusEl.textContent = '⚠ 폴더 접근 권한이 필요해요 (버튼을 다시 눌러주세요)'; return; }
+  } catch(e) { return; }
+  if (statusEl) statusEl.textContent = '⏳ 폴더 확인 중...';
+  const {checked, imported} = await _scanImportFolder(_invImportDirHandle, LS_INV_IMPORT_SEEN, file => {
+    invLoadTracks([file]);
+    return Promise.resolve(); // invLoadTracks는 파일별로 비동기 처리되고 완료 콜백이 없어 여기선 호출만 보장
+  });
+  if (statusEl) {
+    statusEl.textContent = imported > 0
+      ? `✅ 새 회신파일 ${imported}건 자동으로 불러왔어요 (폴더 내 ${checked}개 확인)`
+      : (checked > 0 ? `변동 없음 (${checked}개 확인)` : '폴더에 엑셀 파일이 없어요');
+  }
+}
 async function invDownload() {
   try {
     if (!invResultData || !invOrderWb) return;
@@ -9373,6 +9486,34 @@ async function _idbGet(key) {
     req.onsuccess = e => res(e.target.result);
     req.onerror   = e => rej(e.target.error);
   });
+}
+// ── 폴더 자동 가져오기 공용 헬퍼 (발주서 생성/송장입력 공용) ──
+// 지정한 폴더 핸들을 훑어서 엑셀 파일 중 "이전에 못 본 파일"이거나 "수정시간이 바뀐 파일"만
+// onNewFile로 넘겨줌 — 같은 파일명을 계속 덮어써서 쓰는 경우(예: 매일 같은 파일명으로 재생성)에도
+// 수정시간이 바뀌면 새 내용으로 인식해서 다시 불러오고, 안 바뀌었으면 건너뜀
+async function _scanImportFolder(dirHandle, seenKey, onNewFile){
+  if (!dirHandle) return {checked:0, imported:0};
+  let seen = {};
+  try { seen = JSON.parse(localStorage.getItem(seenKey)||'{}'); } catch(e){}
+  let checked = 0, imported = 0;
+  try {
+    for await (const [name, handle] of dirHandle.entries()) {
+      if (handle.kind !== 'file') continue;
+      if (!/\.xlsx?$/i.test(name)) continue;
+      checked++;
+      let file;
+      try { file = await handle.getFile(); } catch(e) { continue; }
+      const mtime = file.lastModified;
+      if (seen[name] === mtime) continue; // 파일명+수정시간이 그대로면 이미 처리한 파일
+      try {
+        await onNewFile(file);
+        seen[name] = mtime;
+        imported++;
+      } catch(e) { console.warn('[폴더 자동가져오기] 처리 실패:', name, e); }
+    }
+  } catch(e) { console.warn('[폴더 자동가져오기] 폴더 읽기 실패:', e); }
+  localStorage.setItem(seenKey, JSON.stringify(seen));
+  return {checked, imported};
 }
 // ── 거래내역서 첨부 파일 CRUD ──
 async function _idbPutAttach(id, data, skipCloud) {
@@ -10512,10 +10653,11 @@ function switchTab(name){
     const btnEl=document.getElementById('tabBtn-'+name);
     if(tabEl) tabEl.classList.add('active');
     if(btnEl) btnEl.classList.add('active');
+    if(name==='order'){try{checkPoImportFolder();}catch(e){console.error(e);}}
     if(name==='codes'){try{renderCodeList();}catch(e){console.error(e);}try{renderOptMapList();}catch(e){console.error(e);}try{renderUnmatchedHints();}catch(e){console.error(e);}try{renderOmPreview();}catch(e){console.error(e);}try{renderCodeMappingList();}catch(e){console.error(e);}}
     if(name==='expense'){try{initExpenseTab();}catch(e){console.error(e);}}
     if(name==='income'){try{initIncomeTab();}catch(e){console.error(e);}}
-    if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}try{_invGmailRenderSenderChip();}catch(e){}try{_restoreInvSaveFolder();}catch(e){}}
+    if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}try{_invGmailRenderSenderChip();}catch(e){}try{_restoreInvSaveFolder();}catch(e){}try{checkInvImportFolder();}catch(e){console.error(e);}}
     if(name==='recon'){try{reconInitIfNeeded();}catch(e){console.error(e);}}
     if(name==='report'){try{const d=document.getElementById('rptDate');if(d&&!d.value)d.value=_localISO();}catch(e){console.error(e);}}
     if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
