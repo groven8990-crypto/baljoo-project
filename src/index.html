@@ -204,6 +204,7 @@
         <span style="font-size:12px;color:var(--text2);white-space:nowrap">📁 자동 가져오기 폴더</span>
         <button class="btn btn-sm" onclick="pickPoImportFolder()" style="background:var(--bg2);border:1px solid var(--border)">폴더 설정</button>
         <button class="btn btn-sm" onclick="checkPoImportFolder()">🔄 지금 확인</button>
+        <button class="btn btn-sm" onclick="resetPoImportSeen()" title="이미 처리한 파일로 기록된 내역을 지워서, 다음 확인 때 오늘 파일을 다시 가져오게 함">🔁 처리기록 초기화</button>
         <span id="poImportFolderName" style="font-size:12px;color:var(--text3)">가져오기 폴더 미설정</span>
         <span id="poImportStatus" style="font-size:12px;color:var(--text3);width:100%"></span>
       </div>
@@ -807,6 +808,7 @@
       <span style="font-size:12px;color:var(--text2);white-space:nowrap">📁 자동 가져오기 폴더</span>
       <button class="btn btn-sm" onclick="pickInvImportFolder()" style="background:var(--bg2);border:1px solid var(--border)">폴더 설정</button>
       <button class="btn btn-sm" onclick="checkInvImportFolder()">🔄 지금 확인</button>
+      <button class="btn btn-sm" onclick="resetInvImportSeen()" title="이미 처리한 파일로 기록된 내역을 지워서, 다음 확인 때 오늘 파일을 다시 가져오게 함">🔁 처리기록 초기화</button>
       <span id="invImportFolderName" style="font-size:12px;color:var(--text3)">가져오기 폴더 미설정</span>
       <span id="invImportStatus" style="font-size:12px;color:var(--text3);width:100%"></span>
     </div>
@@ -5677,16 +5679,26 @@ async function checkPoImportFolder(){
     if (perm !== 'granted') { if (statusEl) statusEl.textContent = '⚠ 폴더 접근 권한이 필요해요 (버튼을 다시 눌러주세요)'; return; }
   } catch(e) { return; }
   if (statusEl) statusEl.textContent = '⏳ 폴더 확인 중...';
-  const {checked, imported} = await _scanImportFolder(_poImportDirHandle, LS_PO_IMPORT_SEEN, file => new Promise(resolve => {
+  const {checked, imported, failed} = await _scanImportFolder(_poImportDirHandle, LS_PO_IMPORT_SEEN, file => new Promise(resolve => {
+    // 실제로 주문이 늘었는지로 성공 여부를 판단 — handleFile/handleFileAdd는 형식이 안 맞아도
+    // 에러 없이 조용히 끝나는 경우가 있어서, 콜백이 불렸다는 것만으로는 성공을 보장할 수 없음
+    const before = (allOrders||[]).length;
     // 첫 파일이 아직 없으면 새로 업로드, 있으면 추가(합산) — 수동 업로드와 동일한 판단
-    if (!allOrders || allOrders.length === 0) handleFile(file, resolve);
-    else handleFileAdd(file, resolve);
+    const cb = () => resolve((allOrders||[]).length > before);
+    if (!allOrders || allOrders.length === 0) handleFile(file, cb);
+    else handleFileAdd(file, cb);
   }));
   if (statusEl) {
-    statusEl.textContent = imported > 0
-      ? `✅ 새 파일 ${imported}건 자동으로 불러왔어요 (오늘 파일 ${checked}개 확인)`
-      : (checked > 0 ? `변동 없음 (오늘 파일 ${checked}개 확인)` : '폴더에 오늘 날짜로 수정된 엑셀 파일이 없어요');
+    if (imported > 0) statusEl.textContent = `✅ 새 파일 ${imported}건 자동으로 불러왔어요 (오늘 파일 ${checked}개 확인)`;
+    else if (failed > 0) statusEl.textContent = `⚠ 오늘 파일을 찾았는데 못 불러왔어요 — 양식을 확인해주세요 (실패 ${failed}건)`;
+    else if (checked > 0) statusEl.textContent = `변동 없음 (오늘 파일 ${checked}개 확인)`;
+    else statusEl.textContent = '폴더에 오늘 날짜로 수정된 엑셀 파일이 없어요';
   }
+}
+function resetPoImportSeen(){
+  localStorage.removeItem(LS_PO_IMPORT_SEEN);
+  const statusEl = document.getElementById('poImportStatus');
+  if (statusEl) statusEl.textContent = '🔁 처리기록 초기화됨 — "지금 확인"을 누르면 오늘 파일을 다시 가져와요';
 }
 async function _poWriteWorkbook(wb, fname, alias, wopts){
   const safeName = String(fname||'').replace(/[\\/:*?"<>|]/g, '_');
@@ -8023,7 +8035,7 @@ function _invDetectTrackHeader(rawRows) {
   }
   return {trackIdx, nameIdx, orderCodeIdx, courierIdx, addrIdx, hdrRow};
 }
-function invLoadTracks(files, vendorHint) {
+function invLoadTracks(files, vendorHint, onEach) {
   Array.from(files).forEach(file => {
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -8046,6 +8058,7 @@ function invLoadTracks(files, vendorHint) {
             (nameIdx  < 0 ? '❌수령인 컬럼 없음' : '✅수령인OK') +
             '\n읽힌 헤더: ' + hdrSample +
             ' (총 ' + (rawRows&&rawRows[0]||[]).length + '열, ' + (rawRows?rawRows.length:0) + '행)');
+          if (typeof onEach === 'function') onEach(false);
           return;
         }
         // map: 수령인 → [{no, courier, addr}]  |  orderCodeMap: 주문번호 → [{no, courier}]
@@ -8075,9 +8088,15 @@ function invLoadTracks(files, vendorHint) {
         invRenderTrackList();
         invRenderVendorCard();
         invCheckReady();
+        if (typeof onEach === 'function') onEach(true);
       } catch(err) {
         invShowTrackError(file.name, err.message);
+        if (typeof onEach === 'function') onEach(false);
       }
+    };
+    reader.onerror = function(){
+      invShowTrackError(file.name, '파일을 읽지 못했습니다.');
+      if (typeof onEach === 'function') onEach(false);
     };
     reader.readAsArrayBuffer(file);
   });
@@ -8763,15 +8782,20 @@ async function checkInvImportFolder(){
     if (perm !== 'granted') { if (statusEl) statusEl.textContent = '⚠ 폴더 접근 권한이 필요해요 (버튼을 다시 눌러주세요)'; return; }
   } catch(e) { return; }
   if (statusEl) statusEl.textContent = '⏳ 폴더 확인 중...';
-  const {checked, imported} = await _scanImportFolder(_invImportDirHandle, LS_INV_IMPORT_SEEN, file => {
-    invLoadTracks([file]);
-    return Promise.resolve(); // invLoadTracks는 파일별로 비동기 처리되고 완료 콜백이 없어 여기선 호출만 보장
-  });
+  const {checked, imported, failed} = await _scanImportFolder(_invImportDirHandle, LS_INV_IMPORT_SEEN, file => new Promise(resolve => {
+    invLoadTracks([file], undefined, ok => resolve(ok));
+  }));
   if (statusEl) {
-    statusEl.textContent = imported > 0
-      ? `✅ 새 회신파일 ${imported}건 자동으로 불러왔어요 (오늘 파일 ${checked}개 확인)`
-      : (checked > 0 ? `변동 없음 (오늘 파일 ${checked}개 확인)` : '폴더에 오늘 날짜로 수정된 엑셀 파일이 없어요');
+    if (imported > 0) statusEl.textContent = `✅ 새 회신파일 ${imported}건 자동으로 불러왔어요 (오늘 파일 ${checked}개 확인)`;
+    else if (failed > 0) statusEl.textContent = `⚠ 오늘 파일을 찾았는데 못 불러왔어요 — 양식을 확인해주세요 (실패 ${failed}건)`;
+    else if (checked > 0) statusEl.textContent = `변동 없음 (오늘 파일 ${checked}개 확인)`;
+    else statusEl.textContent = '폴더에 오늘 날짜로 수정된 엑셀 파일이 없어요';
   }
+}
+function resetInvImportSeen(){
+  localStorage.removeItem(LS_INV_IMPORT_SEEN);
+  const statusEl = document.getElementById('invImportStatus');
+  if (statusEl) statusEl.textContent = '🔁 처리기록 초기화됨 — "지금 확인"을 누르면 오늘 파일을 다시 가져와요';
 }
 async function invDownload() {
   try {
@@ -9496,7 +9520,7 @@ async function _scanImportFolder(dirHandle, seenKey, onNewFile){
   let seen = {};
   try { seen = JSON.parse(localStorage.getItem(seenKey)||'{}'); } catch(e){}
   const todayStr = _localISO();
-  let checked = 0, imported = 0;
+  let checked = 0, imported = 0, failed = 0;
   try {
     for await (const [name, handle] of dirHandle.entries()) {
       if (handle.kind !== 'file') continue;
@@ -9509,14 +9533,17 @@ async function _scanImportFolder(dirHandle, seenKey, onNewFile){
       const mtime = file.lastModified;
       if (seen[name] === mtime) continue; // 파일명+수정시간이 그대로면 이미 처리한 파일
       try {
-        await onNewFile(file);
+        const ok = await onNewFile(file);
+        // onNewFile이 false를 반환하면(실제로 반영된 게 없으면) 처리 실패로 보고 다음 확인 때 다시 시도하도록
+        // seen에 기록하지 않음 — 예전엔 실패해도 무조건 기록해버려서 한 번 실패한 파일이 계속 무시되는 문제가 있었음
+        if (ok === false) { failed++; continue; }
         seen[name] = mtime;
         imported++;
-      } catch(e) { console.warn('[폴더 자동가져오기] 처리 실패:', name, e); }
+      } catch(e) { failed++; console.warn('[폴더 자동가져오기] 처리 실패:', name, e); }
     }
   } catch(e) { console.warn('[폴더 자동가져오기] 폴더 읽기 실패:', e); }
   localStorage.setItem(seenKey, JSON.stringify(seen));
-  return {checked, imported};
+  return {checked, imported, failed};
 }
 // ── 거래내역서 첨부 파일 CRUD ──
 async function _idbPutAttach(id, data, skipCloud) {
