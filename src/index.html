@@ -16045,12 +16045,23 @@ function srRenderProductAliases(){
     </div>`).join('');
 }
 function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회'))return 'grobn';if(a.includes('자꾸가게'))return 'yb';return 'other';}
+function _srIsManualB2B(o){ return /^B2B-/.test(String((o&&o.shop_mall)||'')); }
 function srAggregate(orders){
   const platMap={},prodMap={};let totalSales=0;
+  // B2B(문자주문 등)로 등록된 주문 — 일반 플랫폼/제품 표에서 빼고 별도 집계 (디네트처럼 구분 표시)
+  const b2bMap={};  // key = 거래처명 ('B2B-' 접두어 제거)
+  let regCount=0, regSales=0;
   // 깐마늘 전용 상세: 플랫폼(쿠팡/스마트스토어 등) × 옵션 단위 집계
   const garlicMap = {};  // key = platformLabel + '||' + option
   for(const o of orders){
     const amt=(typeof _srSalesAmt==='function')?_srSalesAmt(o):(Number(o.order_amt)||0);totalSales+=amt;
+    if (_srIsManualB2B(o)) {
+      const bn = String(o.shop_mall).replace(/^B2B-/,'').trim() || '미지정';
+      if(!b2bMap[bn])b2bMap[bn]={count:0,sales:0};
+      b2bMap[bn].count++;b2bMap[bn].sales+=amt;
+      continue;
+    }
+    regCount++; regSales+=amt;
     const p=srPlatform(o);
     if(!platMap[p])platMap[p]={count:0,sales:0};
     platMap[p].count++;platMap[p].sales+=amt;
@@ -16101,7 +16112,7 @@ function srAggregate(orders){
       }
     }
   }
-  return {totalSales,count:orders.length,platMap,prodMap,garlicMap};
+  return {totalSales,count:orders.length,platMap,prodMap,garlicMap,b2bMap,regCount,regSales};
 }
 function srBrandSection(title, color, agg, opts){
   if(agg.count===0) return '';
@@ -16152,8 +16163,8 @@ function srBrandSection(title, color, agg, opts){
       <tbody>${platRows}</tbody>
       <tfoot><tr style="background:${FOOT_BG};font-weight:700">
         <td style="padding:9px 14px;color:${HEAD_FG}">합계</td>
-        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.count.toLocaleString()}건</td>
-        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.totalSales.toLocaleString()}원</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${(agg.regCount||0).toLocaleString()}건</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${(agg.regSales||0).toLocaleString()}원</td>
       </tr></tfoot>
     </table>
     <div style="height:8px"></div>
@@ -16167,11 +16178,42 @@ function srBrandSection(title, color, agg, opts){
       <tbody>${prodRows}</tbody>
       <tfoot><tr style="background:${FOOT_BG};font-weight:700">
         <td style="padding:9px 14px;color:${HEAD_FG}">합계</td>
-        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.count.toLocaleString()}건</td>
-        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.totalSales.toLocaleString()}원</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${(agg.regCount||0).toLocaleString()}건</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${(agg.regSales||0).toLocaleString()}원</td>
       </tr></tfoot>
     </table>
+    ${srB2BDetailHtml(agg)}
     ${srGarlicDetailHtml(agg, color)}`;
+}
+// B2B(문자주문 등으로 등록된) 매출 — 일반 플랫폼 표와 분리해서 거래처별로 표시
+function srB2BDetailHtml(agg){
+  const map = agg.b2bMap || {};
+  const entries = Object.entries(map).sort((a,b)=>b[1].sales-a[1].sales);
+  if (entries.length === 0) return '';
+  const HEAD_BG='#F1F5F9', HEAD_FG='#334155';
+  const total = entries.reduce((s,[,v])=>({count:s.count+v.count, sales:s.sales+v.sales}), {count:0,sales:0});
+  const rows = entries.map(([name,v],i)=>`
+    <tr style="background:${i%2===0?'#FFF7ED':'#FFEFDC'}">
+      <td style="padding:8px 14px;border-bottom:1px solid #F5DEC0;color:#7B4B00">${escHtml(name)}</td>
+      <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #F5DEC0;color:#7B4B00">${v.count.toLocaleString()}건</td>
+      <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #F5DEC0;color:#7B4B00">${v.sales.toLocaleString()}원</td>
+    </tr>`).join('');
+  return `
+    <div style="background:#FDF0E0;color:#7B4B00;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #E8A54B">🏭 B2B 매출 (문자주문 등)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FFF7ED">
+      <colgroup><col style="width:50%"><col style="width:22%"><col style="width:28%"></colgroup>
+      <thead><tr style="background:#F5DEC0">
+        <th style="padding:8px 14px;text-align:left;color:#7B4B00;font-weight:700">거래처</th>
+        <th style="padding:8px 14px;text-align:right;color:#7B4B00;font-weight:700">주문건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#7B4B00;font-weight:700">매출액</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="background:#F0DBBE;font-weight:700">
+        <td style="padding:8px 14px;color:#7B4B00">합계</td>
+        <td style="padding:8px 14px;text-align:right;color:#7B4B00">${total.count.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;color:#7B4B00">${total.sales.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>`;
 }
 // 깐마늘 상세 — 플랫폼 × 옵션 단위
 function srGarlicDetailHtml(agg, color){
@@ -16791,6 +16833,11 @@ function srRender(){
   const selfCnt   = grAgg.count + ybAgg.count;
   const totalSales = selfSales + dnAgg.sales;
   const totalCnt   = selfCnt + dnAgg.count;
+  // B2B 매출 합계 — 디네트(전용 업로드) + 문자주문 등으로 등록된 B2B (그로븐/옐로우브릿지에 이미 포함된 매출을 별도 표시용으로 합산)
+  const _b2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales}),{count:0,sales:0});
+  const _manualB2b = (()=>{ const g=_b2bTotals(grAgg.b2bMap), y=_b2bTotals(ybAgg.b2bMap); return {count:g.count+y.count, sales:g.sales+y.sales}; })();
+  const b2bSales = dnAgg.sales + _manualB2b.sales;
+  const b2bCnt   = dnAgg.count + _manualB2b.count;
   // 보고일자
   let dateStr=document.getElementById('srReportDate').value;
   if(!dateStr){
@@ -16817,9 +16864,9 @@ function srRender(){
             <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
           </div>
           <div>
-            <div style="font-size:11px;color:#888">디네트 매출액</div>
-            <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${dnAgg.sales.toLocaleString()}원</div>
-            <div style="font-size:11px;color:#888;margin-top:2px">${dnAgg.count.toLocaleString()}건</div>
+            <div style="font-size:11px;color:#888">B2B 매출액</div>
+            <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${b2bSales.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">${b2bCnt.toLocaleString()}건</div>
           </div>
         </div>
       </div>
@@ -18529,12 +18576,14 @@ function wrWeekRange(anyDate){
 function wrMergeAggs(snaps, brandKey){
   // snaps: [{grAgg, ybAgg, dnAgg, ...}]
   // brandKey: 'grAgg' | 'ybAgg'
-  const platMap={}, prodMap={};
-  let totalSales=0, count=0;
+  const platMap={}, prodMap={}, b2bMap={};
+  let totalSales=0, count=0, regSales=0, regCount=0;
   for (const s of snaps) {
     const a = s[brandKey]; if (!a) continue;
     totalSales += a.totalSales||0;
     count += a.count||0;
+    regSales += (a.regSales!=null ? a.regSales : a.totalSales)||0;
+    regCount += (a.regCount!=null ? a.regCount : a.count)||0;
     for (const [p,v] of Object.entries(a.platMap||{})) {
       if (!platMap[p]) platMap[p] = {count:0,sales:0};
       platMap[p].count += v.count||0;
@@ -18545,8 +18594,13 @@ function wrMergeAggs(snaps, brandKey){
       prodMap[p].count += v.count||0;
       prodMap[p].sales += v.sales||0;
     }
+    for (const [n,v] of Object.entries(a.b2bMap||{})) {
+      if (!b2bMap[n]) b2bMap[n] = {count:0,sales:0};
+      b2bMap[n].count += v.count||0;
+      b2bMap[n].sales += v.sales||0;
+    }
   }
-  return {totalSales, count, platMap, prodMap};
+  return {totalSales, count, platMap, prodMap, b2bMap, regSales, regCount};
 }
 function wrMergeDinette(snaps){
   let sales=0, count=0;
@@ -18663,6 +18717,11 @@ function wrRender(){
   const selfCnt   = grAgg.count + ybAgg.count;
   const totalSales = selfSales + dnAgg.sales;
   const totalCnt   = selfCnt + dnAgg.count;
+  // B2B 매출 합계 — 디네트(전용 업로드) + 문자주문 등으로 등록된 B2B
+  const _wrB2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales}),{count:0,sales:0});
+  const _wrManualB2b = (()=>{ const g=_wrB2bTotals(grAgg.b2bMap), y=_wrB2bTotals(ybAgg.b2bMap); return {count:g.count+y.count, sales:g.sales+y.sales}; })();
+  const b2bSales = dnAgg.sales + _wrManualB2b.sales;
+  const b2bCnt   = dnAgg.count + _wrManualB2b.count;
   // ── 직전 주 비교 + 최근 4주 추이 ──
   const prevAnyDate = new Date(range.mon); prevAnyDate.setDate(prevAnyDate.getDate() - 7);
   const prevRange = wrWeekRange(_localISO(prevAnyDate));
@@ -18740,6 +18799,7 @@ function wrRender(){
   const _plat = {};
   const _addP = (mp) => { for (const [p,v] of Object.entries(mp||{})) { _plat[p] = (_plat[p]||0) + (v.sales||0); }};
   _addP(grAgg.platMap); _addP(ybAgg.platMap);
+  _addP(grAgg.b2bMap); _addP(ybAgg.b2bMap);
   if (dnAgg.sales > 0) _plat['디네트(B2B)'] = (_plat['디네트(B2B)']||0) + dnAgg.sales;
   const platSorted = Object.entries(_plat).sort((a,b)=>b[1]-a[1]);
   const platTotal = platSorted.reduce((s,[,v])=>s+v, 0);
@@ -18773,9 +18833,9 @@ function wrRender(){
               <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
             </div>
             <div>
-              <div style="font-size:11px;color:#888">디네트 매출액</div>
-              <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${dnAgg.sales.toLocaleString()}원</div>
-              <div style="font-size:11px;color:#888;margin-top:2px">${dnAgg.count.toLocaleString()}건</div>
+              <div style="font-size:11px;color:#888">B2B 매출액</div>
+              <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${b2bSales.toLocaleString()}원</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">${b2bCnt.toLocaleString()}건</div>
             </div>
           </div>
           ${compareRowHtml}
@@ -18995,6 +19055,8 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, pur){
     }};
     addPlat(grAgg.platMap);
     addPlat(ybAgg.platMap);
+    addPlat(grAgg.b2bMap);
+    addPlat(ybAgg.b2bMap);
     if (dnAgg.sales > 0) platCombined['디네트(B2B)'] = (platCombined['디네트(B2B)']||0) + dnAgg.sales;
     const sorted = Object.entries(platCombined).sort((a,b)=>b[1]-a[1]);
     const labels = sorted.map(([p])=>p);
