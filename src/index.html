@@ -3578,9 +3578,11 @@ function addManualOrder(){
   if (errEl) errEl.textContent = '';
   const item   = (document.getElementById('moItem').value||'').trim();
   const option = (document.getElementById('moOption').value||'').trim();
-  const qty    = Math.max(1, parseInt(document.getElementById('moQty').value)||1);
+  const qtyRaw = (document.getElementById('moQty').value||'').trim();
+  const qty    = Math.max(1, parseInt(qtyRaw)||1);
   const vendor = (document.getElementById('moVendor').value||'').trim();
-  const amt    = Math.max(0, parseInt(document.getElementById('moAmt').value)||0);
+  const amtRaw = (document.getElementById('moAmt').value||'').trim();
+  const amt    = Math.max(0, parseInt(amtRaw)||0);
   const recvName  = (document.getElementById('moRecvName').value||'').trim();
   const recvPhone = (document.getElementById('moRecvPhone').value||'').trim();
   const addr      = (document.getElementById('moAddr').value||'').trim();
@@ -3591,12 +3593,16 @@ function addManualOrder(){
   const platName = (document.getElementById('moPlatName').value||'').trim();
 
   if (!item)   { errEl.textContent = '품목명을 입력해주세요.'; return; }
+  if (!qtyRaw || !(parseInt(qtyRaw) >= 1)) { errEl.textContent = '수량을 입력해주세요.'; return; }
   if (!vendor) { errEl.textContent = '발주처를 입력해주세요.'; return; }
   if (!VENDOR_PREFIXES[vendor] && !loadCustomVendors()[vendor]) {
     errEl.textContent = `'${vendor}' 은 등록된 발주처가 아니에요. ⚙️ 코드 관리 → 발주처 양식에서 먼저 등록하거나, 발주처명을 정확히 입력해주세요.`;
     return;
   }
+  if (!amtRaw || !(parseInt(amtRaw) > 0)) { errEl.textContent = '매출금액을 입력해주세요. (매입/순이익 계산에 필요해요)'; return; }
   if (!recvName || !recvPhone) { errEl.textContent = '받는사람 성명과 전화번호를 입력해주세요.'; return; }
+  if (platType === 'b2b' && !b2bName) { errEl.textContent = 'B2B 거래처명을 입력해주세요.'; return; }
+  if (platType === 'market' && !platName) { errEl.textContent = '플랫폼명을 입력해주세요. (예: 쿠팡, 톡딜, 지마켓)'; return; }
 
   const prefixes = VENDOR_PREFIXES[vendor] || (loadCustomVendors()[vendor]||{}).prefixes || [vendor+']'];
   const prefix = prefixes[0];
@@ -17210,7 +17216,11 @@ function srBuildProfitRows(orders){
   const map = {};  // key → row
   for (const o of orders) {
     if (!o.vendor_key) continue;  // unmatched 제외
-    const key = srPurchaseKey(o);
+    // 문자주문 등으로 등록된 B2B 주문 — 같은 발주처/품목이라도 일반 주문과 합쳐지면 안 되니
+    // 키에 B2B 거래처명을 붙여서 별도 행으로 만들고, 매입/순이익 화면에서도 디네트처럼 분리 표시
+    const isManualB2B = (typeof _srIsManualB2B === 'function') && _srIsManualB2B(o);
+    const b2bName = isManualB2B ? (String(o.shop_mall).replace(/^B2B-/,'').trim() || '미지정') : '';
+    const key = srPurchaseKey(o) + (isManualB2B ? ('|b2b:'+b2bName) : '');
     const norm = srNormalizeForPurchase(o);
     if (!map[key]) {
       const saved = db[key] || {};
@@ -17218,6 +17228,9 @@ function srBuildProfitRows(orders){
         key,
         brand:    srBrandFromAlias(o.alias),
         vendor:   o.vendor_key,
+        detailVendor: isManualB2B ? (b2bName + ' ' + o.vendor_key) : undefined,
+        isB2B:    isManualB2B,
+        b2bName:  isManualB2B ? b2bName : undefined,
         item:     norm.item,
         option:   norm.option,
         count:      0,                              // 주문건수 (행 수)
@@ -17849,10 +17862,11 @@ function _srBuildB2BSectionHtml(biz, b2bRows, _theads, _buildFooter){
     return _srBuildDetailRowHtml(r, i, first);
   }).join('');
   const pc = TB.profit >= 0 ? '#5DE3B3' : '#FECACA';
-  // 발주처별 요약 테이블 (그로븐 섹션과 동일한 형식)
+  // 발주처별 요약 테이블 (그로븐 섹션과 동일한 형식) — B2B 거래처가 여러 곳일 수 있으니
+  // 발주처(매입처) 하나만으로 묶지 않고 "거래처 + 발주처"(detailVendor)로 묶어서 구분
   const byGroup = {};
   for (const r of b2bRows) {
-    const k = String(r.vendor||'');
+    const k = String(r.detailVendor||r.vendor||'');
     if (!byGroup[k]) byGroup[k] = {vendor:k, count:0, sales:0, purchase:0, profit:0};
     const m = byGroup[k];
     m.count+=r.count; m.sales+=r.sales; m.purchase+=r.purchase; m.profit+=r.profit;
@@ -17882,10 +17896,12 @@ function _srBuildB2BSectionHtml(biz, b2bRows, _theads, _buildFooter){
       <td style="padding:10px 14px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;color:${TB.profit>=0?'#06B981':'#F04452'}">${TB.profit.toLocaleString()}원</td>
     </tr></tfoot>
   </table>`;
+  const _b2bNames = [...new Set(b2bRows.map(r=>r.b2bName).filter(Boolean))];
+  const _b2bHeaderSuffix = _b2bNames.length ? ` (${_b2bNames.join(', ')})` : '';
   return `<div style="margin-top:14px" data-b2b-biz="${escHtml(biz)}">
     <div class="sr-b2b-header" data-biz="${escHtml(biz)}"
       style="background:#0D9488;color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      🏭 B2B 매출 (디네트)
+      🏭 B2B 매출${escHtml(_b2bHeaderSuffix)}
       <span style="margin-left:auto;font-size:12px;font-weight:400">
         ${ (()=>{ const _s=TB.sales||1; const _p=v=>`<span style="opacity:.65;font-size:10px;margin-left:2px">(${(v/_s*100).toFixed(1)}%)</span>`;
           return `매출 <b>${TB.sales.toLocaleString()}</b> · 매입 <b>${TB.purchase.toLocaleString()}</b>${_p(TB.purchase)} · 순이익 <b style="color:${pc}">${TB.profit.toLocaleString()}</b>${_p(TB.profit)}`;
