@@ -243,9 +243,9 @@
           <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">받는사람 성명</label><input class="inp" id="moRecvName" placeholder="예: 김철수"></div>
           <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">받는사람 전화번호</label><input class="inp" id="moRecvPhone" placeholder="예: 010-1234-5678"></div>
         </div>
-        <div style="margin-bottom:10px">
-          <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">받는사람 주소 (선택)</label>
-          <input class="inp" id="moAddr" placeholder="주소가 없으면 비워두세요">
+        <div style="display:grid;grid-template-columns:1fr 3fr;gap:10px;margin-bottom:10px">
+          <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">우편번호 (선택)</label><input class="inp" id="moZip" placeholder="5자리"></div>
+          <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">받는사람 주소 (선택)</label><input class="inp" id="moAddr" placeholder="주소가 없으면 비워두세요"></div>
         </div>
         <div style="margin-bottom:14px">
           <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:6px">판매 플랫폼 <span style="font-weight:400;color:var(--text3)">(매입/순이익 수수료 계산용)</span></label>
@@ -3465,7 +3465,7 @@ function onMoPlatTypeChange(){
 // 결과는 항상 사람이 확인/수정하는 폼에 채워넣는 용도로만 씀
 function _parseManualOrderText(text){
   let remaining = ' ' + String(text||'').trim().replace(/\n/g, ' ') + ' ';
-  const result = {co:'', vendor:'', addr:'', recvName:'', phone:'', qty:'', item:''};
+  const result = {co:'', vendor:'', addr:'', zip:'', recvName:'', phone:'', qty:'', item:''};
 
   // 1) 사업자 (마지막에 나오는 걸 채택 — 보통 문장 맨 끝에 옴)
   const coRe = /(그로븐|로또상회|옐로우브릿지|자꾸가게)/g;
@@ -3476,17 +3476,33 @@ function _parseManualOrderText(text){
     remaining = remaining.slice(0, lastCo.index) + ' ' + remaining.slice(lastCo.index + lastCo[1].length);
   }
 
-  // 2) 전화번호
-  const phoneMatch = remaining.match(/01[016789][-\s]?\d{3,4}[-\s]?\d{4}/);
+  // 2) 전화번호 — "010)1234-5678"처럼 괄호를 쓰거나 구분기호가 없는 경우까지 폭넓게 인식
+  const phoneMatch = remaining.match(/01[016789][-)\s]*\d{3,4}[-\s]*\d{4}/);
   if (phoneMatch) {
     const digits = phoneMatch[0].replace(/[^\d]/g,'');
     result.phone = digits.replace(/(\d{3})(\d{3,4})(\d{4})$/, '$1-$2-$3');
     remaining = remaining.slice(0, phoneMatch.index) + ' ' + remaining.slice(phoneMatch.index + phoneMatch[0].length);
   }
 
+  // 매출 보고에 쓰는 상품 키워드 사전 — 발주처/이름 추정이 상품명과 헷갈리지 않도록 참고용으로 사용
+  const productKeywords = (typeof SR_PRODUCT_KEYWORDS === 'object' && SR_PRODUCT_KEYWORDS) ? Object.keys(SR_PRODUCT_KEYWORDS) : [];
+  const looksLikeItemWord = tok => productKeywords.some(k => tok.includes(k) || k.includes(tok));
+
+  // 3) 우편번호 (5자리 숫자 단독 토큰) — 남겨두면 품목/주소 추측을 방해해서 미리 떼어냄.
+  //    "받는사람 우편번호 주소..." 순서로 오는 경우가 많아서, 우편번호 바로 앞 단어가
+  //    이름처럼 보이면(한글 2~4글자, 상품 키워드 아님) 그것도 받는사람 이름으로 같이 인정
+  const zipMatch = remaining.match(/(\S*)\s*(\d{5})(?=\s|$)/);
+  if (zipMatch) {
+    result.zip = zipMatch[2];
+    if (!result.recvName && /^[가-힣]{2,4}$/.test(zipMatch[1]) && !looksLikeItemWord(zipMatch[1])) {
+      result.recvName = zipMatch[1];
+    }
+    remaining = remaining.slice(0, zipMatch.index) + ' ' + remaining.slice(zipMatch.index + zipMatch[0].length);
+  }
+
   const tokens = remaining.split(/\s+/).filter(Boolean);
 
-  // 3) 발주처 — 등록된 발주처명과 가장 비슷한 토큰을 찾음 (완전히 안 맞아도 유사하면 후보로)
+  // 4) 발주처 — 등록된 발주처명과 가장 비슷한 토큰을 찾음 (완전히 안 맞아도 유사하면 후보로)
   const vendorNames = Object.keys(VENDOR_PREFIXES).concat(Object.keys(loadCustomVendors()||{}));
   let bestVendor = null, bestScore = 0, bestTokenIdx = -1;
   tokens.forEach((tok, i) => {
@@ -3501,30 +3517,43 @@ function _parseManualOrderText(text){
   });
   if (bestVendor && bestScore >= Math.min(3, bestVendor.length)) result.vendor = bestVendor;
 
-  // 4) 발주처 토큰 기준으로 앞(품목+수량) / 뒤(주소+받는사람) 로 나눔
+  // 5) 발주처 토큰 기준으로 앞(품목+수량) / 뒤(주소+받는사람) 로 나눔
   let leftTokens = tokens, rightTokens = [];
   if (bestTokenIdx >= 0) {
     leftTokens = tokens.slice(0, bestTokenIdx);
     rightTokens = tokens.slice(bestTokenIdx + 1);
   }
 
-  // 5) 받는사람 성명 — 오른쪽 토큰의 맨 끝(전화번호 바로 앞) 또는 맨 앞이 한글 2~4글자면 이름으로 추정
-  if (rightTokens.length && /^[가-힣]{2,4}$/.test(rightTokens[rightTokens.length-1])) {
+  // 6) 품목명이 발주처 뒤에 오는 경우도 있어서(예: "...발주처 간고등어"), 뒤쪽에 남은 토큰 중
+  //    상품 키워드로 보이는 게 있으면 이름이 아니라 품목명으로 챙겨감
+  const itemTailTokens = [];
+  rightTokens = rightTokens.filter(tok => {
+    if (looksLikeItemWord(tok)) { itemTailTokens.push(tok); return false; }
+    return true;
+  });
+
+  // 7) 받는사람 성명 — 우편번호 앞에서 이미 못 찾았으면, 오른쪽 토큰의 맨 끝(전화번호 바로 앞)
+  //    또는 맨 앞이 한글 2~4글자면 이름으로 추정 (상품 키워드로 보이는 건 이름 후보에서 제외)
+  if (!result.recvName && rightTokens.length && /^[가-힣]{2,4}$/.test(rightTokens[rightTokens.length-1]) && !looksLikeItemWord(rightTokens[rightTokens.length-1])) {
     result.recvName = rightTokens[rightTokens.length-1];
     rightTokens = rightTokens.slice(0, -1);
-  } else if (rightTokens.length && /^[가-힣]{2,4}$/.test(rightTokens[0])) {
+  } else if (!result.recvName && rightTokens.length && /^[가-힣]{2,4}$/.test(rightTokens[0]) && !looksLikeItemWord(rightTokens[0])) {
     result.recvName = rightTokens[0];
     rightTokens = rightTokens.slice(1);
   }
   result.addr = rightTokens.join(' ').trim();
 
-  // 6) 품목+수량 — 왼쪽 토큰의 마지막이 순수 숫자면 수량, 나머지는 품목명
+  // 8) 품목+수량 — 왼쪽 토큰의 마지막이 순수 숫자면 수량, 나머지는 품목명. 뒤쪽에서 챙겨온
+  //    품목 키워드(itemTailTokens)가 있으면 품목명 맨 앞에 붙여줌
+  let itemHead = '', qtyPart = '';
   if (leftTokens.length && /^\d{1,4}$/.test(leftTokens[leftTokens.length-1])) {
-    result.qty = leftTokens[leftTokens.length-1];
-    result.item = leftTokens.slice(0, -1).join(' ').trim();
+    qtyPart = leftTokens[leftTokens.length-1];
+    itemHead = leftTokens.slice(0, -1).join(' ').trim();
   } else {
-    result.item = leftTokens.join(' ').trim();
+    itemHead = leftTokens.join(' ').trim();
   }
+  result.qty = qtyPart;
+  result.item = [itemTailTokens.join(' '), itemHead].filter(Boolean).join(' ').trim();
   return result;
 }
 function parseManualOrderText(){
@@ -3534,6 +3563,7 @@ function parseManualOrderText(){
   if (r.qty)       document.getElementById('moQty').value = r.qty;
   if (r.vendor)    document.getElementById('moVendor').value = r.vendor;
   if (r.addr)      document.getElementById('moAddr').value = r.addr;
+  if (r.zip)       document.getElementById('moZip').value = r.zip;
   if (r.recvName)  document.getElementById('moRecvName').value = r.recvName;
   if (r.phone)     document.getElementById('moRecvPhone').value = r.phone;
   if (r.co) {
@@ -3554,6 +3584,7 @@ function addManualOrder(){
   const recvName  = (document.getElementById('moRecvName').value||'').trim();
   const recvPhone = (document.getElementById('moRecvPhone').value||'').trim();
   const addr      = (document.getElementById('moAddr').value||'').trim();
+  const zip       = (document.getElementById('moZip').value||'').trim();
   const co = document.querySelector('input[name="moCo"]:checked')?.value || '그로븐';
   const platType = document.querySelector('input[name="moPlatType"]:checked')?.value || 'b2b';
   const b2bName  = (document.getElementById('moB2bName').value||'').trim();
@@ -3580,7 +3611,7 @@ function addManualOrder(){
     item_name: item, option_name: option,
     opt_mapped: false, opt_needs_check: false, mapped_code: '', unmatched: false,
     recv_name: recvName, recv_phone: recvPhone,
-    zip: '', addr,
+    zip, addr,
     memo: '',
     product: item + (option ? (' '+option) : ''),
     select_opt: option, disp_opt: '',
@@ -3608,6 +3639,7 @@ function addManualOrder(){
   document.getElementById('moRecvName').value = '';
   document.getElementById('moRecvPhone').value = '';
   document.getElementById('moAddr').value = '';
+  document.getElementById('moZip').value = '';
   document.getElementById('moB2bName').value = '';
   document.getElementById('moPlatName').value = '';
   _poShowToast(`✅ 주문이 추가됐어요: ${item} → ${vendor}`);
@@ -16013,12 +16045,23 @@ function srRenderProductAliases(){
     </div>`).join('');
 }
 function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회'))return 'grobn';if(a.includes('자꾸가게'))return 'yb';return 'other';}
+function _srIsManualB2B(o){ return /^B2B-/.test(String((o&&o.shop_mall)||'')); }
 function srAggregate(orders){
   const platMap={},prodMap={};let totalSales=0;
+  // B2B(문자주문 등)로 등록된 주문 — 일반 플랫폼/제품 표에서 빼고 별도 집계 (디네트처럼 구분 표시)
+  const b2bMap={};  // key = 거래처명 ('B2B-' 접두어 제거)
+  let regCount=0, regSales=0;
   // 깐마늘 전용 상세: 플랫폼(쿠팡/스마트스토어 등) × 옵션 단위 집계
   const garlicMap = {};  // key = platformLabel + '||' + option
   for(const o of orders){
     const amt=(typeof _srSalesAmt==='function')?_srSalesAmt(o):(Number(o.order_amt)||0);totalSales+=amt;
+    if (_srIsManualB2B(o)) {
+      const bn = String(o.shop_mall).replace(/^B2B-/,'').trim() || '미지정';
+      if(!b2bMap[bn])b2bMap[bn]={count:0,sales:0};
+      b2bMap[bn].count++;b2bMap[bn].sales+=amt;
+      continue;
+    }
+    regCount++; regSales+=amt;
     const p=srPlatform(o);
     if(!platMap[p])platMap[p]={count:0,sales:0};
     platMap[p].count++;platMap[p].sales+=amt;
@@ -16069,7 +16112,7 @@ function srAggregate(orders){
       }
     }
   }
-  return {totalSales,count:orders.length,platMap,prodMap,garlicMap};
+  return {totalSales,count:orders.length,platMap,prodMap,garlicMap,b2bMap,regCount,regSales};
 }
 function srBrandSection(title, color, agg, opts){
   if(agg.count===0) return '';
@@ -16120,8 +16163,8 @@ function srBrandSection(title, color, agg, opts){
       <tbody>${platRows}</tbody>
       <tfoot><tr style="background:${FOOT_BG};font-weight:700">
         <td style="padding:9px 14px;color:${HEAD_FG}">합계</td>
-        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.count.toLocaleString()}건</td>
-        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.totalSales.toLocaleString()}원</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${(agg.regCount||0).toLocaleString()}건</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${(agg.regSales||0).toLocaleString()}원</td>
       </tr></tfoot>
     </table>
     <div style="height:8px"></div>
@@ -16135,11 +16178,42 @@ function srBrandSection(title, color, agg, opts){
       <tbody>${prodRows}</tbody>
       <tfoot><tr style="background:${FOOT_BG};font-weight:700">
         <td style="padding:9px 14px;color:${HEAD_FG}">합계</td>
-        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.count.toLocaleString()}건</td>
-        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${agg.totalSales.toLocaleString()}원</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${(agg.regCount||0).toLocaleString()}건</td>
+        <td style="padding:9px 14px;text-align:right;color:${HEAD_FG}">${(agg.regSales||0).toLocaleString()}원</td>
       </tr></tfoot>
     </table>
+    ${srB2BDetailHtml(agg)}
     ${srGarlicDetailHtml(agg, color)}`;
+}
+// B2B(문자주문 등으로 등록된) 매출 — 일반 플랫폼 표와 분리해서 거래처별로 표시
+function srB2BDetailHtml(agg){
+  const map = agg.b2bMap || {};
+  const entries = Object.entries(map).sort((a,b)=>b[1].sales-a[1].sales);
+  if (entries.length === 0) return '';
+  const HEAD_BG='#F1F5F9', HEAD_FG='#334155';
+  const total = entries.reduce((s,[,v])=>({count:s.count+v.count, sales:s.sales+v.sales}), {count:0,sales:0});
+  const rows = entries.map(([name,v],i)=>`
+    <tr style="background:${i%2===0?'#FFF7ED':'#FFEFDC'}">
+      <td style="padding:8px 14px;border-bottom:1px solid #F5DEC0;color:#7B4B00">${escHtml(name)}</td>
+      <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #F5DEC0;color:#7B4B00">${v.count.toLocaleString()}건</td>
+      <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #F5DEC0;color:#7B4B00">${v.sales.toLocaleString()}원</td>
+    </tr>`).join('');
+  return `
+    <div style="background:#FDF0E0;color:#7B4B00;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #E8A54B">🏭 B2B 매출 (문자주문 등)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FFF7ED">
+      <colgroup><col style="width:50%"><col style="width:22%"><col style="width:28%"></colgroup>
+      <thead><tr style="background:#F5DEC0">
+        <th style="padding:8px 14px;text-align:left;color:#7B4B00;font-weight:700">거래처</th>
+        <th style="padding:8px 14px;text-align:right;color:#7B4B00;font-weight:700">주문건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#7B4B00;font-weight:700">매출액</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="background:#F0DBBE;font-weight:700">
+        <td style="padding:8px 14px;color:#7B4B00">합계</td>
+        <td style="padding:8px 14px;text-align:right;color:#7B4B00">${total.count.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;color:#7B4B00">${total.sales.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>`;
 }
 // 깐마늘 상세 — 플랫폼 × 옵션 단위
 function srGarlicDetailHtml(agg, color){
@@ -16759,6 +16833,11 @@ function srRender(){
   const selfCnt   = grAgg.count + ybAgg.count;
   const totalSales = selfSales + dnAgg.sales;
   const totalCnt   = selfCnt + dnAgg.count;
+  // B2B 매출 합계 — 디네트(전용 업로드) + 문자주문 등으로 등록된 B2B (그로븐/옐로우브릿지에 이미 포함된 매출을 별도 표시용으로 합산)
+  const _b2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales}),{count:0,sales:0});
+  const _manualB2b = (()=>{ const g=_b2bTotals(grAgg.b2bMap), y=_b2bTotals(ybAgg.b2bMap); return {count:g.count+y.count, sales:g.sales+y.sales}; })();
+  const b2bSales = dnAgg.sales + _manualB2b.sales;
+  const b2bCnt   = dnAgg.count + _manualB2b.count;
   // 보고일자
   let dateStr=document.getElementById('srReportDate').value;
   if(!dateStr){
@@ -16785,9 +16864,9 @@ function srRender(){
             <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
           </div>
           <div>
-            <div style="font-size:11px;color:#888">디네트 매출액</div>
-            <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${dnAgg.sales.toLocaleString()}원</div>
-            <div style="font-size:11px;color:#888;margin-top:2px">${dnAgg.count.toLocaleString()}건</div>
+            <div style="font-size:11px;color:#888">B2B 매출액</div>
+            <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${b2bSales.toLocaleString()}원</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">${b2bCnt.toLocaleString()}건</div>
           </div>
         </div>
       </div>
@@ -18497,12 +18576,14 @@ function wrWeekRange(anyDate){
 function wrMergeAggs(snaps, brandKey){
   // snaps: [{grAgg, ybAgg, dnAgg, ...}]
   // brandKey: 'grAgg' | 'ybAgg'
-  const platMap={}, prodMap={};
-  let totalSales=0, count=0;
+  const platMap={}, prodMap={}, b2bMap={};
+  let totalSales=0, count=0, regSales=0, regCount=0;
   for (const s of snaps) {
     const a = s[brandKey]; if (!a) continue;
     totalSales += a.totalSales||0;
     count += a.count||0;
+    regSales += (a.regSales!=null ? a.regSales : a.totalSales)||0;
+    regCount += (a.regCount!=null ? a.regCount : a.count)||0;
     for (const [p,v] of Object.entries(a.platMap||{})) {
       if (!platMap[p]) platMap[p] = {count:0,sales:0};
       platMap[p].count += v.count||0;
@@ -18513,8 +18594,13 @@ function wrMergeAggs(snaps, brandKey){
       prodMap[p].count += v.count||0;
       prodMap[p].sales += v.sales||0;
     }
+    for (const [n,v] of Object.entries(a.b2bMap||{})) {
+      if (!b2bMap[n]) b2bMap[n] = {count:0,sales:0};
+      b2bMap[n].count += v.count||0;
+      b2bMap[n].sales += v.sales||0;
+    }
   }
-  return {totalSales, count, platMap, prodMap};
+  return {totalSales, count, platMap, prodMap, b2bMap, regSales, regCount};
 }
 function wrMergeDinette(snaps){
   let sales=0, count=0;
@@ -18631,6 +18717,11 @@ function wrRender(){
   const selfCnt   = grAgg.count + ybAgg.count;
   const totalSales = selfSales + dnAgg.sales;
   const totalCnt   = selfCnt + dnAgg.count;
+  // B2B 매출 합계 — 디네트(전용 업로드) + 문자주문 등으로 등록된 B2B
+  const _wrB2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales}),{count:0,sales:0});
+  const _wrManualB2b = (()=>{ const g=_wrB2bTotals(grAgg.b2bMap), y=_wrB2bTotals(ybAgg.b2bMap); return {count:g.count+y.count, sales:g.sales+y.sales}; })();
+  const b2bSales = dnAgg.sales + _wrManualB2b.sales;
+  const b2bCnt   = dnAgg.count + _wrManualB2b.count;
   // ── 직전 주 비교 + 최근 4주 추이 ──
   const prevAnyDate = new Date(range.mon); prevAnyDate.setDate(prevAnyDate.getDate() - 7);
   const prevRange = wrWeekRange(_localISO(prevAnyDate));
@@ -18708,6 +18799,7 @@ function wrRender(){
   const _plat = {};
   const _addP = (mp) => { for (const [p,v] of Object.entries(mp||{})) { _plat[p] = (_plat[p]||0) + (v.sales||0); }};
   _addP(grAgg.platMap); _addP(ybAgg.platMap);
+  _addP(grAgg.b2bMap); _addP(ybAgg.b2bMap);
   if (dnAgg.sales > 0) _plat['디네트(B2B)'] = (_plat['디네트(B2B)']||0) + dnAgg.sales;
   const platSorted = Object.entries(_plat).sort((a,b)=>b[1]-a[1]);
   const platTotal = platSorted.reduce((s,[,v])=>s+v, 0);
@@ -18741,9 +18833,9 @@ function wrRender(){
               <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
             </div>
             <div>
-              <div style="font-size:11px;color:#888">디네트 매출액</div>
-              <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${dnAgg.sales.toLocaleString()}원</div>
-              <div style="font-size:11px;color:#888;margin-top:2px">${dnAgg.count.toLocaleString()}건</div>
+              <div style="font-size:11px;color:#888">B2B 매출액</div>
+              <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${b2bSales.toLocaleString()}원</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">${b2bCnt.toLocaleString()}건</div>
             </div>
           </div>
           ${compareRowHtml}
@@ -18963,6 +19055,8 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, pur){
     }};
     addPlat(grAgg.platMap);
     addPlat(ybAgg.platMap);
+    addPlat(grAgg.b2bMap);
+    addPlat(ybAgg.b2bMap);
     if (dnAgg.sales > 0) platCombined['디네트(B2B)'] = (platCombined['디네트(B2B)']||0) + dnAgg.sales;
     const sorted = Object.entries(platCombined).sort((a,b)=>b[1]-a[1]);
     const labels = sorted.map(([p])=>p);
