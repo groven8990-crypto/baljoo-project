@@ -15957,6 +15957,8 @@ function srRemoveSalesOverride(i){
 
 // 표시 이름(그룹핑된 제품명) → 그걸 만들어낸 실제 원본 상품명 집합. srRender()가 매번 새로 채움
 let _srProdRawByLabel = {};
+// 매출액 칸을 클릭해서 직접 수정할 때 참조 — 행 키(브랜드섹션제목||plat/prod||이름) → {sales, items:[{code,alias,qty,amt}]}. srRender()가 매번 새로 채움
+let _srRowComp = {};
 // 매출보고 "제품" 표에서 이름 칸을 클릭하면 바로 이름을 고칠 수 있게 함 (별칭 등록과 동일한 저장소 사용)
 function srEditProductLabel(td){
   if (td.querySelector('input')) return; // 이미 편집 중
@@ -15983,6 +15985,58 @@ function srEditProductLabel(td){
   td.appendChild(input);
   input.focus();
   input.select();
+}
+// 매출보고 "플랫폼"/"제품" 표에서 매출액 칸을 클릭하면 바로 고칠 수 있게 함.
+// 내부적으로는 기존 "매출금액 직접 지정"(판매자상품코드+별칭 → 지정 금액) 규칙을 그 행을 이룬
+// 주문들에 대해 자동으로 만들어주는 것 — 코드를 직접 찾아 입력할 필요 없이 화면에서 바로 수정.
+function srEditSalesAmt(td){
+  if (td.querySelector('input')) return; // 이미 편집 중
+  const rowKey = td.getAttribute('data-rowkey') || '';
+  const info = _srRowComp[rowKey];
+  const oldSales = info ? info.sales : parseInt((td.textContent||'').replace(/[^\d]/g,'')) || 0;
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.value = oldSales;
+  input.style.cssText = 'width:100%;font-size:13px;padding:2px 4px;border:1px solid var(--primary);border-radius:3px;box-sizing:border-box;text-align:right';
+  let done = false;
+  const finish = (commit) => {
+    if (done) return;
+    done = true;
+    const newSales = parseInt(input.value);
+    td.textContent = oldSales.toLocaleString()+'원';
+    if (commit && !isNaN(newSales) && newSales !== oldSales) srApplySalesAmtEdit(rowKey, oldSales, newSales);
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('click', e => e.stopPropagation());
+  td.textContent = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+}
+function srApplySalesAmtEdit(rowKey, oldSales, newSales){
+  const info = _srRowComp[rowKey];
+  const items = (info && info.items) ? info.items.filter(it => it.code) : [];
+  if (!items.length) { try{ _poShowToast('⚠ 이 항목은 원본 주문을 찾을 수 없어 수정할 수 없어요.'); }catch(e){} return; }
+  let list = srLoadSalesOverride();
+  const ratio = oldSales > 0 ? (newSales / oldSales) : null;
+  if (ratio == null && items.length > 1) {
+    try{ _poShowToast('⚠ 여러 건이 합쳐진 항목이라 자동 배분할 수 없어요. 아래 "매출금액 직접 지정"에서 개별 지정해주세요.'); }catch(e){}
+    return;
+  }
+  for (const it of items) {
+    const targetTotal = ratio != null ? (it.amt * ratio) : newSales;  // items.length===1인 경우만 ratio===null 가능
+    const perUnit = Math.round(targetTotal / (it.qty || 1));
+    list = list.filter(ov => !(ov && String(ov.code).trim()===it.code && String(ov.alias||'')===it.alias));
+    list.push({code: it.code, alias: it.alias, amount: perUnit});
+  }
+  srSaveSalesOverride(list);
+  try { srRenderSalesOverride(); } catch(e){}
+  try { if (typeof srRender === 'function' && Array.isArray(allOrders) && allOrders.length) srRender(); } catch(e){}
+  try { _poShowToast(`✅ 매출액 ${oldSales.toLocaleString()}원 → ${newSales.toLocaleString()}원으로 수정됨`); } catch(e){}
 }
 function srRenameProductLabel(oldName, newName){
   let arr = loadProductAliases();
@@ -16063,12 +16117,23 @@ function srAggregate(orders){
     }
     regCount++; regSales+=amt;
     const p=srPlatform(o);
-    if(!platMap[p])platMap[p]={count:0,sales:0};
+    if(!platMap[p])platMap[p]={count:0,sales:0,comp:{}};
     platMap[p].count++;platMap[p].sales+=amt;
     const n=srNormalize(o.product);
-    if(!prodMap[n])prodMap[n]={count:0,sales:0,rawNames:new Set()};
+    if(!prodMap[n])prodMap[n]={count:0,sales:0,rawNames:new Set(),comp:{}};
     prodMap[n].count++;prodMap[n].sales+=amt;
     if(o.product) prodMap[n].rawNames.add(String(o.product).trim());
+    // 매출액 표에서 클릭해서 직접 수정할 때 필요 — 이 행을 이룬 실제 주문(판매자상품코드+별칭)별 수량/금액
+    {
+      const compKey = String(o.vendor_code||'') + '||' + String(o.alias_raw||o.alias||'');
+      const compQty = Number(o.qty)||1;
+      if(!platMap[p].comp[compKey]) platMap[p].comp[compKey] = {code:String(o.vendor_code||''), alias:String(o.alias_raw||o.alias||''), qty:0, amt:0};
+      platMap[p].comp[compKey].qty += compQty;
+      platMap[p].comp[compKey].amt += amt;
+      if(!prodMap[n].comp[compKey]) prodMap[n].comp[compKey] = {code:String(o.vendor_code||''), alias:String(o.alias_raw||o.alias||''), qty:0, amt:0};
+      prodMap[n].comp[compKey].qty += compQty;
+      prodMap[n].comp[compKey].amt += amt;
+    }
     // 깐마늘 (item_name 또는 normalize 결과 또는 product에 '깐마늘' 포함)
     const isGarlic = (o.item_name||'').includes('깐마늘')
                   || n === '깐마늘'
@@ -16118,12 +16183,15 @@ function srBrandSection(title, color, agg, opts){
   if(agg.count===0) return '';
   const topN = (opts && opts.topProducts) || 0;  // 0이면 전체, >0이면 상위 N + 그 외
   const HEAD_BG='#F1F5F9', HEAD_FG='#334155', FOOT_BG='#E2E8F0';
-  const platRows = Object.entries(agg.platMap).sort((a,b)=>b[1].sales-a[1].sales).map(([p,v],i)=>`
+  const platRows = Object.entries(agg.platMap).sort((a,b)=>b[1].sales-a[1].sales).map(([p,v],i)=>{
+    const rowKey = `${title}||plat||${p}`;
+    _srRowComp[rowKey] = {sales: v.sales, items: Object.values(v.comp||{})};
+    return `
     <tr style="background:${i%2===0?'#fff':'#F8FAFC'}">
       <td style="padding:10px 14px;border-bottom:1px solid #eee">${escHtml(p)}</td>
       <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
-      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${v.sales.toLocaleString()}원</td>
-    </tr>`).join('');
+      <td class="sr-amt-cell" data-rowkey="${escHtml(rowKey)}" onclick="srEditSalesAmt(this)" title="클릭해서 매출액 수정" style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee;cursor:pointer">${v.sales.toLocaleString()}원</td>
+    </tr>`;}).join('');
   const prodSorted = Object.entries(agg.prodMap).sort((a,b)=>b[1].sales-a[1].sales);
   let prodDisplay;
   if (topN > 0 && prodSorted.length > topN) {
@@ -16143,14 +16211,23 @@ function srBrandSection(title, color, agg, opts){
     if (!_srProdRawByLabel[n]) _srProdRawByLabel[n] = new Set();
     v.rawNames.forEach(rn => _srProdRawByLabel[n].add(rn));
   });
-  const prodRows = prodDisplay.map(([n,v],i)=>`
+  const prodRows = prodDisplay.map(([n,v],i)=>{
+    let amtCell;
+    if (v._rest) {
+      amtCell = `<td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee;color:#888">${v.sales.toLocaleString()}원</td>`;
+    } else {
+      const rowKey = `${title}||prod||${n}`;
+      _srRowComp[rowKey] = {sales: v.sales, items: Object.values(v.comp||{})};
+      amtCell = `<td class="sr-amt-cell" data-rowkey="${escHtml(rowKey)}" onclick="srEditSalesAmt(this)" title="클릭해서 매출액 수정" style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee;cursor:pointer">${v.sales.toLocaleString()}원</td>`;
+    }
+    return `
     <tr style="background:${i%2===0?'#fff':'#F8FAFC'}">
       ${v._rest
         ? `<td style="padding:10px 14px;border-bottom:1px solid #eee;color:#888;font-style:italic">${escHtml(n)}</td>`
         : `<td class="sr-prod-name-cell" data-name="${escHtml(n)}" onclick="srEditProductLabel(this)" title="클릭해서 이름 수정" style="padding:10px 14px;border-bottom:1px solid #eee;cursor:pointer">${escHtml(n)}</td>`}
       <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee${v._rest?';color:#888':''}">${v.count.toLocaleString()}건</td>
-      <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee${v._rest?';color:#888':''}">${v.sales.toLocaleString()}원</td>
-    </tr>`).join('');
+      ${amtCell}
+    </tr>`;}).join('');
   return `
     <div style="background:${color};color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">${escHtml(title)}</div>
     <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">
@@ -16825,6 +16902,7 @@ function srRender(){
     return;
   }
   _srProdRawByLabel = {};
+  _srRowComp = {};
   const gr=allOrders.filter(o=>srBrand(o.alias)==='grobn');
   const yb=allOrders.filter(o=>srBrand(o.alias)==='yb');
   const grAgg=srAggregate(gr), ybAgg=srAggregate(yb);
