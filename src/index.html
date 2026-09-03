@@ -214,6 +214,60 @@
       💡 판매자상품코드 형태: <code>발주처]품목명/옵션-수량</code> — 자동으로 품목명·옵션명을 분리합니다.<br>
       코드 미인식 시 <strong>⚙️ 코드 관리 → 코드 등록</strong>, 옵션 변환이 필요하면 <strong>옵션 변환 규칙</strong>에 등록하세요.
     </div>
+
+    <div class="card">
+      <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('manualOrderBody');var t=document.getElementById('manualOrderToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';}else{b.style.display='none';t.textContent='▼ 펼치기';}">
+        ✍️ 문자로 들어온 주문 추가 <span style="font-size:12px;font-weight:400;color:var(--text3)">(엑셀 발주서가 아직 없는 거래처용)</span>
+        <span id="manualOrderToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
+      </div>
+      <div id="manualOrderBody" style="display:none">
+        <div class="alert alert-info" style="margin-bottom:10px;font-size:12px">
+          카톡·문자로 받은 주문 내용을 그대로 붙여넣으면 품목·수량·발주처·주소·전화번호를 최대한 알아서 채워요.
+          정확하지 않을 수 있으니 아래 칸에서 확인하고 고친 다음 추가해주세요.<br>
+          예시: <code>간고등어 70팩 1 푸드엔베스트 전북 군산시 ○○로 12 김철수 010-1234-5678 그로븐</code>
+        </div>
+        <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">문자 내용 붙여넣기</label>
+        <textarea id="manualOrderRaw" class="inp" rows="3" placeholder="여기에 문자 내용을 붙여넣으세요" style="margin-bottom:8px"></textarea>
+        <button class="btn btn-sm" onclick="parseManualOrderText()" style="margin-bottom:14px">🪄 자동 인식</button>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">품목명</label><input class="inp" id="moItem" placeholder="예: 간고등어 70팩"></div>
+          <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">옵션 (선택)</label><input class="inp" id="moOption" placeholder="옵션이 있으면 입력"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:10px;margin-bottom:10px">
+          <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">수량</label><input class="inp" id="moQty" type="number" min="1" value="1"></div>
+          <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">발주처</label><input class="inp" id="moVendor" list="moVendorList" placeholder="예: 푸드엔드베스트"><datalist id="moVendorList"></datalist></div>
+          <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">매출금액(원)</label><input class="inp" id="moAmt" type="number" min="0" placeholder="매입/순이익 계산용"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">받는사람 성명</label><input class="inp" id="moRecvName" placeholder="예: 김철수"></div>
+          <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">받는사람 전화번호</label><input class="inp" id="moRecvPhone" placeholder="예: 010-1234-5678"></div>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">받는사람 주소 (선택)</label>
+          <input class="inp" id="moAddr" placeholder="주소가 없으면 비워두세요">
+        </div>
+        <div style="margin-bottom:14px">
+          <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:6px">판매 플랫폼 <span style="font-weight:400;color:var(--text3)">(매입/순이익 수수료 계산용)</span></label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="moPlatType" value="b2b" onchange="onMoPlatTypeChange()" checked> B2B (수수료 없음)</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="moPlatType" value="market" onchange="onMoPlatTypeChange()"> 오픈마켓</label>
+          </div>
+          <input class="inp" id="moB2bName" placeholder="B2B 거래처명 (예: 디네트)">
+          <input class="inp" id="moPlatName" placeholder="플랫폼명 (예: 쿠팡, 톡딜, 지마켓)" style="display:none">
+        </div>
+        <div style="margin-bottom:14px">
+          <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:6px">사업자</label>
+          <div style="display:flex;gap:8px">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="moCo" value="그로븐" checked> 그로븐 (로또상회)</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="moCo" value="옐로우브릿지"> 옐로우브릿지 (자꾸가게)</label>
+          </div>
+        </div>
+        <div id="moError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
+        <button class="btn btn-primary" onclick="addManualOrder()">+ 이 주문 추가</button>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('upHistoryBody');var t=document.getElementById('upHistoryToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';renderUploadHistory();}else{b.style.display='none';t.textContent='▼ 펼치기';}">
         📂 샵마인 파일 업로드 이력
@@ -2833,6 +2887,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(fa) fa.addEventListener('change',e=>{handleFileAdd(e.target.files[0]);fa.value='';});
   try{ populateVendorSelect(); }catch(e){}
   try{ renderCutoffPanel(); }catch(e){}
+  try{ _populateManualOrderVendorList(); }catch(e){}
   _restorePoImportFolder().then(()=>{ if (_poImportDirHandle) checkPoImportFolder(); }).catch(()=>{});
   _restoreInvImportFolder().catch(()=>{});
   _sbSyncCodes().catch(()=>{});
@@ -3394,6 +3449,174 @@ function handleFiles(fileList) {
   };
   // 첫 파일 로드 완료 후 나머지 순차 합산
   handleFile(files[0], next);
+}
+
+// ══════════════════════════════════════════════════════════
+// ✍️ 문자로 들어온 주문 수동 추가 (엑셀 발주서가 아직 없는 신규 거래처용)
+// ══════════════════════════════════════════════════════════
+function onMoPlatTypeChange(){
+  const isB2b = document.querySelector('input[name="moPlatType"]:checked')?.value === 'b2b';
+  const b2bEl = document.getElementById('moB2bName');
+  const platEl = document.getElementById('moPlatName');
+  if (b2bEl) b2bEl.style.display = isB2b ? '' : 'none';
+  if (platEl) platEl.style.display = isB2b ? 'none' : '';
+}
+// 문자 원문에서 품목·수량·발주처·받는사람·주소·전화번호를 최대한 추정 — 완벽하진 않아서
+// 결과는 항상 사람이 확인/수정하는 폼에 채워넣는 용도로만 씀
+function _parseManualOrderText(text){
+  let remaining = ' ' + String(text||'').trim().replace(/\n/g, ' ') + ' ';
+  const result = {co:'', vendor:'', addr:'', recvName:'', phone:'', qty:'', item:''};
+
+  // 1) 사업자 (마지막에 나오는 걸 채택 — 보통 문장 맨 끝에 옴)
+  const coRe = /(그로븐|로또상회|옐로우브릿지|자꾸가게)/g;
+  let m, lastCo = null;
+  while ((m = coRe.exec(remaining))) lastCo = m;
+  if (lastCo) {
+    result.co = /그로븐|로또상회/.test(lastCo[1]) ? '그로븐' : '옐로우브릿지';
+    remaining = remaining.slice(0, lastCo.index) + ' ' + remaining.slice(lastCo.index + lastCo[1].length);
+  }
+
+  // 2) 전화번호
+  const phoneMatch = remaining.match(/01[016789][-\s]?\d{3,4}[-\s]?\d{4}/);
+  if (phoneMatch) {
+    const digits = phoneMatch[0].replace(/[^\d]/g,'');
+    result.phone = digits.replace(/(\d{3})(\d{3,4})(\d{4})$/, '$1-$2-$3');
+    remaining = remaining.slice(0, phoneMatch.index) + ' ' + remaining.slice(phoneMatch.index + phoneMatch[0].length);
+  }
+
+  const tokens = remaining.split(/\s+/).filter(Boolean);
+
+  // 3) 발주처 — 등록된 발주처명과 가장 비슷한 토큰을 찾음 (완전히 안 맞아도 유사하면 후보로)
+  const vendorNames = Object.keys(VENDOR_PREFIXES).concat(Object.keys(loadCustomVendors()||{}));
+  let bestVendor = null, bestScore = 0, bestTokenIdx = -1;
+  tokens.forEach((tok, i) => {
+    for (const v of vendorNames) {
+      if (!v) continue;
+      let score;
+      if (tok === v) score = 999;
+      else if (tok.includes(v) || v.includes(tok)) score = Math.min(tok.length, v.length) * 10;
+      else score = (typeof _lcsLen === 'function') ? _lcsLen(tok, v) : 0;
+      if (score > bestScore) { bestScore = score; bestVendor = v; bestTokenIdx = i; }
+    }
+  });
+  if (bestVendor && bestScore >= Math.min(3, bestVendor.length)) result.vendor = bestVendor;
+
+  // 4) 발주처 토큰 기준으로 앞(품목+수량) / 뒤(주소+받는사람) 로 나눔
+  let leftTokens = tokens, rightTokens = [];
+  if (bestTokenIdx >= 0) {
+    leftTokens = tokens.slice(0, bestTokenIdx);
+    rightTokens = tokens.slice(bestTokenIdx + 1);
+  }
+
+  // 5) 받는사람 성명 — 오른쪽 토큰의 맨 끝(전화번호 바로 앞) 또는 맨 앞이 한글 2~4글자면 이름으로 추정
+  if (rightTokens.length && /^[가-힣]{2,4}$/.test(rightTokens[rightTokens.length-1])) {
+    result.recvName = rightTokens[rightTokens.length-1];
+    rightTokens = rightTokens.slice(0, -1);
+  } else if (rightTokens.length && /^[가-힣]{2,4}$/.test(rightTokens[0])) {
+    result.recvName = rightTokens[0];
+    rightTokens = rightTokens.slice(1);
+  }
+  result.addr = rightTokens.join(' ').trim();
+
+  // 6) 품목+수량 — 왼쪽 토큰의 마지막이 순수 숫자면 수량, 나머지는 품목명
+  if (leftTokens.length && /^\d{1,4}$/.test(leftTokens[leftTokens.length-1])) {
+    result.qty = leftTokens[leftTokens.length-1];
+    result.item = leftTokens.slice(0, -1).join(' ').trim();
+  } else {
+    result.item = leftTokens.join(' ').trim();
+  }
+  return result;
+}
+function parseManualOrderText(){
+  const raw = document.getElementById('manualOrderRaw')?.value || '';
+  const r = _parseManualOrderText(raw);
+  if (r.item)      document.getElementById('moItem').value = r.item;
+  if (r.qty)       document.getElementById('moQty').value = r.qty;
+  if (r.vendor)    document.getElementById('moVendor').value = r.vendor;
+  if (r.addr)      document.getElementById('moAddr').value = r.addr;
+  if (r.recvName)  document.getElementById('moRecvName').value = r.recvName;
+  if (r.phone)     document.getElementById('moRecvPhone').value = r.phone;
+  if (r.co) {
+    const radio = document.querySelector(`input[name="moCo"][value="${r.co}"]`);
+    if (radio) radio.checked = true;
+  }
+  const errEl = document.getElementById('moError');
+  if (errEl) errEl.textContent = r.vendor ? '' : '⚠ 발주처를 자동으로 못 찾았어요 — 직접 입력해주세요.';
+}
+function addManualOrder(){
+  const errEl = document.getElementById('moError');
+  if (errEl) errEl.textContent = '';
+  const item   = (document.getElementById('moItem').value||'').trim();
+  const option = (document.getElementById('moOption').value||'').trim();
+  const qty    = Math.max(1, parseInt(document.getElementById('moQty').value)||1);
+  const vendor = (document.getElementById('moVendor').value||'').trim();
+  const amt    = Math.max(0, parseInt(document.getElementById('moAmt').value)||0);
+  const recvName  = (document.getElementById('moRecvName').value||'').trim();
+  const recvPhone = (document.getElementById('moRecvPhone').value||'').trim();
+  const addr      = (document.getElementById('moAddr').value||'').trim();
+  const co = document.querySelector('input[name="moCo"]:checked')?.value || '그로븐';
+  const platType = document.querySelector('input[name="moPlatType"]:checked')?.value || 'b2b';
+  const b2bName  = (document.getElementById('moB2bName').value||'').trim();
+  const platName = (document.getElementById('moPlatName').value||'').trim();
+
+  if (!item)   { errEl.textContent = '품목명을 입력해주세요.'; return; }
+  if (!vendor) { errEl.textContent = '발주처를 입력해주세요.'; return; }
+  if (!VENDOR_PREFIXES[vendor] && !loadCustomVendors()[vendor]) {
+    errEl.textContent = `'${vendor}' 은 등록된 발주처가 아니에요. ⚙️ 코드 관리 → 발주처 양식에서 먼저 등록하거나, 발주처명을 정확히 입력해주세요.`;
+    return;
+  }
+  if (!recvName || !recvPhone) { errEl.textContent = '받는사람 성명과 전화번호를 입력해주세요.'; return; }
+
+  const prefixes = VENDOR_PREFIXES[vendor] || (loadCustomVendors()[vendor]||{}).prefixes || [vendor+']'];
+  const prefix = prefixes[0];
+  const vendor_code = prefix + item + (option ? ('/'+option) : '');
+  const alias = co === '그로븐' ? '로또상회' : '자꾸가게';
+  const shop_mall = platType === 'b2b' ? ('B2B-' + (b2bName || '미지정')) : (platName || '오픈마켓');
+
+  const order = {
+    vendor_code, vendor_opt: '', vendor_key: null,
+    alias, alias_raw: alias,
+    shop_mall,
+    item_name: item, option_name: option,
+    opt_mapped: false, opt_needs_check: false, mapped_code: '', unmatched: false,
+    recv_name: recvName, recv_phone: recvPhone,
+    zip: '', addr,
+    memo: '',
+    product: item + (option ? (' '+option) : ''),
+    select_opt: option, disp_opt: '',
+    qty, code_qty: 1,
+    order_no: '수동' + Date.now(),
+    buyer: '', buyer_phone: '',
+    carrier: '',
+    order_amt: amt,
+    order_date: _localISO(),
+  };
+  allOrders.push(order);
+  totalCount = (totalCount||0) + 1;
+  rematchAllOrders();
+  loadedFileNames.push(`✍️ 수동입력: ${item} (${recvName})`);
+  renderLoadedFiles();
+  renderStep2(); goStep(2); renderUnmatchedHints();
+  if (typeof renderOmPreview === 'function') renderOmPreview();
+
+  // 입력값 초기화 (다음 주문 바로 이어서 입력할 수 있게)
+  document.getElementById('manualOrderRaw').value = '';
+  document.getElementById('moItem').value = '';
+  document.getElementById('moOption').value = '';
+  document.getElementById('moQty').value = '1';
+  document.getElementById('moAmt').value = '';
+  document.getElementById('moRecvName').value = '';
+  document.getElementById('moRecvPhone').value = '';
+  document.getElementById('moAddr').value = '';
+  document.getElementById('moB2bName').value = '';
+  document.getElementById('moPlatName').value = '';
+  _poShowToast(`✅ 주문이 추가됐어요: ${item} → ${vendor}`);
+}
+function _populateManualOrderVendorList(){
+  const dl = document.getElementById('moVendorList');
+  if (!dl) return;
+  const names = Object.keys(VENDOR_PREFIXES).concat(Object.keys(loadCustomVendors()||{}));
+  dl.innerHTML = [...new Set(names)].sort().map(v => `<option value="${escHtml(v)}">`).join('');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -10683,7 +10906,7 @@ function switchTab(name){
     const btnEl=document.getElementById('tabBtn-'+name);
     if(tabEl) tabEl.classList.add('active');
     if(btnEl) btnEl.classList.add('active');
-    if(name==='order'){try{checkPoImportFolder();}catch(e){console.error(e);}}
+    if(name==='order'){try{checkPoImportFolder();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}}
     if(name==='codes'){try{renderCodeList();}catch(e){console.error(e);}try{renderOptMapList();}catch(e){console.error(e);}try{renderUnmatchedHints();}catch(e){console.error(e);}try{renderOmPreview();}catch(e){console.error(e);}try{renderCodeMappingList();}catch(e){console.error(e);}}
     if(name==='expense'){try{initExpenseTab();}catch(e){console.error(e);}}
     if(name==='income'){try{initIncomeTab();}catch(e){console.error(e);}}
@@ -15607,7 +15830,7 @@ function srPlatform(o){
 }
 function srFee(plat){
   const p = String(plat||'');
-  if (p === '식자재코리아') return 0;
+  if (p === '식자재코리아' || p.includes('B2B')) return 0;  // B2B 직거래는 플랫폼 수수료 없음
   if (p.includes('톡딜')) return 0.033;  // 카카오톡딜 판매수수료 3.3%
   return 0.12;
 }
