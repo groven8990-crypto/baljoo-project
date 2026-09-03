@@ -243,9 +243,9 @@
           <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">받는사람 성명</label><input class="inp" id="moRecvName" placeholder="예: 김철수"></div>
           <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">받는사람 전화번호</label><input class="inp" id="moRecvPhone" placeholder="예: 010-1234-5678"></div>
         </div>
-        <div style="margin-bottom:10px">
-          <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">받는사람 주소 (선택)</label>
-          <input class="inp" id="moAddr" placeholder="주소가 없으면 비워두세요">
+        <div style="display:grid;grid-template-columns:1fr 3fr;gap:10px;margin-bottom:10px">
+          <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">우편번호 (선택)</label><input class="inp" id="moZip" placeholder="5자리"></div>
+          <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">받는사람 주소 (선택)</label><input class="inp" id="moAddr" placeholder="주소가 없으면 비워두세요"></div>
         </div>
         <div style="margin-bottom:14px">
           <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:6px">판매 플랫폼 <span style="font-weight:400;color:var(--text3)">(매입/순이익 수수료 계산용)</span></label>
@@ -3465,7 +3465,7 @@ function onMoPlatTypeChange(){
 // 결과는 항상 사람이 확인/수정하는 폼에 채워넣는 용도로만 씀
 function _parseManualOrderText(text){
   let remaining = ' ' + String(text||'').trim().replace(/\n/g, ' ') + ' ';
-  const result = {co:'', vendor:'', addr:'', recvName:'', phone:'', qty:'', item:''};
+  const result = {co:'', vendor:'', addr:'', zip:'', recvName:'', phone:'', qty:'', item:''};
 
   // 1) 사업자 (마지막에 나오는 걸 채택 — 보통 문장 맨 끝에 옴)
   const coRe = /(그로븐|로또상회|옐로우브릿지|자꾸가게)/g;
@@ -3476,17 +3476,33 @@ function _parseManualOrderText(text){
     remaining = remaining.slice(0, lastCo.index) + ' ' + remaining.slice(lastCo.index + lastCo[1].length);
   }
 
-  // 2) 전화번호
-  const phoneMatch = remaining.match(/01[016789][-\s]?\d{3,4}[-\s]?\d{4}/);
+  // 2) 전화번호 — "010)1234-5678"처럼 괄호를 쓰거나 구분기호가 없는 경우까지 폭넓게 인식
+  const phoneMatch = remaining.match(/01[016789][-)\s]*\d{3,4}[-\s]*\d{4}/);
   if (phoneMatch) {
     const digits = phoneMatch[0].replace(/[^\d]/g,'');
     result.phone = digits.replace(/(\d{3})(\d{3,4})(\d{4})$/, '$1-$2-$3');
     remaining = remaining.slice(0, phoneMatch.index) + ' ' + remaining.slice(phoneMatch.index + phoneMatch[0].length);
   }
 
+  // 매출 보고에 쓰는 상품 키워드 사전 — 발주처/이름 추정이 상품명과 헷갈리지 않도록 참고용으로 사용
+  const productKeywords = (typeof SR_PRODUCT_KEYWORDS === 'object' && SR_PRODUCT_KEYWORDS) ? Object.keys(SR_PRODUCT_KEYWORDS) : [];
+  const looksLikeItemWord = tok => productKeywords.some(k => tok.includes(k) || k.includes(tok));
+
+  // 3) 우편번호 (5자리 숫자 단독 토큰) — 남겨두면 품목/주소 추측을 방해해서 미리 떼어냄.
+  //    "받는사람 우편번호 주소..." 순서로 오는 경우가 많아서, 우편번호 바로 앞 단어가
+  //    이름처럼 보이면(한글 2~4글자, 상품 키워드 아님) 그것도 받는사람 이름으로 같이 인정
+  const zipMatch = remaining.match(/(\S*)\s*(\d{5})(?=\s|$)/);
+  if (zipMatch) {
+    result.zip = zipMatch[2];
+    if (!result.recvName && /^[가-힣]{2,4}$/.test(zipMatch[1]) && !looksLikeItemWord(zipMatch[1])) {
+      result.recvName = zipMatch[1];
+    }
+    remaining = remaining.slice(0, zipMatch.index) + ' ' + remaining.slice(zipMatch.index + zipMatch[0].length);
+  }
+
   const tokens = remaining.split(/\s+/).filter(Boolean);
 
-  // 3) 발주처 — 등록된 발주처명과 가장 비슷한 토큰을 찾음 (완전히 안 맞아도 유사하면 후보로)
+  // 4) 발주처 — 등록된 발주처명과 가장 비슷한 토큰을 찾음 (완전히 안 맞아도 유사하면 후보로)
   const vendorNames = Object.keys(VENDOR_PREFIXES).concat(Object.keys(loadCustomVendors()||{}));
   let bestVendor = null, bestScore = 0, bestTokenIdx = -1;
   tokens.forEach((tok, i) => {
@@ -3501,30 +3517,43 @@ function _parseManualOrderText(text){
   });
   if (bestVendor && bestScore >= Math.min(3, bestVendor.length)) result.vendor = bestVendor;
 
-  // 4) 발주처 토큰 기준으로 앞(품목+수량) / 뒤(주소+받는사람) 로 나눔
+  // 5) 발주처 토큰 기준으로 앞(품목+수량) / 뒤(주소+받는사람) 로 나눔
   let leftTokens = tokens, rightTokens = [];
   if (bestTokenIdx >= 0) {
     leftTokens = tokens.slice(0, bestTokenIdx);
     rightTokens = tokens.slice(bestTokenIdx + 1);
   }
 
-  // 5) 받는사람 성명 — 오른쪽 토큰의 맨 끝(전화번호 바로 앞) 또는 맨 앞이 한글 2~4글자면 이름으로 추정
-  if (rightTokens.length && /^[가-힣]{2,4}$/.test(rightTokens[rightTokens.length-1])) {
+  // 6) 품목명이 발주처 뒤에 오는 경우도 있어서(예: "...발주처 간고등어"), 뒤쪽에 남은 토큰 중
+  //    상품 키워드로 보이는 게 있으면 이름이 아니라 품목명으로 챙겨감
+  const itemTailTokens = [];
+  rightTokens = rightTokens.filter(tok => {
+    if (looksLikeItemWord(tok)) { itemTailTokens.push(tok); return false; }
+    return true;
+  });
+
+  // 7) 받는사람 성명 — 우편번호 앞에서 이미 못 찾았으면, 오른쪽 토큰의 맨 끝(전화번호 바로 앞)
+  //    또는 맨 앞이 한글 2~4글자면 이름으로 추정 (상품 키워드로 보이는 건 이름 후보에서 제외)
+  if (!result.recvName && rightTokens.length && /^[가-힣]{2,4}$/.test(rightTokens[rightTokens.length-1]) && !looksLikeItemWord(rightTokens[rightTokens.length-1])) {
     result.recvName = rightTokens[rightTokens.length-1];
     rightTokens = rightTokens.slice(0, -1);
-  } else if (rightTokens.length && /^[가-힣]{2,4}$/.test(rightTokens[0])) {
+  } else if (!result.recvName && rightTokens.length && /^[가-힣]{2,4}$/.test(rightTokens[0]) && !looksLikeItemWord(rightTokens[0])) {
     result.recvName = rightTokens[0];
     rightTokens = rightTokens.slice(1);
   }
   result.addr = rightTokens.join(' ').trim();
 
-  // 6) 품목+수량 — 왼쪽 토큰의 마지막이 순수 숫자면 수량, 나머지는 품목명
+  // 8) 품목+수량 — 왼쪽 토큰의 마지막이 순수 숫자면 수량, 나머지는 품목명. 뒤쪽에서 챙겨온
+  //    품목 키워드(itemTailTokens)가 있으면 품목명 맨 앞에 붙여줌
+  let itemHead = '', qtyPart = '';
   if (leftTokens.length && /^\d{1,4}$/.test(leftTokens[leftTokens.length-1])) {
-    result.qty = leftTokens[leftTokens.length-1];
-    result.item = leftTokens.slice(0, -1).join(' ').trim();
+    qtyPart = leftTokens[leftTokens.length-1];
+    itemHead = leftTokens.slice(0, -1).join(' ').trim();
   } else {
-    result.item = leftTokens.join(' ').trim();
+    itemHead = leftTokens.join(' ').trim();
   }
+  result.qty = qtyPart;
+  result.item = [itemTailTokens.join(' '), itemHead].filter(Boolean).join(' ').trim();
   return result;
 }
 function parseManualOrderText(){
@@ -3534,6 +3563,7 @@ function parseManualOrderText(){
   if (r.qty)       document.getElementById('moQty').value = r.qty;
   if (r.vendor)    document.getElementById('moVendor').value = r.vendor;
   if (r.addr)      document.getElementById('moAddr').value = r.addr;
+  if (r.zip)       document.getElementById('moZip').value = r.zip;
   if (r.recvName)  document.getElementById('moRecvName').value = r.recvName;
   if (r.phone)     document.getElementById('moRecvPhone').value = r.phone;
   if (r.co) {
@@ -3554,6 +3584,7 @@ function addManualOrder(){
   const recvName  = (document.getElementById('moRecvName').value||'').trim();
   const recvPhone = (document.getElementById('moRecvPhone').value||'').trim();
   const addr      = (document.getElementById('moAddr').value||'').trim();
+  const zip       = (document.getElementById('moZip').value||'').trim();
   const co = document.querySelector('input[name="moCo"]:checked')?.value || '그로븐';
   const platType = document.querySelector('input[name="moPlatType"]:checked')?.value || 'b2b';
   const b2bName  = (document.getElementById('moB2bName').value||'').trim();
@@ -3580,7 +3611,7 @@ function addManualOrder(){
     item_name: item, option_name: option,
     opt_mapped: false, opt_needs_check: false, mapped_code: '', unmatched: false,
     recv_name: recvName, recv_phone: recvPhone,
-    zip: '', addr,
+    zip, addr,
     memo: '',
     product: item + (option ? (' '+option) : ''),
     select_opt: option, disp_opt: '',
@@ -3608,6 +3639,7 @@ function addManualOrder(){
   document.getElementById('moRecvName').value = '';
   document.getElementById('moRecvPhone').value = '';
   document.getElementById('moAddr').value = '';
+  document.getElementById('moZip').value = '';
   document.getElementById('moB2bName').value = '';
   document.getElementById('moPlatName').value = '';
   _poShowToast(`✅ 주문이 추가됐어요: ${item} → ${vendor}`);
