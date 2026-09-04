@@ -366,6 +366,7 @@
         </div>
       </div>
       <div id="vendorRegistryArea"></div>
+      <div id="instantPayRegistryArea"></div>
       <div id="genListArea"></div>
     </div>
     <div class="card">
@@ -3861,12 +3862,14 @@ function renderStep3(){
         ${(Array.isArray(delivery[v])&&delivery[v].includes('kakao'))?(kakaoMark || `<button class="btn btn-sm" style="background:#FEF3C7;color:#78350F;border-color:#FDE68A" onclick="kakaoSendOne('${esc(gk)}')" title="카카오톡으로 발주 내용 발송">💬 카카오</button>`):''}
         ${(Array.isArray(delivery[v])&&delivery[v].includes('site'))?(siteMark || `<button class="btn btn-sm" style="background:#DCFCE7;color:#166534;border-color:#86EFAC" onclick="siteUploadOne('${esc(gk)}')" title="발주서 다운로드 후 발주사이트에 직접 업로드">🌐 발주사이트</button>`):''}
         ${sendMark || `<button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>`}
+        ${isInstantPayVendor(v)?`<button class="btn btn-sm" style="background:#EDE9FE;color:#5B21B6;border-color:#C4B5FD" onclick="expQuickFromOrder('${esc(v)}','${esc(a)}',${cnt})" title="지출결의서 탭으로 이동해 거래처·날짜·사업자를 미리 채워줌 — 금액만 입력하면 됨">💳 지출결의서 입력</button>`:''}
       </div>
     </div>`;
   }
   document.getElementById('genListArea').innerHTML=html;
   // 발주처 전달방식 등록 패널도 같이 갱신
   if (typeof renderVendorRegistry === 'function') renderVendorRegistry();
+  if (typeof renderInstantPayRegistry === 'function') renderInstantPayRegistry();
   // 자동 검토도 같이 갱신
   renderVerifyArea();
 }
@@ -4258,6 +4261,61 @@ function renderVendorRegistry(){
       </table></div>
     </div>
   </div>`;
+}
+
+// ── 즉시결제 거래처 설정 — 체크해둔 발주처는 발주서 목록에 "지출결의서 입력" 버튼이 바로 표시됨 ──
+const LS_INSTANT_PAY_VENDORS = 'yb_instant_pay_vendors';
+function loadInstantPayVendors(){ try{ return JSON.parse(localStorage.getItem(LS_INSTANT_PAY_VENDORS)||'[]'); }catch{ return []; } }
+function saveInstantPayVendors(arr){ try{ localStorage.setItem(LS_INSTANT_PAY_VENDORS, JSON.stringify(arr)); }catch(e){} }
+function isInstantPayVendor(v){ return loadInstantPayVendors().includes(v); }
+function toggleInstantPayVendor(v){
+  let arr = loadInstantPayVendors();
+  if (arr.includes(v)) arr = arr.filter(x => x !== v);
+  else arr = [...arr, v];
+  saveInstantPayVendors(arr);
+  renderInstantPayRegistry();
+  if (typeof renderStep3 === 'function') renderStep3();
+}
+function renderInstantPayRegistry(){
+  const el = document.getElementById('instantPayRegistryArea');
+  if (!el) return;
+  const vendors = _collectKnownVendors();
+  if (!vendors.length) { el.innerHTML = ''; return; }
+  const picked = loadInstantPayVendors();
+  const chips = vendors.map(v => {
+    const on = picked.includes(v);
+    const st = on
+      ? 'background:#DCFCE7;color:#166534;border:1px solid #86EFAC'
+      : 'background:#fff;color:#6B7280;border:1px solid #D1D5DB';
+    return `<button type="button" onclick="toggleInstantPayVendor('${esc(v)}')" style="${st};border-radius:14px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">${on?'✅ ':''}${escHtml(v)}</button>`;
+  }).join('');
+  el.innerHTML = `<div class="card" style="margin-bottom:12px">
+    <div class="card-title" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px"
+         onclick="var b=document.getElementById('instantPayRegistryBody');var t=document.getElementById('instantPayRegistryToggle');var open=b.style.display!=='none';b.style.display=open?'none':'';t.textContent=open?'▼ 펼치기':'▲ 접기';">
+      💳 즉시결제 거래처 설정 <span style="font-size:11px;color:var(--text3);font-weight:400">— ${picked.length}곳 선택됨</span>
+      <span id="instantPayRegistryToggle" style="margin-left:auto;font-size:12px;color:var(--text3)">▼ 펼치기</span>
+    </div>
+    <div id="instantPayRegistryBody" style="display:none">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">우리뜰·공덕농협처럼 발주 즉시 결제해야 하는 거래처를 체크해두세요. 아래 "📥 발주서 목록"에서 그 발주처 줄 맨 오른쪽에 "💳 지출결의서 입력" 버튼이 나타나요 — 누르면 지출결의서 탭으로 이동해 거래처·날짜·사업자·결제조건이 미리 채워져 있고, 금액만 입력하면 돼요.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>
+    </div>
+  </div>`;
+}
+// 발주서 목록의 "💳 지출결의서 입력" 버튼 — 지출결의서 탭으로 이동해 거래처/날짜/사업자를 미리 채워줌
+function expQuickFromOrder(vendor, alias, cnt){
+  const co = (typeof srBrandFromAlias === 'function') ? srBrandFromAlias(alias) : (String(alias||'').includes('로또상회') ? '그로븐' : '옐로우브릿지');
+  switchTab('expense');
+  selectExpCo(co);
+  const d = document.getElementById('expDate'); if (d) d.value = _localISO();
+  // 등록된 계좌가 있으면 은행정보·결제조건·증빙까지 자동으로 채워줌 (없으면 이름만 채워짐)
+  if (typeof selectVendorItem === 'function') selectVendorItem(vendor);
+  else { const ve = document.getElementById('expVendor'); if (ve) ve.value = vendor; }
+  const dateLabel = _localISO().slice(5).replace('-','/');
+  const desc = document.getElementById('expDesc');
+  if (desc) { desc.value = `${dateLabel} ${vendor} 발주건 (${cnt}건)`; if (typeof syncExpMemoDesc === 'function') syncExpMemoDesc(); }
+  const totalEl = document.getElementById('expTotal');
+  if (totalEl) totalEl.focus();
+  if (typeof _poShowToast === 'function') _poShowToast(`✍️ ${vendor} 지출결의서 입력 화면으로 이동했어요 — 금액만 입력하면 돼요`);
 }
 
 // ══════════════════════════════════════════════════════════
