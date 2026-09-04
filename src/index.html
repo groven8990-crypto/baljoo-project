@@ -5939,6 +5939,12 @@ async function checkPoImportFolder(){
     if (perm !== 'granted') perm = await _poImportDirHandle.requestPermission({mode:'read'});
     if (perm !== 'granted') { if (statusEl) statusEl.textContent = '⚠ 폴더 접근 권한이 필요해요 (버튼을 다시 눌러주세요)'; return; }
   } catch(e) { return; }
+  // 앱을 새로고침/재시작하면 allOrders(메모리)는 비워지는데, "이미 처리한 파일" 기록은
+  // localStorage에 계속 남아있어서 예전에 불러온 파일을 건너뛰어버림 → 그 파일의 주문이
+  // 화면엔 없는데 다시는 안 불러와지는 문제가 생김. 지금 화면에 주문이 하나도 없는 상태(=방금
+  // 새로 시작한 상태)라면 오늘 처리기록을 초기화해서, 오늘 폴더에 있는 파일들을 처음부터
+  // 다시 순서대로(첫 파일=교체, 나머지=합산) 불러오게 함.
+  if (!allOrders || allOrders.length === 0) localStorage.removeItem(LS_PO_IMPORT_SEEN);
   if (statusEl) statusEl.textContent = '⏳ 폴더 확인 중...';
   const {checked, imported, failed} = await _scanImportFolder(_poImportDirHandle, LS_PO_IMPORT_SEEN, file => new Promise(resolve => {
     // 실제로 주문이 늘었는지로 성공 여부를 판단 — handleFile/handleFileAdd는 형식이 안 맞아도
