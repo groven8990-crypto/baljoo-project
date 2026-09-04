@@ -4308,6 +4308,10 @@ function expQuickFromOrder(gk){
   const cnt = orders.length;
   const co = (typeof srBrandFromAlias === 'function') ? srBrandFromAlias(alias) : (String(alias||'').includes('로또상회') ? '그로븐' : '옐로우브릿지');
   switchTab('expense');
+  // 직전에 다른 거래처로 채워뒀던 값(특히 메모 — applyBankTemplate은 메모가 비어있을 때만 채우게
+  // 돼있어서, 안 지우고 넘어가면 이전 거래처의 예금주/계좌 메모가 그대로 남아 섞여 보임)이
+  // 남아있지 않도록 폼을 먼저 완전히 초기화한 뒤 채움
+  if (typeof resetExpForm === 'function') resetExpForm();
   selectExpCo(co);
   const d = document.getElementById('expDate'); if (d) d.value = _localISO();
   // 등록된 계좌가 있으면 은행정보·결제조건·증빙까지 자동으로 채워줌 (없으면 이름만 채워짐)
