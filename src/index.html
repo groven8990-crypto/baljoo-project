@@ -3862,7 +3862,7 @@ function renderStep3(){
         ${(Array.isArray(delivery[v])&&delivery[v].includes('kakao'))?(kakaoMark || `<button class="btn btn-sm" style="background:#FEF3C7;color:#78350F;border-color:#FDE68A" onclick="kakaoSendOne('${esc(gk)}')" title="카카오톡으로 발주 내용 발송">💬 카카오</button>`):''}
         ${(Array.isArray(delivery[v])&&delivery[v].includes('site'))?(siteMark || `<button class="btn btn-sm" style="background:#DCFCE7;color:#166534;border-color:#86EFAC" onclick="siteUploadOne('${esc(gk)}')" title="발주서 다운로드 후 발주사이트에 직접 업로드">🌐 발주사이트</button>`):''}
         ${sendMark || `<button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>`}
-        ${isInstantPayVendor(v)?`<button class="btn btn-sm" style="background:#EDE9FE;color:#5B21B6;border-color:#C4B5FD" onclick="expQuickFromOrder('${esc(v)}','${esc(a)}',${cnt})" title="지출결의서 탭으로 이동해 거래처·날짜·사업자를 미리 채워줌 — 금액만 입력하면 됨">💳 지출결의서 입력</button>`:''}
+        ${isInstantPayVendor(v)?`<button class="btn btn-sm" style="background:#EDE9FE;color:#5B21B6;border-color:#C4B5FD" onclick="expQuickFromOrder('${esc(gk)}')" title="지출결의서 탭으로 이동해 거래처·날짜·사업자·(가능하면) 매입가까지 미리 채워줌">💳 지출결의서 입력</button>`:''}
       </div>
     </div>`;
   }
@@ -4301,8 +4301,11 @@ function renderInstantPayRegistry(){
     </div>
   </div>`;
 }
-// 발주서 목록의 "💳 지출결의서 입력" 버튼 — 지출결의서 탭으로 이동해 거래처/날짜/사업자를 미리 채워줌
-function expQuickFromOrder(vendor, alias, cnt){
+// 발주서 목록의 "💳 지출결의서 입력" 버튼 — 지출결의서 탭으로 이동해 거래처/날짜/사업자 + (가능하면) 매입가까지 미리 채워줌
+function expQuickFromOrder(gk){
+  const [vendor, alias] = String(gk||'').split('|');
+  const orders = (groupedOrders && groupedOrders[gk]) || [];
+  const cnt = orders.length;
   const co = (typeof srBrandFromAlias === 'function') ? srBrandFromAlias(alias) : (String(alias||'').includes('로또상회') ? '그로븐' : '옐로우브릿지');
   switchTab('expense');
   selectExpCo(co);
@@ -4313,9 +4316,33 @@ function expQuickFromOrder(vendor, alias, cnt){
   const dateLabel = _localISO().slice(5).replace('-','/');
   const desc = document.getElementById('expDesc');
   if (desc) { desc.value = `${dateLabel} ${vendor} 발주건 (${cnt}건)`; if (typeof syncExpMemoDesc === 'function') syncExpMemoDesc(); }
+
+  // 매입단가표에 단가가 등록돼있으면 이 발주 건의 총 매입가(=매입단가×수량 + 배송비)를 자동 계산해서 채움.
+  // srBuildProfitRows는 (전달한 orders와 무관하게) 디네트 B2B 행을 항상 덧붙이므로 isB2B 행은 반드시 제외.
+  let purchaseTotal = 0, noPriceCnt = 0, priceRowCnt = 0;
+  try {
+    const rows = (typeof srBuildProfitRows === 'function') ? srBuildProfitRows(orders).filter(r => !r.isB2B) : [];
+    rows.forEach(r => {
+      priceRowCnt++;
+      purchaseTotal += Math.round(r.purchase || 0);
+      if (!r.unit) noPriceCnt++;
+    });
+  } catch(e) { console.warn('지출결의서 자동입력 — 매입가 계산 실패:', e); }
+
   const totalEl = document.getElementById('expTotal');
+  let toastMsg;
+  if (totalEl && purchaseTotal > 0) {
+    totalEl.value = purchaseTotal;
+    if (typeof calcFromTotal === 'function') calcFromTotal();
+    toastMsg = `✍️ ${vendor} 지출결의서로 이동 — 매입단가표 기준 매입가 ${purchaseTotal.toLocaleString()}원을 자동으로 채웠어요`;
+    if (noPriceCnt > 0) toastMsg += `\n⚠ 이 중 ${noPriceCnt}개 품목은 매입단가가 없어 금액에 안 잡혔어요 — 꼭 확인해주세요`;
+  } else {
+    toastMsg = (priceRowCnt > 0 && noPriceCnt === priceRowCnt)
+      ? `✍️ ${vendor} 지출결의서 입력 화면으로 이동했어요 — 매입단가표에 단가가 없어 자동계산 못했어요. 금액을 직접 입력해주세요`
+      : `✍️ ${vendor} 지출결의서 입력 화면으로 이동했어요 — 금액만 입력하면 돼요`;
+  }
   if (totalEl) totalEl.focus();
-  if (typeof _poShowToast === 'function') _poShowToast(`✍️ ${vendor} 지출결의서 입력 화면으로 이동했어요 — 금액만 입력하면 돼요`);
+  if (typeof _poShowToast === 'function') _poShowToast(toastMsg);
 }
 
 // ══════════════════════════════════════════════════════════
