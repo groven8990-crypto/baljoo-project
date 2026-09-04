@@ -322,6 +322,10 @@
       <div id="mergeList"></div>
     </div>
     <div id="loadedFilesBar" style="margin-bottom:8px;font-size:12px;color:var(--text2)"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px">
+      <button class="btn btn-sm" onclick="checkPoImportFolderStep2()">🔄 자동 가져오기 폴더에서 새 파일 확인</button>
+      <span id="poImportStatusStep2" style="color:var(--text3)"></span>
+    </div>
     <!-- Step2 추가 업로드 드래그앤드롭 -->
     <div id="uploadZoneAdd"
       style="border:2px dashed var(--border2);border-radius:var(--radius);padding:14px 18px;text-align:center;cursor:pointer;margin-bottom:12px;transition:background .15s;color:var(--text2);font-size:13px"
@@ -5931,13 +5935,19 @@ async function pickPoImportFolder(){
     if (e.name !== 'AbortError') alert('폴더 선택 오류: ' + e.message);
   }
 }
+// 1단계(업로드) 패널과 2단계(분석) 패널에 상태 표시 칸이 둘 다 있을 수 있어서 — 있는 것만 골라서 갱신
+function _poImportSetStatus(text){
+  ['poImportStatus','poImportStatusStep2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  });
+}
 async function checkPoImportFolder(){
   if (!_poImportDirHandle) return;
-  const statusEl = document.getElementById('poImportStatus');
   try {
     let perm = await _poImportDirHandle.queryPermission({mode:'read'});
     if (perm !== 'granted') perm = await _poImportDirHandle.requestPermission({mode:'read'});
-    if (perm !== 'granted') { if (statusEl) statusEl.textContent = '⚠ 폴더 접근 권한이 필요해요 (버튼을 다시 눌러주세요)'; return; }
+    if (perm !== 'granted') { _poImportSetStatus('⚠ 폴더 접근 권한이 필요해요 (버튼을 다시 눌러주세요)'); return; }
   } catch(e) { return; }
   // 앱을 새로고침/재시작하면 allOrders(메모리)는 비워지는데, "이미 처리한 파일" 기록은
   // localStorage에 계속 남아있어서 예전에 불러온 파일을 건너뛰어버림 → 그 파일의 주문이
@@ -5945,7 +5955,7 @@ async function checkPoImportFolder(){
   // 새로 시작한 상태)라면 오늘 처리기록을 초기화해서, 오늘 폴더에 있는 파일들을 처음부터
   // 다시 순서대로(첫 파일=교체, 나머지=합산) 불러오게 함.
   if (!allOrders || allOrders.length === 0) localStorage.removeItem(LS_PO_IMPORT_SEEN);
-  if (statusEl) statusEl.textContent = '⏳ 폴더 확인 중...';
+  _poImportSetStatus('⏳ 폴더 확인 중...');
   const {checked, imported, failed} = await _scanImportFolder(_poImportDirHandle, LS_PO_IMPORT_SEEN, file => new Promise(resolve => {
     // 실제로 주문이 늘었는지로 성공 여부를 판단 — handleFile/handleFileAdd는 형식이 안 맞아도
     // 에러 없이 조용히 끝나는 경우가 있어서, 콜백이 불렸다는 것만으로는 성공을 보장할 수 없음
@@ -5955,12 +5965,15 @@ async function checkPoImportFolder(){
     if (!allOrders || allOrders.length === 0) handleFile(file, cb);
     else handleFileAdd(file, cb);
   }));
-  if (statusEl) {
-    if (imported > 0) statusEl.textContent = `✅ 새 파일 ${imported}건 자동으로 불러왔어요 (오늘 파일 ${checked}개 확인)`;
-    else if (failed > 0) statusEl.textContent = `⚠ 오늘 파일을 찾았는데 못 불러왔어요 — 양식을 확인해주세요 (실패 ${failed}건)`;
-    else if (checked > 0) statusEl.textContent = `변동 없음 (오늘 파일 ${checked}개 확인)`;
-    else statusEl.textContent = '폴더에 오늘 날짜로 수정된 엑셀 파일이 없어요';
-  }
+  if (imported > 0) _poImportSetStatus(`✅ 새 파일 ${imported}건 자동으로 불러왔어요 (오늘 파일 ${checked}개 확인)`);
+  else if (failed > 0) _poImportSetStatus(`⚠ 오늘 파일을 찾았는데 못 불러왔어요 — 양식을 확인해주세요 (실패 ${failed}건)`);
+  else if (checked > 0) _poImportSetStatus(`변동 없음 (오늘 파일 ${checked}개 확인)`);
+  else _poImportSetStatus('폴더에 오늘 날짜로 수정된 엑셀 파일이 없어요');
+}
+// 2단계(분석) 화면에서 누르는 "폴더에서 새 파일 확인" 버튼 — 폴더 미설정이면 1단계로 가서 설정하라고 안내
+function checkPoImportFolderStep2(){
+  if (!_poImportDirHandle) { alert('아직 자동가져오기 폴더가 설정되지 않았어요.\n1단계(업로드) 화면의 "📁 자동 가져오기 폴더 → 폴더 설정"에서 먼저 지정해주세요.'); return; }
+  return checkPoImportFolder();
 }
 function resetPoImportSeen(){
   localStorage.removeItem(LS_PO_IMPORT_SEEN);
