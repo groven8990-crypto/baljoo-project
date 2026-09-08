@@ -4106,7 +4106,12 @@ function renderVerifyArea(){
           <th style="padding:6px 8px;text-align:left;font-weight:600">이상</th>
           <th style="padding:6px 8px;text-align:center;font-weight:600">삭제</th>
         </tr></thead>
-        <tbody>${list.map(rd => `
+        <tbody>${list.map(rd => {
+          const canEditQty = rd.dst_qty !== null && rd.srcIdx.length === 1 && r.vendor !== '동일' && r.vendor !== '푸드엔드베스트';
+          const qtyCell = canEditQty
+            ? `<button class="btn btn-sm" style="padding:1px 7px;font-size:10.5px;font-weight:700" onclick="verifyEditQty('${esc(r.gk)}',${rd.srcIdx[0]},${rd.dst_qty})" title="발주 수량 수정 (같은 상품코드의 다른 주문에도 함께 적용돼요)">${rd.dst_qty} ✏️</button>`
+            : (rd.dst_qty!==null?rd.dst_qty:'-');
+          return `
           <tr style="background:${rd.bundleRgb?'#'+rd.bundleRgb.slice(2):(rd.issues.length?'#FEF2F2':'#fff')}">
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${escHtml(rd.recv_name)}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#374151;max-width:180px;word-break:break-word">${escHtml(rd.src_product||'-')}</td>
@@ -4114,10 +4119,11 @@ function renderVerifyArea(){
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#0E7490;max-width:160px;word-break:break-word">${escHtml(rd.src_disp||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#0E7490;white-space:nowrap">${rd.src_qty}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;max-width:180px;word-break:break-word">${escHtml((rd.dst_item+' '+rd.dst_opt).trim()||'-')}</td>
-            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">${rd.dst_qty!==null?rd.dst_qty:'-'}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">${qtyCell}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:var(--danger);font-size:10px">${rd.issues.map(i=>'• '+escHtml(i)).join('<br>')||''}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:center"><button class="btn btn-sm" style="padding:2px 8px;font-size:10px;color:var(--danger);border-color:var(--danger);background:#fff" onclick="verifyDeleteRow('${esc(r.gk)}',${JSON.stringify(rd.srcIdx)})" title="이 주문을 발주서에서 삭제">✕</button></td>
-          </tr>`).join('')}</tbody></table>`;
+          </tr>`;
+        }).join('')}</tbody></table>`;
     };
     const tableId = `vtab_${idx}`;
     const tableHtml = `<div style="margin-top:8px">
@@ -4158,6 +4164,31 @@ function verifyDeleteRow(gk, idxList){
   targets.forEach(o => { const ai = allOrders.indexOf(o); if (ai >= 0) allOrders.splice(ai, 1); });
   if (!list.length) delete groupedOrders[gk];
   renderStep3();
+}
+// 자동 검토 표에서 "발주 수량" 직접 수정 — "주문 품목·옵션·수량 직접 수정" 패널과 동일하게
+// 상품코드(+선택사항) 단위 code_qty 오버라이드로 저장됨 → 같은 코드를 쓰는 다른 주문에도 함께 적용됨
+function verifyEditQty(gk, srcIdx, curQty){
+  const list = groupedOrders[gk];
+  const o = list && list[srcIdx];
+  if (!o) return;
+  const baseQty = Number(o.qty) || 1;
+  const input = prompt(
+    `"${o.recv_name||''} · ${o.item_name||o.product||''}"\n발주 수량을 몇 개로 바꿀까요? (현재 ${curQty}개)\n\n`
+    + `※ 주문수량(${baseQty}건) × 상품코드당 개수로 계산돼서, 같은 상품코드(${o.vendor_code||''}${o.select_opt?' / '+o.select_opt:''})를 쓰는 다른 주문에도 똑같이 적용돼요.`,
+    curQty
+  );
+  if (input === null) return;
+  const newQty = parseInt(input);
+  if (!newQty || newQty < 1) { alert('1 이상의 숫자를 입력해주세요.'); return; }
+  const newCodeQty = Math.max(1, Math.round(newQty / baseQty));
+  if (newCodeQty * baseQty !== newQty && !confirm(`주문수량(${baseQty})으로 나누어떨어지지 않아 상품코드당 개수를 ${newCodeQty}(으)로 반올림해서 저장할게요.\n결과: ${newCodeQty * baseQty}개 — 계속할까요?`)) return;
+  const k = ovKey(o.vendor_code, o.select_opt);
+  const ovs = loadOverrides().filter(x => x.key !== k);
+  ovs.push({ key: k, item: o.item_name || '', option: o.option_name || '', qty: newCodeQty });
+  saveOverrides(ovs);
+  rematchAllOrders();
+  renderStep3();
+  if (typeof renderDirectEditList === 'function') renderDirectEditList();
 }
 
 // ── 거래처별 이메일 저장 ──
