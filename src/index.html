@@ -3869,11 +3869,10 @@ function renderStep3(){
       <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap">
         <button class="btn btn-sm" onclick="dlOne('${esc(gk)}')">⬇ 다운로드</button>
         ${dlMark}
-        ${dvChip}
         ${v==='동일'?`<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border-color:#86efac" onclick="dlDongilSettlement('${esc(gk)}')" title="발주정산내역서 다운로드">📋 정산내역서</button>`:''}
         ${(Array.isArray(delivery[v])&&delivery[v].includes('kakao'))?(kakaoMark || `<button class="btn btn-sm" style="background:#FEF3C7;color:#78350F;border-color:#FDE68A" onclick="kakaoSendOne('${esc(gk)}')" title="카카오톡으로 발주 내용 발송">💬 카카오</button>`):''}
         ${(Array.isArray(delivery[v])&&delivery[v].includes('site'))?(siteMark || `<button class="btn btn-sm" style="background:#DCFCE7;color:#166534;border-color:#86EFAC" onclick="siteUploadOne('${esc(gk)}')" title="발주서 다운로드 후 발주사이트에 직접 업로드">🌐 발주사이트</button>`):''}
-        ${sendMark || `<button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>`}
+        ${(Array.isArray(delivery[v])&&delivery[v].includes('email'))?(sendMark || `<button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>`):''}
         ${isInstantPayVendor(v)?(expQuickMark || `<button class="btn btn-sm" style="background:#EDE9FE;color:#5B21B6;border-color:#C4B5FD" onclick="expQuickFromOrder('${esc(gk)}')" title="지출결의서 탭으로 이동해 거래처·날짜·사업자·(가능하면) 매입가까지 미리 채워줌">💳 지출결의서 입력</button>`):''}
       </div>
     </div>`;
