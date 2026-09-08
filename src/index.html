@@ -11112,7 +11112,7 @@ function switchTab(name){
     const btnEl=document.getElementById('tabBtn-'+name);
     if(tabEl) tabEl.classList.add('active');
     if(btnEl) btnEl.classList.add('active');
-    if(name==='order'){try{checkPoImportFolder();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}}
+    if(name==='order'){try{if(!allOrders||allOrders.length===0)checkPoImportFolder();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}}
     if(name==='codes'){try{renderCodeList();}catch(e){console.error(e);}try{renderOptMapList();}catch(e){console.error(e);}try{renderUnmatchedHints();}catch(e){console.error(e);}try{renderOmPreview();}catch(e){console.error(e);}try{renderCodeMappingList();}catch(e){console.error(e);}}
     if(name==='expense'){try{initExpenseTab();}catch(e){console.error(e);}}
     if(name==='income'){try{initIncomeTab();}catch(e){console.error(e);}}
