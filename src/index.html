@@ -205,6 +205,10 @@
         <button class="btn btn-sm" onclick="pickPoImportFolder()" style="background:var(--bg2);border:1px solid var(--border)">폴더 설정</button>
         <button class="btn btn-sm" onclick="checkPoImportFolder()">🔄 지금 확인</button>
         <button class="btn btn-sm" onclick="resetPoImportSeen()" title="이미 처리한 파일로 기록된 내역을 지워서, 다음 확인 때 오늘 파일을 다시 가져오게 함">🔁 처리기록 초기화</button>
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);cursor:pointer;white-space:nowrap">
+          <input type="checkbox" id="poImportPauseChk" onchange="togglePoImportPause(this)" style="width:14px;height:14px">
+          ⏸ 자동가져오기 잠시 끄기
+        </label>
         <span id="poImportFolderName" style="font-size:12px;color:var(--text3)">가져오기 폴더 미설정</span>
         <span id="poImportStatus" style="font-size:12px;color:var(--text3);width:100%"></span>
       </div>
@@ -324,6 +328,10 @@
     <div id="loadedFilesBar" style="margin-bottom:8px;font-size:12px;color:var(--text2)"></div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px">
       <button class="btn btn-sm" onclick="checkPoImportFolderStep2()">🔄 자동 가져오기 폴더에서 새 파일 확인</button>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;color:var(--text2)">
+        <input type="checkbox" id="poImportPauseChkStep2" onchange="togglePoImportPause(this)" style="width:14px;height:14px">
+        ⏸ 자동가져오기 잠시 끄기
+      </label>
       <span id="poImportStatusStep2" style="color:var(--text3)"></span>
     </div>
     <!-- Step2 추가 업로드 드래그앤드롭 -->
@@ -2893,7 +2901,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   try{ populateVendorSelect(); }catch(e){}
   try{ renderCutoffPanel(); }catch(e){}
   try{ _populateManualOrderVendorList(); }catch(e){}
-  _restorePoImportFolder().then(()=>{ if (_poImportDirHandle) checkPoImportFolder(); }).catch(()=>{});
+  try{ _syncPoImportPauseUI(); }catch(e){}
+  _restorePoImportFolder().then(()=>{ if (_poImportDirHandle && !isPoImportPaused()) checkPoImportFolder(); }).catch(()=>{});
   _restoreInvImportFolder().catch(()=>{});
   _sbSyncCodes().catch(()=>{});
   _sbSyncOptMaps().catch(()=>{});
@@ -6058,6 +6067,20 @@ async function _getPoSubDirHandle(alias){
 // ── 발주서 생성용 "가져오기 폴더" — 지정해두면 새 샵마인 주문 파일을 자동으로 찾아서 추가해줌 ──
 let _poImportDirHandle = null;
 const LS_PO_IMPORT_SEEN = 'yb_po_import_seen';
+// 자동가져오기를 잠시 꺼두는 스위치 — 켜져있는 동안은 페이지 로드/탭 재진입 시의 "자동" 확인만
+// 건너뜀. "🔄 지금 확인" 버튼은 사용자가 직접 누른 것이니 꺼져있어도 그대로 동작함
+const LS_PO_IMPORT_PAUSED = 'yb_po_import_paused';
+function isPoImportPaused(){ return localStorage.getItem(LS_PO_IMPORT_PAUSED) === '1'; }
+function _syncPoImportPauseUI(){
+  const v = isPoImportPaused();
+  ['poImportPauseChk','poImportPauseChkStep2'].forEach(id => { const el = document.getElementById(id); if (el) el.checked = v; });
+}
+function togglePoImportPause(chk){
+  const v = !!chk.checked;
+  if (v) localStorage.setItem(LS_PO_IMPORT_PAUSED, '1'); else localStorage.removeItem(LS_PO_IMPORT_PAUSED);
+  _syncPoImportPauseUI();
+  _poImportSetStatus(v ? '⏸ 자동가져오기 잠시 꺼짐 — "🔄 지금 확인"을 눌러야만 가져와요' : '');
+}
 async function _updatePoImportFolderLabel(){
   const el = document.getElementById('poImportFolderName');
   if (!el) return;
@@ -11112,7 +11135,7 @@ function switchTab(name){
     const btnEl=document.getElementById('tabBtn-'+name);
     if(tabEl) tabEl.classList.add('active');
     if(btnEl) btnEl.classList.add('active');
-    if(name==='order'){try{if(!allOrders||allOrders.length===0)checkPoImportFolder();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}}
+    if(name==='order'){try{if((!allOrders||allOrders.length===0)&&!isPoImportPaused())checkPoImportFolder();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}}
     if(name==='codes'){try{renderCodeList();}catch(e){console.error(e);}try{renderOptMapList();}catch(e){console.error(e);}try{renderUnmatchedHints();}catch(e){console.error(e);}try{renderOmPreview();}catch(e){console.error(e);}try{renderCodeMappingList();}catch(e){console.error(e);}}
     if(name==='expense'){try{initExpenseTab();}catch(e){console.error(e);}}
     if(name==='income'){try{initIncomeTab();}catch(e){console.error(e);}}
