@@ -18222,26 +18222,37 @@ function _srBuildBizSectionHtml(biz, bizRows){
   </div>`;
 }
 function _srBuildB2BSectionHtml(biz, b2bRows, _theads, _buildFooter){
+  // 서로 다른 B2B 거래처(예: 다올유통 vs 개인주문)를 한 섹션에 합쳐서 보여주면
+  // 요약표 "발주처" 칸에 "다올유통 일비"처럼 거래처명과 발주처명이 뒤섞여 헷갈리므로,
+  // 거래처(b2bName) 단위로 완전히 분리된 섹션을 각각 만듦
+  const byName = {};
+  for (const r of b2bRows) {
+    const nm = r.b2bName || '미지정';
+    (byName[nm] || (byName[nm] = [])).push(r);
+  }
+  return Object.entries(byName).map(([nm, rows]) => _srBuildOneB2BSectionHtml(biz, nm, rows, _theads, _buildFooter)).join('');
+}
+function _srBuildOneB2BSectionHtml(biz, b2bName, b2bRows, _theads, _buildFooter){
   const TB = b2bRows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=(r.fee||0);s.vat+=(r.vat||0);s.profit+=r.profit;s.count+=r.count;return s;},{sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
   let _prev = null;
   const b2bTrs = b2bRows.map((r,i)=>{
-    const gk = String(r.detailVendor||r.vendor||'');
+    const gk = String(r.vendor||'');
     const first = (gk !== _prev); _prev = gk;
     return _srBuildDetailRowHtml(r, i, first);
   }).join('');
   const pc = TB.profit >= 0 ? '#5DE3B3' : '#FECACA';
-  // 발주처별 요약 테이블 (그로븐 섹션과 동일한 형식) — B2B 거래처가 여러 곳일 수 있으니
-  // 발주처(매입처) 하나만으로 묶지 않고 "거래처 + 발주처"(detailVendor)로 묶어서 구분
+  // 발주처별 요약 테이블 (그로븐 섹션과 동일한 형식) — 이 섹션은 이미 거래처(b2bName) 하나로
+  // 고정돼 있으니 발주처(매입처) 기준으로만 묶으면 됨
   const byGroup = {};
   for (const r of b2bRows) {
-    const k = String(r.detailVendor||r.vendor||'');
+    const k = String(r.vendor||'');
     if (!byGroup[k]) byGroup[k] = {vendor:k, count:0, sales:0, purchase:0, profit:0};
     const m = byGroup[k];
     m.count+=r.count; m.sales+=r.sales; m.purchase+=r.purchase; m.profit+=r.profit;
   }
   const HBG='#F1F5F9', HFG='#334155';
   const sumTrs = Object.values(byGroup).map(m=>`<tr>
-    <td style="padding:9px 14px;font-size:12px;font-weight:600;border-bottom:1px solid #F2F4F6;color:#191F28">${escHtml(m.vendor)}</td>
+    <td style="padding:9px 14px;font-size:12px;font-weight:600;border-bottom:1px solid #F2F4F6;color:#191F28">${escHtml(_srVendorName(m.vendor))}</td>
     <td style="padding:9px 14px;text-align:right;font-size:12px;border-bottom:1px solid #F2F4F6;color:#191F28">${m.count}건</td>
     <td style="padding:9px 14px;text-align:right;font-size:12px;color:#3182F6;font-weight:600;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.sales.toLocaleString()}원</td>
     <td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.purchase.toLocaleString()}원</td>
@@ -18264,12 +18275,10 @@ function _srBuildB2BSectionHtml(biz, b2bRows, _theads, _buildFooter){
       <td style="padding:10px 14px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;color:${TB.profit>=0?'#06B981':'#F04452'}">${TB.profit.toLocaleString()}원</td>
     </tr></tfoot>
   </table>`;
-  const _b2bNames = [...new Set(b2bRows.map(r=>r.b2bName).filter(Boolean))];
-  const _b2bHeaderSuffix = _b2bNames.length ? ` (${_b2bNames.join(', ')})` : '';
-  return `<div style="margin-top:14px" data-b2b-biz="${escHtml(biz)}">
+  return `<div style="margin-top:14px" data-b2b-biz="${escHtml(biz)}" data-b2b-name="${escHtml(b2bName)}">
     <div class="sr-b2b-header" data-biz="${escHtml(biz)}"
       style="background:#0D9488;color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      🏭 B2B 매출${escHtml(_b2bHeaderSuffix)}
+      🏭 B2B 매출 (${escHtml(b2bName)})
       <span style="margin-left:auto;font-size:12px;font-weight:400">
         ${ (()=>{ const _s=TB.sales||1; const _p=v=>`<span style="opacity:.65;font-size:10px;margin-left:2px">(${(v/_s*100).toFixed(1)}%)</span>`;
           return `매출 <b>${TB.sales.toLocaleString()}</b> · 매입 <b>${TB.purchase.toLocaleString()}</b>${_p(TB.purchase)} · 순이익 <b style="color:${pc}">${TB.profit.toLocaleString()}</b>${_p(TB.profit)}`;
@@ -18279,7 +18288,7 @@ function _srBuildB2BSectionHtml(biz, b2bRows, _theads, _buildFooter){
     </div>
     ${summaryTable}
     <div class="sr-biz-detail-section">
-    <div style="margin-top:8px;font-size:11px;color:var(--text3)">📋 디네트 B2B 상세 — 매입단가/배송비 입력. ▶ 누르면 건별 확인.</div>
+    <div style="margin-top:8px;font-size:11px;color:var(--text3)">📋 ${escHtml(b2bName)} B2B 상세 — 매입단가/배송비 입력. ▶ 누르면 건별 확인.</div>
     <div style="overflow-x:auto;margin-top:4px">
       <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #99f6e4;word-break:keep-all">
         ${_theads}<tbody>${b2bTrs}</tbody>${_buildFooter(TB, b2bRows)}
@@ -18295,7 +18304,7 @@ function _srBuildDetailRowHtml(r, i, firstOfGroup){
     <td style="padding:4px 4px;border-bottom:1px solid #eee;text-align:center">
       <button type="button" data-toggle-key="${_srEsc(r.key)}" onclick="srToggleProfitDetail(this)" style="border:1px solid #D1D5DB;background:#fff;cursor:pointer;font-size:11px;padding:1px 6px;border-radius:3px" title="사람별 검산">▶</button>
     </td>
-    <td style="padding:6px 8px;border-bottom:1px solid #eee;font-weight:600">${escHtml(_srVendorName(r.detailVendor||r.vendor))}</td>
+    <td style="padding:6px 8px;border-bottom:1px solid #eee;font-weight:600">${escHtml(_srVendorName(r.vendor))}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee">${escHtml(r.item||'-')}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#6B7280">${escHtml(r.option||'-')}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${r.count}</td>
