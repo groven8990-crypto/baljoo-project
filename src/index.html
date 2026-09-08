@@ -3821,6 +3821,13 @@ function renderStep3(){
       if (!siteMap[key] || h.ts > siteMap[key]) siteMap[key] = h.ts;
     }
   });
+  // 오늘 "💳 지출결의서 입력" 버튼으로 채운 뒤 실제로 저장 완료한 건 (gk → 가장 최근 시각)
+  const expQuickMap = {};
+  loadExpQuickHistory().forEach(h => {
+    if (h.ts >= todayStartTs && h.gk) {
+      if (!expQuickMap[h.gk] || h.ts > expQuickMap[h.gk]) expQuickMap[h.gk] = h.ts;
+    }
+  });
   for(const gk of sortVendorKeys(Object.keys(groupedOrders))){
     const [v,a]=gk.split('|'),cnt=groupedOrders[gk].length;
     const savedEmail=emails[v]||'';
@@ -3845,6 +3852,11 @@ function renderStep3(){
     const siteMark = siteTs
       ? `<span class="site-mark" id="stm_${ekey(gk)}" title="오늘 ${siteTime} 발주사이트 업로드" style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:6px;font-size:12px;font-weight:700">✅ 업로드완료 ${siteTime}</span>`
       : '';
+    const expQuickTs = expQuickMap[gk];
+    const expQuickTime = expQuickTs ? new Date(expQuickTs).toTimeString().slice(0,5) : '';
+    const expQuickMark = expQuickTs
+      ? `<span class="exp-quick-mark" id="eqm_${ekey(gk)}" title="오늘 ${expQuickTime} 지출결의서 입력 완료" style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#EDE9FE;color:#5B21B6;border:1px solid #C4B5FD;border-radius:6px;font-size:12px;font-weight:700">✅ 입력완료 ${expQuickTime}</span>`
+      : '';
     const doneCls = dlTs ? ' done' : '';
     html+=`<div class="gen-card${doneCls}" id="gc_${ekey(gk)}">
       <div style="min-width:0;flex:1">
@@ -3862,7 +3874,7 @@ function renderStep3(){
         ${(Array.isArray(delivery[v])&&delivery[v].includes('kakao'))?(kakaoMark || `<button class="btn btn-sm" style="background:#FEF3C7;color:#78350F;border-color:#FDE68A" onclick="kakaoSendOne('${esc(gk)}')" title="카카오톡으로 발주 내용 발송">💬 카카오</button>`):''}
         ${(Array.isArray(delivery[v])&&delivery[v].includes('site'))?(siteMark || `<button class="btn btn-sm" style="background:#DCFCE7;color:#166534;border-color:#86EFAC" onclick="siteUploadOne('${esc(gk)}')" title="발주서 다운로드 후 발주사이트에 직접 업로드">🌐 발주사이트</button>`):''}
         ${sendMark || `<button class="btn btn-sm" onclick="emailOne('${esc(gk)}')" title="이 발주처만 Gmail API 로 자동 발송 (같은 발주처의 다른 사업자가 있으면 함께 첨부)">📧 자동발송</button>`}
-        ${isInstantPayVendor(v)?`<button class="btn btn-sm" style="background:#EDE9FE;color:#5B21B6;border-color:#C4B5FD" onclick="expQuickFromOrder('${esc(gk)}')" title="지출결의서 탭으로 이동해 거래처·날짜·사업자·(가능하면) 매입가까지 미리 채워줌">💳 지출결의서 입력</button>`:''}
+        ${isInstantPayVendor(v)?(expQuickMark || `<button class="btn btn-sm" style="background:#EDE9FE;color:#5B21B6;border-color:#C4B5FD" onclick="expQuickFromOrder('${esc(gk)}')" title="지출결의서 탭으로 이동해 거래처·날짜·사업자·(가능하면) 매입가까지 미리 채워줌">💳 지출결의서 입력</button>`):''}
       </div>
     </div>`;
   }
@@ -4301,6 +4313,22 @@ function renderInstantPayRegistry(){
     </div>
   </div>`;
 }
+// "💳 지출결의서 입력" 버튼으로 이동한 뒤 실제로 저장까지 완료했는지 기록 — 발주서 목록에
+// "✅ 입력완료 HH:MM"으로 표시해주기 위함
+const LS_EXP_QUICK_HISTORY = 'yb_exp_quick_history';
+function loadExpQuickHistory(){ try{ return JSON.parse(localStorage.getItem(LS_EXP_QUICK_HISTORY)||'[]'); }catch{ return []; } }
+function saveExpQuickHistory(arr){ try{ localStorage.setItem(LS_EXP_QUICK_HISTORY, JSON.stringify(arr.slice(-500))); }catch(e){} }
+// "이 버튼으로 열어둔 폼을 다음에 저장하면 그게 이 발주처 건이다"라고 기억해두는 상태 —
+// 저장(saveExpense) 또는 초기화(resetExpForm) 시점에 소비되고 사라짐
+let _expQuickPending = null;
+function _logExpQuickDone(){
+  if (!_expQuickPending) return;
+  const hist = loadExpQuickHistory();
+  hist.push({ gk: _expQuickPending.gk, ts: Date.now() });
+  saveExpQuickHistory(hist);
+  _expQuickPending = null;
+  try { if (typeof renderStep3 === 'function') renderStep3(); } catch(e){}
+}
 // 발주서 목록의 "💳 지출결의서 입력" 버튼 — 지출결의서 탭으로 이동해 거래처/날짜/사업자 + (가능하면) 매입가까지 미리 채워줌
 function expQuickFromOrder(gk){
   const [vendor, alias] = String(gk||'').split('|');
@@ -4347,6 +4375,8 @@ function expQuickFromOrder(gk){
   }
   if (totalEl) totalEl.focus();
   if (typeof _poShowToast === 'function') _poShowToast(toastMsg);
+  // 이 다음에 저장(💾 이력 저장)을 누르면 이 발주처 건이 입력완료된 것으로 기록됨
+  _expQuickPending = { gk };
 }
 
 // ══════════════════════════════════════════════════════════
@@ -12853,6 +12883,7 @@ function saveExpense() {
   renderExpHistList();
   expSheetsAppend(record).catch(e => console.warn('[Sheets]', e));
   _sbUpsertExp(record).catch(()=>{});
+  _logExpQuickDone();
   resetExpForm();
 }
 
@@ -12879,6 +12910,7 @@ function resetExpForm() {
   ['ev1','ev2','ev3','ev4','ev5','ev6'].forEach(id=>document.getElementById(id).checked=false);
   document.querySelector('input[name="expPayType"][value="즉시결제"]').checked = true;
   clearExpAttach();
+  _expQuickPending = null;
 }
 
 // ══════════════════════════════════════════════════════════
