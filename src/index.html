@@ -4299,6 +4299,11 @@ function renderVendorRegistry(){
   const dmap = loadVendorDelivery();
   const siteUrls = loadVendorSiteUrls();
   const unsetCnt = vendors.filter(v => !Array.isArray(dmap[v]) || dmap[v].length === 0).length;
+  // 펼침/접힘 상태는 매번 unsetCnt로 다시 계산하지 않고 직전 상태를 그대로 이어감 —
+  // 안 그러면 등록할 때마다(특히 미지정 발주처가 0이 되는 순간) 패널이 저절로 접혀버림.
+  // 처음 렌더링될 때만 미지정 발주처가 있으면 자동으로 펼쳐서 보여줌
+  const prevBody = document.getElementById('vendorRegistryBody');
+  const isOpen = prevBody ? (prevBody.style.display !== 'none') : (unsetCnt > 0);
   const rows = vendors.map(v => {
     const em = emails[v]||'';
     const su = siteUrls[v]||'';
@@ -4329,9 +4334,9 @@ function renderVendorRegistry(){
     <div class="card-title" style="cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px"
          onclick="var b=document.getElementById('vendorRegistryBody');var t=document.getElementById('vendorRegistryToggle');var open=b.style.display!=='none';b.style.display=open?'none':'';t.textContent=open?'▼ 펼치기':'▲ 접기';">
       📇 발주처 전달방식 등록 <span style="font-size:11px;color:var(--text3);font-weight:400">— 한 번이라도 만들어본 ${vendors.length}곳${unsetCnt?` · 미지정 ${unsetCnt}곳`:''}</span>
-      <span id="vendorRegistryToggle" style="margin-left:auto;font-size:12px;color:var(--text3)">${unsetCnt?'▲ 접기':'▼ 펼치기'}</span>
+      <span id="vendorRegistryToggle" style="margin-left:auto;font-size:12px;color:var(--text3)">${isOpen?'▲ 접기':'▼ 펼치기'}</span>
     </div>
-    <div id="vendorRegistryBody" style="${unsetCnt?'':'display:none'}">
+    <div id="vendorRegistryBody" style="${isOpen?'':'display:none'}">
       <div style="font-size:11px;color:var(--text3);margin-bottom:8px">전달 방식 버튼은 여러 개 동시에 켤 수 있어요 (예: 이메일 + 카톡). 등록해두면 발주서 카드와 다운로드 버튼 옆에 칩으로 표시돼요. 발주사이트 URL을 등록해두면 발주서 카드의 "🌐 발주사이트" 칩을 눌러 그 사이트를 새 창으로 바로 열 수 있어요.</div>
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff">
         <thead><tr style="background:#F3F4F6;color:#374151">
