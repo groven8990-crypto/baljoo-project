@@ -15245,9 +15245,15 @@ function reconExportXlsx() {
       <p style="font-size:13px;color:var(--text2);line-height:1.8">
         샵마인에서 받은 발송대기 엑셀(.xls/.xlsx)을 끌어다 놓거나 클릭해서 선택해요. 여러 파일을 한 번에
         올리면 자동으로 합산되고, 오른쪽 위 "거래처별 마감시간" 패널은 시스템이 강제하지 않으니 항상
-        사람이 직접 확인해야 해요. 자주 쓰는 폴더를 지정해두면 "폴더 자동가져오기"로 매번 올릴 필요 없이
-        새 파일을 자동으로 불러올 수 있어요.
+        사람이 직접 확인해야 해요 — 이 패널은 <b>발주 시간이 빠른 순서로 항상 자동 정렬</b>돼요.
+        자주 쓰는 폴더를 지정해두면 "폴더 자동가져오기"로 매번 올릴 필요 없이 새 파일을 자동으로
+        불러올 수 있어요.
       </p>
+      <div class="alert alert-info" style="margin-top:10px">
+        💡 어제 파일처럼 오늘 자동가져오기와 무관한 파일을 넣고 싶을 땐, <b>"⏸ 자동가져오기 잠시 끄기"</b>를
+        체크해두세요. 켜두는 동안은 페이지를 새로 열거나 탭을 오가도 자동으로는 절대 안 불러와지고,
+        "🔄 지금 확인" 버튼을 직접 눌렀을 때만 동작해요.
+      </div>
       <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/step1-upload.png" alt="발주서 생성 1단계 업로드 화면" style="width:100%;border-radius:8px;border:1px solid var(--border);margin-top:10px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
     </div>
 
@@ -15301,9 +15307,16 @@ function reconExportXlsx() {
       <div class="card-title">3단계 · 🚀 발주서 생성 + 자동발송</div>
       <p style="font-size:13px;color:var(--text2);line-height:1.8">
         "🔍 자동 검토"가 샵마인 원본의 선택사항·노출상품명과 발주서 결과를 대조해서 수량·옵션이 잘못
-        반영되지 않았는지 확인해줘요. 발주처별 전달방식(이메일/카카오톡/사이트)을 등록해두면 "🚀 전체
-        자동 발송" 한 번으로 이메일은 Gmail로 실제 발송, 카톡/사이트는 파일만 저장 후 화면에 알림을
-        띄워요. 저장 폴더를 미리 지정해두면 다운로드할 때마다 다이얼로그 없이 바로 그 폴더에 저장돼요.
+        반영되지 않았는지 확인해줘요. 발주 수량이 잘못됐으면 표의 <b>"발주 수량" 칸을 클릭</b>해서 바로
+        고칠 수 있어요(같은 상품코드를 쓰는 다른 주문에도 함께 적용됨). 발주처별 전달방식(이메일/카카오톡/
+        사이트)을 등록해두면 "🚀 전체 자동 발송" 한 번으로 이메일은 Gmail로 실제 발송, 카톡/사이트는
+        파일만 저장 후 화면에 알림을 띄워요. 저장 폴더를 미리 지정해두면 다운로드할 때마다 다이얼로그
+        없이 바로 그 폴더에 저장돼요.
+      </p>
+      <p style="font-size:13px;color:var(--text2);line-height:1.8;margin-top:8px">
+        발주처 카드 제목 옆의 <b>"📧 이메일"</b> / <b>"🌐 발주사이트"</b> 칩을 클릭하면, 등록해둔 주소로
+        Gmail 작성창이 새 창으로 열리거나(제목/기본 문구 자동 채움) 그 발주사이트가 새 창으로 바로
+        열려요 — "📇 발주처 전달방식 등록"에서 이메일 주소·발주사이트 URL을 먼저 등록해야 동작해요.
       </p>
       <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/step3-generate.png" alt="발주서 생성 3단계 생성 화면" style="width:100%;border-radius:8px;border:1px solid var(--border);margin-top:10px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
       <div class="alert alert-warn" style="margin-top:10px">
@@ -15379,7 +15392,9 @@ function reconExportXlsx() {
       <p style="font-size:13px;color:var(--text2);line-height:1.8">
         매입단가표 데이터 + 플랫폼별 판매수수료(일반 12% · 식자재코리아 0% · 톡딜 3.3% · B2B 0%)를
         매출에 적용해 발주처별 순이익을 계산해요. B2B 매출도 같은 발주처의 일반 매입과 섞이지 않고
-        별도 "B2B 매출" 표로 완전히 분리되고, ▶ 를 누르면 사람별 상세 검산이 가능해요.
+        별도 "B2B 매출" 표로 완전히 분리되며, <b>같은 사업자 안에 서로 다른 B2B 거래처(예: 다올유통,
+        개인주문)가 있으면 거래처별로 각각 별도 섹션</b>으로 나뉘어서 발주처 칸에 거래처명이 섞여
+        보이지 않아요. ▶ 를 누르면 사람별 상세 검산이 가능해요.
       </p>
       <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/profit.png" alt="매입 순이익 화면" style="width:100%;border-radius:8px;border:1px solid var(--border);margin-top:10px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
     </div>
