@@ -18043,15 +18043,18 @@ function srUpdateProfitIncremental(changedKey){
     if (headerEl) headerEl.innerHTML = _srBuildBizHeaderInner(r.brand, bizT);
     const vTableEl = document.querySelector(`.sr-biz-vendor-table[data-biz="${bizSel}"]`);
     if (vTableEl) vTableEl.innerHTML = _srBuildBizVendorTableInner(r.brand, normalRows);
-    // B2B 헤더 갱신
-    if (r.isB2B && b2bRows.length) {
-      const TB = b2bRows.reduce((s,x)=>{s.sales+=x.sales;s.purchase+=x.purchase;s.profit+=x.profit;s.count+=x.count;return s;},{sales:0,purchase:0,profit:0,count:0});
-      const b2bHdr = document.querySelector(`.sr-b2b-header[data-biz="${bizSel}"]`);
-      if (b2bHdr) {
+    // B2B 헤더 갱신 — 거래처(b2bName)별로 섹션이 나뉘어 있으니, 지금 수정한 행이 속한
+    // 거래처의 섹션만 골라서 그 거래처 행들로만 합계를 다시 계산해야 함
+    if (r.isB2B) {
+      const myB2bRows = b2bRows.filter(x => x.b2bName === r.b2bName);
+      const b2bNameSel = CSS && CSS.escape ? CSS.escape(r.b2bName||'') : (r.b2bName||'');
+      const b2bHdr = document.querySelector(`.sr-b2b-header[data-biz="${bizSel}"][data-b2b-name="${b2bNameSel}"]`);
+      if (b2bHdr && myB2bRows.length) {
+        const TB = myB2bRows.reduce((s,x)=>{s.sales+=x.sales;s.purchase+=x.purchase;s.profit+=x.profit;s.count+=x.count;return s;},{sales:0,purchase:0,profit:0,count:0});
         const pc = TB.profit >= 0 ? '#5DE3B3' : '#FECACA';
         const _s2 = TB.sales || 1;
         const _pct2 = v => `<span style="opacity:.65;font-size:10px;margin-left:2px">(${(v/_s2*100).toFixed(1)}%)</span>`;
-        b2bHdr.innerHTML = `🏭 B2B 매출 (디네트)
+        b2bHdr.innerHTML = `🏭 B2B 매출 (${escHtml(r.b2bName||'')})
           <span style="margin-left:auto;font-size:12px;font-weight:400">
             매출 <b>${TB.sales.toLocaleString()}</b> · 매입 <b>${TB.purchase.toLocaleString()}</b>${_pct2(TB.purchase)} · 순이익 <b style="color:${pc}">${TB.profit.toLocaleString()}</b>${_pct2(TB.profit)}
             <span style="font-size:10px;opacity:.7;margin-left:6px">플랫폼 수수료 없음 (직거래)</span>
@@ -18378,7 +18381,7 @@ function _srBuildOneB2BSectionHtml(biz, b2bName, b2bRows, _theads, _buildFooter)
     </tr></tfoot>
   </table>`;
   return `<div style="margin-top:14px" data-b2b-biz="${escHtml(biz)}" data-b2b-name="${escHtml(b2bName)}">
-    <div class="sr-b2b-header" data-biz="${escHtml(biz)}"
+    <div class="sr-b2b-header" data-biz="${escHtml(biz)}" data-b2b-name="${escHtml(b2bName)}"
       style="background:#0D9488;color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       🏭 B2B 매출 (${escHtml(b2bName)})
       <span style="margin-left:auto;font-size:12px;font-weight:400">
