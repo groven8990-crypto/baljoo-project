@@ -16089,6 +16089,9 @@ async function manualSync() {
     try { omCnt   = JSON.parse(localStorage.getItem(LS_OPTMAP)||'[]').length; } catch{}
     // 동기화 후 변경된 로컬 데이터를 다시 클라우드에 push
     cloudPushAll();
+    // 계좌 관리(bank_info)는 cloudPullAll 대상이 아니라 별도 kv_store라 여기서 따로 당겨와야 함 —
+    // 안 그러면 "재동기화"를 눌러도 다른 컴퓨터에서 등록한 계좌가 안 보임
+    await _sbSyncBankInfo().catch(()=>{});
 
     if (status) {
       const time = new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'});
@@ -16103,6 +16106,7 @@ async function manualSync() {
       try { renderUnmatchedHints && renderUnmatchedHints(); } catch(e){}
       try { renderOmPreview && renderOmPreview(); } catch(e){}
     }
+    try { renderBankList && renderBankList(); } catch(e){}
   } catch (e) {
     if (status) {
       status.textContent = '⚠ 동기화 실패 (오프라인)';
