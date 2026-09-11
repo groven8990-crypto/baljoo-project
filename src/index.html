@@ -4152,10 +4152,15 @@ function renderVerifyArea(){
           // 동일(깐마늘)은 발주 수량이 code_qty 배수가 아니라 kg 분할(박스 나누기) 로직으로 계산되므로 제외.
           // 푸드엔드베스트는 합배송으로 여러 주문이 한 행에 합쳐졌을 때만(srcIdx.length>1) 제외 — 합쳐지지 않은
           // 일반 행은 다른 발주처와 똑같이 code_qty 오버라이드로 안전하게 수정 가능함
-          const canEditQty = rd.dst_qty !== null && rd.srcIdx.length === 1 && r.vendor !== '동일';
+          const canEditRow = rd.srcIdx.length === 1 && r.vendor !== '동일';
+          const canEditQty = canEditRow && rd.dst_qty !== null;
           const qtyCell = canEditQty
             ? `<button class="btn btn-sm" style="padding:1px 7px;font-size:10.5px;font-weight:700" onclick="verifyEditQty('${esc(r.gk)}',${rd.srcIdx[0]},${rd.dst_qty})" title="발주 수량 수정 (같은 상품코드의 다른 주문에도 함께 적용돼요)">${rd.dst_qty} ✏️</button>`
             : (rd.dst_qty!==null?rd.dst_qty:'-');
+          const itemOptText = (rd.dst_item+' '+rd.dst_opt).trim()||'-';
+          const itemOptCell = canEditRow
+            ? `<button class="btn btn-sm" style="padding:1px 7px;font-size:10.5px;font-weight:700;text-align:left;white-space:normal" onclick="verifyEditItemOpt('${esc(r.gk)}',${rd.srcIdx[0]})" title="발주서 품목명·옵션 수정 (같은 상품코드의 다른 주문에도 함께 적용돼요)">${escHtml(itemOptText)} ✏️</button>`
+            : escHtml(itemOptText);
           return `
           <tr style="background:${rd.bundleRgb?'#'+rd.bundleRgb.slice(2):(rd.issues.length?'#FEF2F2':'#fff')}">
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${escHtml(rd.recv_name)}</td>
@@ -4163,7 +4168,7 @@ function renderVerifyArea(){
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#6B7280;max-width:180px;word-break:break-word">${escHtml(rd.src_select||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#0E7490;max-width:160px;word-break:break-word">${escHtml(rd.src_disp||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#0E7490;white-space:nowrap">${rd.src_qty}</td>
-            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;max-width:180px;word-break:break-word">${escHtml((rd.dst_item+' '+rd.dst_opt).trim()||'-')}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;max-width:180px;word-break:break-word">${itemOptCell}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">${qtyCell}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:var(--danger);font-size:10px">${rd.issues.map(i=>'• '+escHtml(i)).join('<br>')||''}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:center"><button class="btn btn-sm" style="padding:2px 8px;font-size:10px;color:var(--danger);border-color:var(--danger);background:#fff" onclick="verifyDeleteRow('${esc(r.gk)}',${JSON.stringify(rd.srcIdx)})" title="이 주문을 발주서에서 삭제">✕</button></td>
@@ -4230,6 +4235,30 @@ function verifyEditQty(gk, srcIdx, curQty){
   const k = ovKey(o.vendor_code, o.select_opt);
   const ovs = loadOverrides().filter(x => x.key !== k);
   ovs.push({ key: k, item: o.item_name || '', option: o.option_name || '', qty: newCodeQty });
+  saveOverrides(ovs);
+  rematchAllOrders();
+  renderStep3();
+  if (typeof renderDirectEditList === 'function') renderDirectEditList();
+}
+// 자동 검토 표에서 "발주서 품목/옵션" 직접 수정 — verifyEditQty와 동일한 코드+선택사항 단위
+// 오버라이드를 씀 → 같은 코드를 쓰는 다른 주문에도 함께 적용됨. 현재 값은 창을 열 때마다
+// o.item_name/o.option_name에서 새로 읽어와서, onclick 속성에 자유 텍스트(따옴표 등 포함
+// 가능)를 직접 넣지 않도록 함
+function verifyEditItemOpt(gk, srcIdx){
+  const list = groupedOrders[gk];
+  const o = list && list[srcIdx];
+  if (!o) return;
+  const newItem = prompt(
+    `"${o.recv_name||''}"\n발주서 품목명을 무엇으로 바꿀까요?\n\n`
+    + `※ 같은 상품코드(${o.vendor_code||''}${o.select_opt?' / '+o.select_opt:''})를 쓰는 다른 주문에도 똑같이 적용돼요.`,
+    o.item_name || ''
+  );
+  if (newItem === null) return;
+  const newOpt = prompt('발주서 옵션명을 무엇으로 바꿀까요? (없으면 비워두세요)', o.option_name || '');
+  if (newOpt === null) return;
+  const k = ovKey(o.vendor_code, o.select_opt);
+  const ovs = loadOverrides().filter(x => x.key !== k);
+  ovs.push({ key: k, item: newItem.trim(), option: newOpt.trim(), qty: o.code_qty || 1 });
   saveOverrides(ovs);
   rematchAllOrders();
   renderStep3();
