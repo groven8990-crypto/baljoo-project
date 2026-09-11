@@ -3051,8 +3051,12 @@ function _addDanggnOrdersFromRows(rows, hr){
     const memo = memos.join(' / ');
     const order = {
       vendor_code: vc, vendor_opt: vo, vendor_key: vk,
-      alias: '당근-로또상회',  // → srBrand: 그로븐 / srPlatform: 당근
-      alias_raw: '당근-로또상회',
+      // alias는 발주처 카드/작성이력 그룹핑 키로 그대로 쓰이므로 일반 로또상회 주문과 똑같이
+      // '로또상회'만 넣어야 같은 그룹으로 합쳐짐 — 플랫폼(당근) 표시는 shop_mall만으로 충분함
+      // (srPlatform()이 shop_mall을 1순위로 봄. alias에 "당근-" 접두어를 붙이면 발주처 카드가
+      // 같은 발주처인데도 "일비ㅣ당근-로또상회"로 따로 갈라져 보이는 문제가 있었음)
+      alias: '로또상회',  // → srBrand: 그로븐 / srPlatform: shop_mall의 '당근'으로 표시됨
+      alias_raw: '로또상회',
       shop_mall: '당근',
       item_name: parsed.itemName || (typeof srNormalize==='function' ? srNormalize(pn) : pn.slice(0,15)),
       option_name: parsed.optionName || '',
