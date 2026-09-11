@@ -3346,13 +3346,277 @@ function _domeggook1Plus1Split(vc, so) {
   if (sameM) return { options: [sameM[1] + suffix], qtys: [2] };
   return null;
 }
+// ══════════════════════════════════════════════════════════
+// 암호 걸린 엑셀 파일(파일 열기 암호) 자동 해제 — MS-OFFCRYPTO ECMA-376 Agile Encryption
+// (Office 2010+ 기본 암호화 방식)만 지원. 표준 CFB(OLE2) 컨테이너에서
+// EncryptionInfo/EncryptedPackage 스트림을 읽어 비밀번호로 복호화해서 평문 xlsx로 바꿔줌.
+// ══════════════════════════════════════════════════════════
+const LS_OFFICE_PASSWORD = 'yb_office_password';
+function _isOfficeEncryptedCFB(buf) {
+  const b = new Uint8Array(buf);
+  if (b.length < 8) return false;
+  const magic = [0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1];
+  return magic.every((v,i) => b[i] === v);
+}
+function _cfbReadStreams(buf, names) {
+  const dv = new DataView(buf);
+  const sectorShift = dv.getUint16(30, true);
+  const sectorSize = 1 << sectorShift;
+  const miniSectorShift = dv.getUint16(32, true);
+  const miniSectorSize = 1 << miniSectorShift;
+  const numFatSectors = dv.getUint32(44, true);
+  const firstDirSector = dv.getUint32(48, true);
+  const miniStreamCutoff = dv.getUint32(56, true);
+  const firstMiniFatSector = dv.getUint32(60, true);
+  const firstDifatSector = dv.getUint32(68, true);
+  const numDifatSectors = dv.getUint32(72, true);
+  const FREESECT = 0xFFFFFFFF, ENDOFCHAIN = 0xFFFFFFFE;
+  function sectorOffset(sec) { return 512 + sec * sectorSize; }
+  function readSector(sec) { const off = sectorOffset(sec); return buf.slice(off, off + sectorSize); }
+  const difat = [];
+  for (let i = 0; i < 109; i++) { const v = dv.getUint32(76 + i * 4, true); if (v !== FREESECT) difat.push(v); }
+  let difatSec = firstDifatSector;
+  for (let i = 0; i < numDifatSectors; i++) {
+    const s = readSector(difatSec); const sdv = new DataView(s);
+    for (let j = 0; j < sectorSize / 4 - 1; j++) { const v = sdv.getUint32(j * 4, true); if (v !== FREESECT) difat.push(v); }
+    difatSec = sdv.getUint32(sectorSize - 4, true);
+  }
+  const fat = new Uint32Array(numFatSectors * (sectorSize / 4));
+  for (let i = 0; i < numFatSectors; i++) {
+    const s = readSector(difat[i]); const sdv = new DataView(s);
+    for (let j = 0; j < sectorSize / 4; j++) fat[i * (sectorSize / 4) + j] = sdv.getUint32(j * 4, true);
+  }
+  function concatBufs(chunks) {
+    const total = chunks.reduce((s, c) => s + c.byteLength, 0);
+    const out = new Uint8Array(total); let off = 0;
+    for (const c of chunks) { out.set(new Uint8Array(c), off); off += c.byteLength; }
+    return out.buffer;
+  }
+  function followChainAll(startSec) {
+    const chunks = []; let sec = startSec;
+    while (sec !== ENDOFCHAIN && sec !== FREESECT) { chunks.push(readSector(sec)); sec = fat[sec]; }
+    return concatBufs(chunks);
+  }
+  function followChain(startSec, size) {
+    const chunks = []; let sec = startSec, remaining = size;
+    while (sec !== ENDOFCHAIN && sec !== FREESECT && remaining > 0) {
+      const s = readSector(sec);
+      chunks.push(remaining < sectorSize ? s.slice(0, remaining) : s);
+      remaining -= sectorSize; sec = fat[sec];
+    }
+    return concatBufs(chunks);
+  }
+  const dirData = new Uint8Array(followChainAll(firstDirSector));
+  const entries = [];
+  for (let off = 0; off + 128 <= dirData.length; off += 128) {
+    const nameLen = dirData[off + 64] | (dirData[off + 65] << 8);
+    if (nameLen === 0) continue;
+    const nameBytes = dirData.slice(off, off + nameLen - 2);
+    let name = '';
+    for (let i = 0; i < nameBytes.length; i += 2) name += String.fromCharCode(nameBytes[i] | (nameBytes[i+1] << 8));
+    const type = dirData[off + 66];
+    const ddv = new DataView(dirData.buffer, dirData.byteOffset);
+    const startSector = ddv.getUint32(off + 116, true);
+    const sizeLow = ddv.getUint32(off + 120, true);
+    entries.push({ name, type, startSector, size: sizeLow });
+  }
+  const root = entries.find(e => e.type === 5);
+  let miniFat = null, miniStreamBuf = null;
+  if (firstMiniFatSector !== ENDOFCHAIN && root) {
+    const miniFatData = followChainAll(firstMiniFatSector);
+    miniFat = new Uint32Array(miniFatData);
+    miniStreamBuf = new Uint8Array(followChainAll(root.startSector));
+  }
+  function followMiniChain(startSec, size) {
+    const chunks = []; let sec = startSec, remaining = size;
+    while (sec !== ENDOFCHAIN && sec !== FREESECT && remaining > 0) {
+      const off = sec * miniSectorSize;
+      const chunk = miniStreamBuf.slice(off, off + miniSectorSize);
+      chunks.push(remaining < miniSectorSize ? chunk.slice(0, remaining) : chunk);
+      remaining -= miniSectorSize; sec = miniFat[sec];
+    }
+    return concatBufs(chunks);
+  }
+  const out = {};
+  for (const name of names) {
+    const e = entries.find(x => x.name === name);
+    if (!e) { out[name] = null; continue; }
+    out[name] = (e.size < miniStreamCutoff) ? followMiniChain(e.startSector, e.size) : followChain(e.startSector, e.size);
+  }
+  return out;
+}
+function _parseXmlAttrs(xml, tagName) {
+  const re = new RegExp(`<[\\w:]*${tagName}\\b([^>]*)/?>`, 'i');
+  const m = xml.match(re);
+  if (!m) return null;
+  const attrs = {};
+  const attrRe = /([\w:]+)="([^"]*)"/g;
+  let am;
+  while ((am = attrRe.exec(m[1]))) attrs[am[1]] = am[2];
+  return attrs;
+}
+function _b64ToBuf(b64) {
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf.buffer;
+}
+function _hashAlgoWebName(name) {
+  return { SHA1: 'SHA-1', SHA256: 'SHA-256', SHA384: 'SHA-384', SHA512: 'SHA-512' }[String(name || '').toUpperCase()];
+}
+async function _sha(algo, ...bufs) {
+  const total = bufs.reduce((s, b) => s + b.byteLength, 0);
+  const merged = new Uint8Array(total); let off = 0;
+  for (const b of bufs) { merged.set(new Uint8Array(b), off); off += b.byteLength; }
+  return await crypto.subtle.digest(algo, merged);
+}
+function _le32(n) { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n >>> 0, true); return b.buffer; }
+function _fitLen(buf, len, padByte) {
+  const b = new Uint8Array(buf);
+  if (b.length === len) return b.buffer;
+  if (b.length > len) return b.slice(0, len).buffer;
+  const out = new Uint8Array(len); out.set(b, 0); out.fill(padByte != null ? padByte : 0, b.length);
+  return out.buffer;
+}
+async function _deriveFinalHash(algo, salt, passwordUtf16le, spinCount, blockKeyHex) {
+  let h = await _sha(algo, salt, passwordUtf16le);
+  for (let i = 0; i < spinCount; i++) h = await _sha(algo, _le32(i), h);
+  if (blockKeyHex) {
+    const bk = new Uint8Array(blockKeyHex.match(/../g).map(x => parseInt(x, 16))).buffer;
+    h = await _sha(algo, h, bk);
+  }
+  return h;
+}
+// CBC 복호화 — Web Crypto의 AES-CBC decrypt는 항상 PKCS7 패딩 해제를 시도하므로, 뒤에 "복호화하면
+// 정확히 유효한 패딩이 되는" 더미 블록을 하나 추가해서 실제 데이터가 패딩 규칙에 걸려 예외가
+// 나지 않도록 함(더미 블록만 패딩으로 인식되어 제거되고, 앞의 진짜 데이터는 그대로 남음)
+async function _aesCbcDecryptRaw(keyBuf, ivBuf, cipherBuf) {
+  const key = await crypto.subtle.importKey('raw', keyBuf, { name: 'AES-CBC' }, false, ['encrypt', 'decrypt']);
+  const blockSize = 16;
+  const cipherBytes = new Uint8Array(cipherBuf);
+  const lastBlock = cipherBytes.length >= blockSize ? cipherBytes.slice(cipherBytes.length - blockSize) : new Uint8Array(ivBuf);
+  const validPadding = new Uint8Array(blockSize).fill(blockSize);
+  const xored = new Uint8Array(blockSize);
+  for (let i = 0; i < blockSize; i++) xored[i] = validPadding[i] ^ lastBlock[i];
+  const zeroIv = new Uint8Array(blockSize);
+  const dummyEnc = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-CBC', iv: zeroIv }, key, xored));
+  const dummyCipherBlock = dummyEnc.slice(0, blockSize);
+  const extended = new Uint8Array(cipherBytes.length + blockSize);
+  extended.set(cipherBytes, 0);
+  extended.set(dummyCipherBlock, cipherBytes.length);
+  const plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CBC', iv: ivBuf }, key, extended));
+  return plain.slice(0, cipherBytes.length).buffer;
+}
+function _strToUtf16LE(str) {
+  const buf = new ArrayBuffer(str.length * 2);
+  const view = new DataView(buf);
+  for (let i = 0; i < str.length; i++) view.setUint16(i * 2, str.charCodeAt(i), true);
+  return buf;
+}
+const _OFFICE_BLOCK_VERIFIER_INPUT = 'fea7d2763b4b9e79';
+const _OFFICE_BLOCK_VERIFIER_VALUE = 'd7aa0f6d3061344e';
+const _OFFICE_BLOCK_KEY_VALUE      = '146e0be7abacd0d6';
+// 암호화된 오피스 파일(ArrayBuffer)을 비밀번호로 복호화해서 평문 xlsx의 ArrayBuffer를 반환.
+// 비밀번호가 틀리면 Error('WRONG_PASSWORD'), Agile 방식이 아니면 Error('UNSUPPORTED')를 던짐.
+async function decryptOfficeFile(fileBuf, password) {
+  const streams = _cfbReadStreams(fileBuf, ['EncryptionInfo', 'EncryptedPackage']);
+  if (!streams.EncryptionInfo || !streams.EncryptedPackage) throw new Error('NOT_ENCRYPTED');
+  const infoBytes = new Uint8Array(streams.EncryptionInfo);
+  const majorVersion = infoBytes[0] | (infoBytes[1] << 8);
+  const minorVersion = infoBytes[2] | (infoBytes[3] << 8);
+  if (!(majorVersion === 4 && minorVersion === 4)) {
+    const e = new Error('UNSUPPORTED'); e.detail = `버전 ${majorVersion}.${minorVersion}`; throw e;
+  }
+  const xml = new TextDecoder('utf-8').decode(streams.EncryptionInfo.slice(8));
+  const keyData = _parseXmlAttrs(xml, 'keyData');
+  const keyEnc = _parseXmlAttrs(xml, 'p:encryptedKey') || _parseXmlAttrs(xml, 'encryptedKey');
+  const algo = _hashAlgoWebName(keyEnc.hashAlgorithm);
+  const salt = _b64ToBuf(keyEnc.saltValue);
+  const spinCount = parseInt(keyEnc.spinCount, 10);
+  const keyBits = parseInt(keyEnc.keyBits, 10);
+  const blockSize = parseInt(keyEnc.blockSize, 10);
+  const iv = _fitLen(salt, blockSize, 0x36);
+  const pwdUtf16le = _strToUtf16LE(password);
+  async function deriveKey(blockKeyHex) {
+    const h = await _deriveFinalHash(algo, salt, pwdUtf16le, spinCount, blockKeyHex);
+    const needed = keyBits / 8;
+    return h.byteLength >= needed ? h.slice(0, needed) : _fitLen(h, needed, 0x36);
+  }
+  const keyVerifierInput = await deriveKey(_OFFICE_BLOCK_VERIFIER_INPUT);
+  const verifierHashInput = await _aesCbcDecryptRaw(keyVerifierInput, iv, _b64ToBuf(keyEnc.encryptedVerifierHashInput));
+  const computedHash = new Uint8Array(await crypto.subtle.digest(algo, verifierHashInput));
+  const keyVerifierValue = await deriveKey(_OFFICE_BLOCK_VERIFIER_VALUE);
+  const verifierHashValueDec = new Uint8Array(await _aesCbcDecryptRaw(keyVerifierValue, iv, _b64ToBuf(keyEnc.encryptedVerifierHashValue)));
+  let match = true;
+  for (let i = 0; i < computedHash.length; i++) if (computedHash[i] !== verifierHashValueDec[i]) { match = false; break; }
+  if (!match) throw new Error('WRONG_PASSWORD');
+  const keyForKeyValue = await deriveKey(_OFFICE_BLOCK_KEY_VALUE);
+  const secretKey = await _aesCbcDecryptRaw(keyForKeyValue, iv, _b64ToBuf(keyEnc.encryptedKeyValue));
+  const encPkg = new Uint8Array(streams.EncryptedPackage);
+  const totalSize = Number(new DataView(encPkg.buffer, encPkg.byteOffset, 8).getBigUint64(0, true));
+  const cipherData = encPkg.slice(8);
+  const kdSalt = _b64ToBuf(keyData.saltValue);
+  const kdAlgo = _hashAlgoWebName(keyData.hashAlgorithm);
+  const kdBlockSize = parseInt(keyData.blockSize, 10);
+  const SEGMENT = 4096;
+  const plainChunks = [];
+  let segIdx = 0;
+  for (let off = 0; off < cipherData.length; off += SEGMENT) {
+    const segCipher = cipherData.slice(off, Math.min(off + SEGMENT, cipherData.length));
+    const segIvHash = await _sha(kdAlgo, kdSalt, _le32(segIdx));
+    const segIv = _fitLen(segIvHash, kdBlockSize, 0x36);
+    const segPlain = await _aesCbcDecryptRaw(secretKey, segIv, segCipher);
+    plainChunks.push(segPlain);
+    segIdx++;
+  }
+  const totalLen = plainChunks.reduce((s, c) => s + c.byteLength, 0);
+  const fullPlain = new Uint8Array(totalLen); let woff = 0;
+  for (const c of plainChunks) { fullPlain.set(new Uint8Array(c), woff); woff += c.byteLength; }
+  return fullPlain.slice(0, totalSize).buffer;
+}
+// 파일이 암호로 잠겨있으면 비밀번호를 물어보고(저장된 게 있으면 먼저 시도) 풀어서 평문 ArrayBuffer를
+// 반환. 사용자가 취소하면 null을 반환 — 호출한 쪽에서 업로드를 조용히 중단해야 함
+async function _resolveEncryptedFile(fileBuf, fileName) {
+  let pwd = localStorage.getItem(LS_OFFICE_PASSWORD) || '';
+  for (;;) {
+    if (!pwd) {
+      pwd = prompt(`"${fileName}" 파일은 열기 암호가 걸려있어요.\n비밀번호를 입력해주세요.`, '');
+      if (pwd === null) return null;
+    }
+    setSt('🔓 암호 해제 중...');
+    try {
+      const plain = await decryptOfficeFile(fileBuf, pwd);
+      try { localStorage.setItem(LS_OFFICE_PASSWORD, pwd); } catch(e){}
+      return plain;
+    } catch (err) {
+      if (err.message === 'UNSUPPORTED') {
+        alert(`이 파일은 지원하지 않는 암호화 방식이에요 (${err.detail||''}). 엑셀에서 열어 암호를 풀고 다시 저장한 뒤 올려주세요.`);
+        return null;
+      }
+      if (err.message === 'WRONG_PASSWORD') {
+        alert('비밀번호가 맞지 않아요. 다시 입력해주세요.');
+        localStorage.removeItem(LS_OFFICE_PASSWORD);
+        pwd = prompt(`"${fileName}" 비밀번호를 다시 입력해주세요.`, '');
+        if (pwd === null) return null;
+        continue;
+      }
+      alert('암호 해제 중 오류가 발생했어요: ' + err.message);
+      return null;
+    }
+  }
+}
 function handleFile(file, onDone) {
   if (!file) { if(typeof onDone==='function') onDone(); return; }
   setSt('파일 읽는 중...');
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
-      const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
+      let fileBuf = e.target.result;
+      if (_isOfficeEncryptedCFB(fileBuf)) {
+        fileBuf = await _resolveEncryptedFile(fileBuf, file.name);
+        if (!fileBuf) { setSt(''); if(typeof onDone==='function') onDone(); return; }
+      }
+      const wb=XLSX.read(fileBuf,{type:'array',cellDates:true});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
       // 당근 주문 파일 자동 감지 → 별도 파서로 라우팅
@@ -3369,7 +3633,7 @@ function handleFile(file, onDone) {
         saveToHistory(file.name, allOrders);
         saveLastFile(file.name);
         showLastFileCard();
-        try { logUpload(file, e.target.result, allOrders); } catch(_){}
+        try { logUpload(file, fileBuf, allOrders); } catch(_){}
         return;
       }
       // 11번가 주문 파일 자동 감지 → 별도 파서로 라우팅
@@ -3386,7 +3650,7 @@ function handleFile(file, onDone) {
         saveToHistory(file.name, allOrders);
         saveLastFile(file.name);
         showLastFileCard();
-        try { logUpload(file, e.target.result, allOrders); } catch(_){}
+        try { logUpload(file, fileBuf, allOrders); } catch(_){}
         return;
       }
       // 식자재코리아 주문내역서 자동 감지 → 별도 파서로 라우팅
@@ -3403,7 +3667,7 @@ function handleFile(file, onDone) {
         saveToHistory(file.name, allOrders);
         saveLastFile(file.name);
         showLastFileCard();
-        try { logUpload(file, e.target.result, allOrders); } catch(_){}
+        try { logUpload(file, fileBuf, allOrders); } catch(_){}
         return;
       }
       let hr=-1;
@@ -3466,7 +3730,7 @@ function handleFile(file, onDone) {
       saveToHistory(file.name, allOrders);
       saveLastFile(file.name);
       showLastFileCard();
-      logUpload(file, e.target.result, allOrders);
+      logUpload(file, fileBuf, allOrders);
       // 송장입력 탭과 자동 연동: 메모리에 즉시 반영 + 원본 파일 영속화(용량 초과 시 무시)
       try {
         const _sa = Date.now().toString();
@@ -3477,7 +3741,7 @@ function handleFile(file, onDone) {
         invOrderFileName = file.name;
         invOrderLoadedAt = _sa;
         try {
-          const _b = new Uint8Array(e.target.result); let _s = '';
+          const _b = new Uint8Array(fileBuf); let _s = '';
           for (let _i = 0; _i < _b.length; _i++) _s += String.fromCharCode(_b[_i]);
           localStorage.setItem('invOrderB64', btoa(_s));
           localStorage.setItem('invOrderName', file.name);
@@ -11363,9 +11627,14 @@ function handleFileAdd(file, onDone){
   if(!file) { if(typeof onDone==='function') onDone(); return; }
   setSt('파일 추가 중...');
   const reader=new FileReader();
-  reader.onload=e=>{
+  reader.onload=async e=>{
     try{
-      const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
+      let fileBuf = e.target.result;
+      if (_isOfficeEncryptedCFB(fileBuf)) {
+        fileBuf = await _resolveEncryptedFile(fileBuf, file.name);
+        if (!fileBuf) { setSt(''); if(typeof onDone==='function') onDone(); return; }
+      }
+      const wb=XLSX.read(fileBuf,{type:'array',cellDates:true});
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
       // 당근 주문 파일 자동 감지 → 별도 파서로 라우팅 (추가 모드, 상태 유지)
