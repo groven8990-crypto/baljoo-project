@@ -3352,11 +3352,21 @@ function _domeggook1Plus1Split(vc, so) {
 // EncryptionInfo/EncryptedPackage 스트림을 읽어 비밀번호로 복호화해서 평문 xlsx로 바꿔줌.
 // ══════════════════════════════════════════════════════════
 const LS_OFFICE_PASSWORD = 'yb_office_password';
+// 주의: CFB(OLE2) 컨테이너는 암호화된 오피스 파일뿐 아니라 구버전 .xls(BIFF8) 파일도
+// 똑같은 컨테이너 형식을 쓰기 때문에, 매직바이트만 보면 평범한 .xls 파일까지 "암호 걸림"으로
+// 잘못 판단하게 됨(식자재코리아 등에서 받는 일반 .xls가 여기 걸렸던 문제). 반드시 그 안에
+// EncryptionInfo/EncryptedPackage 스트림이 실제로 있는지까지 확인해야 진짜 암호 파일임
 function _isOfficeEncryptedCFB(buf) {
   const b = new Uint8Array(buf);
   if (b.length < 8) return false;
   const magic = [0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1];
-  return magic.every((v,i) => b[i] === v);
+  if (!magic.every((v,i) => b[i] === v)) return false;
+  try {
+    const streams = _cfbReadStreams(buf, ['EncryptionInfo', 'EncryptedPackage']);
+    return !!(streams.EncryptionInfo && streams.EncryptedPackage);
+  } catch (e) {
+    return false;
+  }
 }
 function _cfbReadStreams(buf, names) {
   const dv = new DataView(buf);
