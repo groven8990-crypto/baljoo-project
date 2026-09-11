@@ -2462,6 +2462,27 @@ function scheduleCloudPush() {
 }
 
 // 클라우드에서 전체 데이터 받아서 localStorage 덮어쓰기
+// 클라우드 값과 로컬 값을 안전하게 합치기 — 그냥 덮어쓰면, 클라우드가 방금 로컬에서
+// 바꾼 것보다 오래된 스냅샷일 때(예: push가 미처 안 끝난 상태에서 재동기화) 방금 한 작업이
+// 그대로 사라져버림. key/value 맵이나 "확인 처리 목록"처럼 병합이 안전한 것들은 병합하고,
+// 나머지(발주서 이력 등 구조가 복잡한 것들)는 기존처럼 클라우드를 그대로 씀
+function _mergeCloudValue(key, cloudRaw, localRaw) {
+  try {
+    const cloud = JSON.parse(cloudRaw);
+    const local = localRaw != null ? JSON.parse(localRaw) : null;
+    if (key === 'yb_code_confirmed' && Array.isArray(cloud) && Array.isArray(local)) {
+      // 확인 처리는 한쪽 방향으로만 진행되는 상태라, 합집합으로 합쳐도 안전함
+      return JSON.stringify([...new Set([...cloud, ...local])]);
+    }
+    if (!Array.isArray(cloud) && typeof cloud === 'object' && cloud !== null
+        && !Array.isArray(local) && typeof local === 'object' && local !== null) {
+      // 발주처 이메일처럼 단순 key→value 맵인 것들 — 로컬에 있는 값을 우선하고,
+      // 로컬에 없는 키만 클라우드에서 채워옴
+      return JSON.stringify({ ...cloud, ...local });
+    }
+  } catch(e) { /* 파싱 실패하면 그냥 클라우드 값 그대로 사용 */ }
+  return cloudRaw;
+}
 async function cloudPullAll() {
   try {
     const res = await fetch(GSHEET_URL);
@@ -2473,7 +2494,8 @@ async function cloudPullAll() {
       try {
         for (const k of CLOUD_SYNC_KEYS) {
           if (body[k] != null) {
-            const val = typeof body[k] === 'string' ? body[k] : JSON.stringify(body[k]);
+            const cloudVal = typeof body[k] === 'string' ? body[k] : JSON.stringify(body[k]);
+            const val = _mergeCloudValue(k, cloudVal, localStorage.getItem(k));
             localStorage.setItem(k, val);
             cnt++;
           }
@@ -4127,7 +4149,10 @@ function renderVerifyArea(){
           <th style="padding:6px 8px;text-align:center;font-weight:600">삭제</th>
         </tr></thead>
         <tbody>${list.map(rd => {
-          const canEditQty = rd.dst_qty !== null && rd.srcIdx.length === 1 && r.vendor !== '동일' && r.vendor !== '푸드엔드베스트';
+          // 동일(깐마늘)은 발주 수량이 code_qty 배수가 아니라 kg 분할(박스 나누기) 로직으로 계산되므로 제외.
+          // 푸드엔드베스트는 합배송으로 여러 주문이 한 행에 합쳐졌을 때만(srcIdx.length>1) 제외 — 합쳐지지 않은
+          // 일반 행은 다른 발주처와 똑같이 code_qty 오버라이드로 안전하게 수정 가능함
+          const canEditQty = rd.dst_qty !== null && rd.srcIdx.length === 1 && r.vendor !== '동일';
           const qtyCell = canEditQty
             ? `<button class="btn btn-sm" style="padding:1px 7px;font-size:10.5px;font-weight:700" onclick="verifyEditQty('${esc(r.gk)}',${rd.srcIdx[0]},${rd.dst_qty})" title="발주 수량 수정 (같은 상품코드의 다른 주문에도 함께 적용돼요)">${rd.dst_qty} ✏️</button>`
             : (rd.dst_qty!==null?rd.dst_qty:'-');
