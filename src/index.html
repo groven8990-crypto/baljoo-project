@@ -2559,6 +2559,17 @@ function applyOverride(vc, so){
   return loadOverrides().find(o => o.key === ovKey(vc, so)) || null;
 }
 
+// 개별 주문 단위 직접수정 — 위 override(코드+선택사항 단위)와 달리 "이 주문 한 건만" 고칠 때 씀.
+// 같은 상품코드를 쓰는 다른 주문에는 영향을 주지 않음. order_no로 식별하고, 코드 단위 override보다
+// 우선 적용됨 (rematchAllOrders에서 적용)
+const LS_ORDER_OVERRIDES = 'yb_order_overrides';
+function loadOrderOverrides(){ try{ return JSON.parse(localStorage.getItem(LS_ORDER_OVERRIDES)||'[]'); }catch{ return []; } }
+function saveOrderOverrides(a){ localStorage.setItem(LS_ORDER_OVERRIDES, JSON.stringify(a)); }
+function applyOrderOverride(orderNo){
+  if (!orderNo) return null;
+  return loadOrderOverrides().find(o => o.orderNo === orderNo) || null;
+}
+
 // ══════════════════════════════════════════════════════════
 // 발주처 감지
 // ══════════════════════════════════════════════════════════
@@ -4155,11 +4166,11 @@ function renderVerifyArea(){
           const canEditRow = rd.srcIdx.length === 1 && r.vendor !== '동일';
           const canEditQty = canEditRow && rd.dst_qty !== null;
           const qtyCell = canEditQty
-            ? `<button class="btn btn-sm" style="padding:1px 7px;font-size:10.5px;font-weight:700" onclick="verifyEditQty('${esc(r.gk)}',${rd.srcIdx[0]},${rd.dst_qty})" title="발주 수량 수정 (같은 상품코드의 다른 주문에도 함께 적용돼요)">${rd.dst_qty} ✏️</button>`
+            ? `<button class="btn btn-sm" style="padding:1px 7px;font-size:10.5px;font-weight:700" onclick="verifyEditQty('${esc(r.gk)}',${rd.srcIdx[0]},${rd.dst_qty})" title="발주 수량 수정 (이 주문 한 건에만 적용돼요)">${rd.dst_qty} ✏️</button>`
             : (rd.dst_qty!==null?rd.dst_qty:'-');
           const itemOptText = (rd.dst_item+' '+rd.dst_opt).trim()||'-';
           const itemOptCell = canEditRow
-            ? `<button class="btn btn-sm" style="padding:1px 7px;font-size:10.5px;font-weight:700;text-align:left;white-space:normal" onclick="verifyEditItemOpt('${esc(r.gk)}',${rd.srcIdx[0]})" title="발주서 품목명·옵션 수정 (같은 상품코드의 다른 주문에도 함께 적용돼요)">${escHtml(itemOptText)} ✏️</button>`
+            ? `<button class="btn btn-sm" style="padding:1px 7px;font-size:10.5px;font-weight:700;text-align:left;white-space:normal" onclick="verifyEditItemOpt('${esc(r.gk)}',${rd.srcIdx[0]})" title="발주서 품목명·옵션 수정 (이 주문 한 건에만 적용돼요)">${escHtml(itemOptText)} ✏️</button>`
             : escHtml(itemOptText);
           return `
           <tr style="background:${rd.bundleRgb?'#'+rd.bundleRgb.slice(2):(rd.issues.length?'#FEF2F2':'#fff')}">
@@ -4215,16 +4226,25 @@ function verifyDeleteRow(gk, idxList){
   if (!list.length) delete groupedOrders[gk];
   renderStep3();
 }
-// 자동 검토 표에서 "발주 수량" 직접 수정 — "주문 품목·옵션·수량 직접 수정" 패널과 동일하게
-// 상품코드(+선택사항) 단위 code_qty 오버라이드로 저장됨 → 같은 코드를 쓰는 다른 주문에도 함께 적용됨
+// 이 주문 한 건에만 적용되는 개별수정 저장 — order_no가 없는(수동 추가는 항상 있음) 극히 예외적인
+// 경우에만 안내하고 중단
+function _saveOrderOverride(o, patch){
+  if (!o.order_no) { alert('이 주문에는 고유 주문번호가 없어서 개별 수정을 저장할 수 없어요.'); return false; }
+  const ovs = loadOrderOverrides().filter(x => x.orderNo !== o.order_no);
+  ovs.push({ orderNo: o.order_no, ...patch });
+  saveOrderOverrides(ovs);
+  return true;
+}
+// 자동 검토 표에서 "발주 수량" 직접 수정 — 이 주문 한 건에만 적용되고, 같은 상품코드를 쓰는
+// 다른 주문에는 영향 없음 (코드 전체를 바꾸려면 "코드 관리 → 주문 품목·옵션·수량 직접 수정" 사용)
 function verifyEditQty(gk, srcIdx, curQty){
   const list = groupedOrders[gk];
   const o = list && list[srcIdx];
   if (!o) return;
   const baseQty = Number(o.qty) || 1;
   const input = prompt(
-    `"${o.recv_name||''} · ${o.item_name||o.product||''}"\n발주 수량을 몇 개로 바꿀까요? (현재 ${curQty}개)\n\n`
-    + `※ 주문수량(${baseQty}건) × 상품코드당 개수로 계산돼서, 같은 상품코드(${o.vendor_code||''}${o.select_opt?' / '+o.select_opt:''})를 쓰는 다른 주문에도 똑같이 적용돼요.`,
+    `"${o.recv_name||''} · ${o.item_name||o.product||''}"\n이 주문 한 건의 발주 수량을 몇 개로 바꿀까요? (현재 ${curQty}개)\n\n`
+    + `※ 이 주문에만 적용되고, 같은 상품코드를 쓰는 다른 주문에는 영향 없어요.`,
     curQty
   );
   if (input === null) return;
@@ -4232,37 +4252,28 @@ function verifyEditQty(gk, srcIdx, curQty){
   if (!newQty || newQty < 1) { alert('1 이상의 숫자를 입력해주세요.'); return; }
   const newCodeQty = Math.max(1, Math.round(newQty / baseQty));
   if (newCodeQty * baseQty !== newQty && !confirm(`주문수량(${baseQty})으로 나누어떨어지지 않아 상품코드당 개수를 ${newCodeQty}(으)로 반올림해서 저장할게요.\n결과: ${newCodeQty * baseQty}개 — 계속할까요?`)) return;
-  const k = ovKey(o.vendor_code, o.select_opt);
-  const ovs = loadOverrides().filter(x => x.key !== k);
-  ovs.push({ key: k, item: o.item_name || '', option: o.option_name || '', qty: newCodeQty });
-  saveOverrides(ovs);
+  if (!_saveOrderOverride(o, { item: o.item_name || '', option: o.option_name || '', qty: newCodeQty })) return;
   rematchAllOrders();
   renderStep3();
-  if (typeof renderDirectEditList === 'function') renderDirectEditList();
 }
-// 자동 검토 표에서 "발주서 품목/옵션" 직접 수정 — verifyEditQty와 동일한 코드+선택사항 단위
-// 오버라이드를 씀 → 같은 코드를 쓰는 다른 주문에도 함께 적용됨. 현재 값은 창을 열 때마다
-// o.item_name/o.option_name에서 새로 읽어와서, onclick 속성에 자유 텍스트(따옴표 등 포함
-// 가능)를 직접 넣지 않도록 함
+// 자동 검토 표에서 "발주서 품목/옵션" 직접 수정 — 이 주문 한 건에만 적용됨(verifyEditQty와 동일한 원칙).
+// 현재 값은 클릭할 때마다 o.item_name/o.option_name에서 새로 읽어와서, onclick 속성에 자유 텍스트
+// (따옴표 등 포함 가능)를 직접 넣지 않도록 함
 function verifyEditItemOpt(gk, srcIdx){
   const list = groupedOrders[gk];
   const o = list && list[srcIdx];
   if (!o) return;
   const newItem = prompt(
-    `"${o.recv_name||''}"\n발주서 품목명을 무엇으로 바꿀까요?\n\n`
-    + `※ 같은 상품코드(${o.vendor_code||''}${o.select_opt?' / '+o.select_opt:''})를 쓰는 다른 주문에도 똑같이 적용돼요.`,
+    `"${o.recv_name||''}"\n이 주문 한 건의 발주서 품목명을 무엇으로 바꿀까요?\n\n`
+    + `※ 이 주문에만 적용되고, 같은 상품코드를 쓰는 다른 주문에는 영향 없어요.`,
     o.item_name || ''
   );
   if (newItem === null) return;
   const newOpt = prompt('발주서 옵션명을 무엇으로 바꿀까요? (없으면 비워두세요)', o.option_name || '');
   if (newOpt === null) return;
-  const k = ovKey(o.vendor_code, o.select_opt);
-  const ovs = loadOverrides().filter(x => x.key !== k);
-  ovs.push({ key: k, item: newItem.trim(), option: newOpt.trim(), qty: o.code_qty || 1 });
-  saveOverrides(ovs);
+  if (!_saveOrderOverride(o, { item: newItem.trim(), option: newOpt.trim(), qty: o.code_qty || 1 })) return;
   rematchAllOrders();
   renderStep3();
-  if (typeof renderDirectEditList === 'function') renderDirectEditList();
 }
 
 // ── 거래처별 이메일 저장 ──
@@ -7304,6 +7315,15 @@ function rematchAllOrders(){
     o.opt_mapped=parsed.optMapped||false;
     o.opt_needs_check=parsed.optNeedsCheck||false;
     o.mapped_code=parsed.mappedCode||'';
+    // 개별 주문 단위 직접수정 — 코드 단위 override보다 우선 적용. 같은 코드를 쓰는 다른
+    // 주문에는 영향 없이 이 주문 한 건만 고칠 때 씀
+    const oov = applyOrderOverride(o.order_no);
+    if (oov) {
+      if (oov.item != null && oov.item !== '') o.item_name = oov.item;
+      if (oov.option != null) o.option_name = oov.option;
+      if (oov.qty != null && oov.qty !== '') o.code_qty = oov.qty;
+      o.opt_needs_check = false;
+    }
     o.unmatched=!vk;
     if(vk){const gk=vk+'|'+o.alias;if(!groupedOrders[gk])groupedOrders[gk]=[];groupedOrders[gk].push(o);}
     else unmatchedList.push(o);
