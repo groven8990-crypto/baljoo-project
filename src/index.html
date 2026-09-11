@@ -3576,13 +3576,30 @@ async function decryptOfficeFile(fileBuf, password) {
 }
 // 파일이 암호로 잠겨있으면 비밀번호를 물어보고(저장된 게 있으면 먼저 시도) 풀어서 평문 ArrayBuffer를
 // 반환. 사용자가 취소하면 null을 반환 — 호출한 쪽에서 업로드를 조용히 중단해야 함
+// 항상 동일한 비밀번호를 쓰는 것으로 확인된 파일들(예: 당근마켓 주문내역 다운로드)은 여기 등록해두면
+// 매번 물어보지 않고 조용히 자동으로 풀림. 새로 알게 된 고정 비밀번호가 있으면 이 배열에 추가할 것
+const _KNOWN_OFFICE_PASSWORDS = ['daangn1234!'];
 async function _resolveEncryptedFile(fileBuf, fileName) {
-  let pwd = localStorage.getItem(LS_OFFICE_PASSWORD) || '';
-  for (;;) {
-    if (!pwd) {
-      pwd = prompt(`"${fileName}" 파일은 열기 암호가 걸려있어요.\n비밀번호를 입력해주세요.`, '');
-      if (pwd === null) return null;
+  // 1) 저장된 비밀번호 + 알려진 고정 비밀번호를 먼저 조용히(프롬프트 없이) 시도
+  const saved = localStorage.getItem(LS_OFFICE_PASSWORD) || '';
+  const silentCandidates = [saved, ..._KNOWN_OFFICE_PASSWORDS].filter((v, i, a) => v && a.indexOf(v) === i);
+  if (silentCandidates.length) setSt('🔓 암호 해제 중...');
+  for (const pwd of silentCandidates) {
+    try {
+      const plain = await decryptOfficeFile(fileBuf, pwd);
+      try { localStorage.setItem(LS_OFFICE_PASSWORD, pwd); } catch(e){}
+      return plain;
+    } catch (err) {
+      if (err.message === 'UNSUPPORTED') {
+        alert(`이 파일은 지원하지 않는 암호화 방식이에요 (${err.detail||''}). 엑셀에서 열어 암호를 풀고 다시 저장한 뒤 올려주세요.`);
+        return null;
+      }
+      // WRONG_PASSWORD면 다음 후보로 계속 시도, 후보가 없으면 아래에서 사용자에게 물어봄
     }
+  }
+  // 2) 알려진 비밀번호로 다 실패했을 때만 사용자에게 직접 물어봄
+  let pwd = prompt(`"${fileName}" 파일은 열기 암호가 걸려있어요.\n비밀번호를 입력해주세요.`, '');
+  while (pwd !== null) {
     setSt('🔓 암호 해제 중...');
     try {
       const plain = await decryptOfficeFile(fileBuf, pwd);
@@ -3593,17 +3610,11 @@ async function _resolveEncryptedFile(fileBuf, fileName) {
         alert(`이 파일은 지원하지 않는 암호화 방식이에요 (${err.detail||''}). 엑셀에서 열어 암호를 풀고 다시 저장한 뒤 올려주세요.`);
         return null;
       }
-      if (err.message === 'WRONG_PASSWORD') {
-        alert('비밀번호가 맞지 않아요. 다시 입력해주세요.');
-        localStorage.removeItem(LS_OFFICE_PASSWORD);
-        pwd = prompt(`"${fileName}" 비밀번호를 다시 입력해주세요.`, '');
-        if (pwd === null) return null;
-        continue;
-      }
-      alert('암호 해제 중 오류가 발생했어요: ' + err.message);
-      return null;
+      alert('비밀번호가 맞지 않아요. 다시 입력해주세요.');
+      pwd = prompt(`"${fileName}" 비밀번호를 다시 입력해주세요.`, '');
     }
   }
+  return null;
 }
 function handleFile(file, onDone) {
   if (!file) { if(typeof onDone==='function') onDone(); return; }
