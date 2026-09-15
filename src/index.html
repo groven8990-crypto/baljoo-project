@@ -5197,16 +5197,42 @@ async function _injectXlsxCellFills(base64, fillMap) {
     return base64;
   }
 }
-// 발주처별 워크북 생성 (저장 없이) — 생성 시점에 base64 도 같이 캐싱
-function buildVendorWorkbook(gk){
+// 발주처별 워크북 생성 (저장 없이) — 생성 시점에 base64 도 같이 캐싱.
+// dlOne(수동 다운로드)과 똑같이, 합배송 묶음이 있으면 색채움까지 입힌 base64를 만든다.
+// (예전엔 aoa_to_sheet로 평범하게만 만들어서, 다운로드한 파일엔 색이 있는데 자동발송으로
+// 보낸 첨부·폴더 백업 파일엔 색이 빠지는 문제가 있었음 — 이제 자동발송도 dlOne과 같은 결과물을 씀)
+async function buildVendorWorkbook(gk){
   const [v,a] = gk.split('|');
   const orders = groupedOrders[gk] || [];
   const rows = buildRows(v, orders, a);
+  // 합배송 색상 맵: sheetRow(0-based) → rgb (buildRows→applyMergeForVendor가 _lastBundledRows를 채움)
+  const bundleMap = new Map((_lastBundledRows||[]).map(({dataIdx,rgb})=>[dataIdx+1,rgb]));
+  const hasBundles = bundleMap.size > 0;
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const ws = {};
+  const numCols = rows.reduce((m,r)=>Math.max(m,r.length),0);
+  const cellFillMap = new Map(); // "행,열"(0-based) → ARGB hex
+  rows.forEach((row,r)=>{
+    const rgb = bundleMap.get(r);
+    row.forEach((val,c)=>{
+      // 번들 행은 빈칸도 셀 생성 (배경색이 그 칸까지 이어지도록)
+      if(rgb===undefined && (val===null||val===undefined)) return;
+      const addr = XLSX.utils.encode_cell({r,c});
+      const safeVal = (val===null||val===undefined) ? '' : val;
+      const t = typeof safeVal==='number'?'n':'s';
+      ws[addr] = {t, v:safeVal};
+      if(rgb!==undefined) cellFillMap.set(r+','+c, rgb);
+    });
+  });
+  if(rows.length>0&&numCols>0)
+    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rows.length-1,c:numCols-1}});
   if (typeof autoColWidth === 'function') autoColWidth(ws, rows);
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-  const b64cached = _wbToBase64(wb);
+  let b64cached = _wbToBase64(wb);
+  if (hasBundles) {
+    try { b64cached = await _injectXlsxCellFills(b64cached, cellFillMap); }
+    catch(e) { console.warn('[색채움] 자동발송용 워크북 색채움 실패, 색 없이 진행:', e); }
+  }
   return { wb, b64: b64cached, vendor: v, alias: a, fname: makeFileName(v, a), orders };
 }
 // ── 동일(깐마늘) 발주정산내역서 생성 ──
@@ -5533,9 +5559,9 @@ async function autoSendAll(){
   const builtMap = {};
   for (const gk of [...new Set([...sendList, ...manualList])]) {
     try {
-      const built = buildVendorWorkbook(gk);
+      const built = await buildVendorWorkbook(gk);
       builtMap[gk] = built;
-      try { await _poWriteWorkbook(built.wb, built.fname, built.alias); } catch(_){}
+      try { await _poWriteWorkbook(built.wb, built.fname, built.alias, {base64: built.b64}); } catch(_){}
       // 다운로드 이력 기록
       try { logDownload(built.vendor, built.alias, built.orders, built.fname); } catch(_){}
     } catch(e) {
@@ -5818,9 +5844,9 @@ async function autoSendVendor(vendorName){
   const built = [];
   for (const gk of gks) {
     try {
-      const b = buildVendorWorkbook(gk);
+      const b = await buildVendorWorkbook(gk);
       built.push({gk, ...b});
-      try { await _poWriteWorkbook(b.wb, b.fname, b.alias); } catch(_){}
+      try { await _poWriteWorkbook(b.wb, b.fname, b.alias, {base64: b.b64}); } catch(_){}
       try { logDownload(b.vendor, b.alias, b.orders, b.fname); } catch(_){}
     } catch(e) { console.warn('워크북 실패', gk, e); }
   }
@@ -6594,9 +6620,12 @@ function resetPoImportSeen(){
 async function _poWriteWorkbook(wb, fname, alias, wopts){
   const safeName = String(fname||'').replace(/[\\/:*?"<>|]/g, '_');
   const useCellStyles = !!(wopts && wopts.cellStyles);
+  // wopts.base64가 있으면 그걸 그대로 씀 (예: 합배송 색채움을 이미 입혀둔 base64 —
+  // wb만 넘기면 SheetJS 무료판이 fill 스타일을 버려서 색이 사라지므로, 이런 경우는
+  // wb를 다시 XLSX.write하지 않고 완성된 bytes를 그대로 저장/다운로드해야 함)
   // cellStyles 필요 시 type:'base64' 사용 (_wbToBase64와 동일 경로 — 확실히 동작)
   // 그 외엔 type:'array' 사용
-  const b64 = useCellStyles ? _wbToBase64(wb) : null;
+  const b64 = (wopts && wopts.base64) || (useCellStyles ? _wbToBase64(wb) : null);
   const _toBlob = () => {
     if (b64) {
       const bin = atob(b64), u8 = new Uint8Array(bin.length);
