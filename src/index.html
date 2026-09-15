@@ -5105,10 +5105,25 @@ function _wbToBase64(wb){
 // 그래서 일단 SheetJS로 평범하게 xlsx를 만든 다음, JSZip으로 그 파일을 직접 열어서
 // xl/styles.xml에 채우기(fill) 스타일을 추가하고 xl/worksheets/sheet1.xml의 대상 셀에
 // 그 스타일을 참조하도록 s="N" 속성을 심어주는 방식으로 우회함.
+// JSZip은 <script async>로 CDN에서 불러오는 라이브러리라, 페이지를 새로고침한 직후
+// 곧바로 "전체 자동 발송"을 누르면 로딩이 아직 안 끝났을 수 있음(수동 다운로드는 보통
+// 화면을 좀 보다가 누르니 이 시점엔 이미 로딩이 끝나 있어서 안 걸림) — 무작정 즉시
+// "없다"고 포기하지 말고, 짧게 폴링하며 로딩이 끝나길 기다렸다가 판단한다.
+function _waitForJSZip(timeoutMs){
+  return new Promise((resolve) => {
+    if (typeof JSZip !== 'undefined') { resolve(true); return; }
+    const start = Date.now();
+    const iv = setInterval(() => {
+      if (typeof JSZip !== 'undefined') { clearInterval(iv); resolve(true); }
+      else if (Date.now() - start > (timeoutMs||8000)) { clearInterval(iv); resolve(false); }
+    }, 100);
+  });
+}
 // fillMap: Map<"행,열"(0-based, 헤더 포함), ARGB hex 문자열(예: "FFFFF2CC")>
 async function _injectXlsxCellFills(base64, fillMap) {
   if (!base64 || !fillMap || !fillMap.size) return base64;
-  if (typeof JSZip === 'undefined') { console.warn('[색채움] JSZip 없음 — 색 없이 다운로드'); return base64; }
+  const jsZipReady = await _waitForJSZip();
+  if (!jsZipReady) { console.warn('[색채움] JSZip 로딩 실패(시간 초과) — 색 없이 진행'); return base64; }
   try {
     const zip = await JSZip.loadAsync(base64, {base64: true});
     const stylesPath = 'xl/styles.xml';
@@ -13068,8 +13083,28 @@ async function _expEnsureLedgerTab(sheetId, token){
     );
     if (!addResp.ok) return null;
     const addData = await addResp.json();
-    return addData.replies?.[0]?.addSheet?.properties?.sheetId ?? null;
+    const gid = addData.replies?.[0]?.addSheet?.properties?.sheetId ?? null;
+    if (gid !== null) await _expClearLedgerNumberFormat(sheetId, token, gid);
+    return gid;
   } catch(e) { console.warn('[Sheets] 매입 탭 확인/생성 오류:', e); return null; }
+}
+// A(년)·J(합계)처럼 숫자만 들어가는 칸에 예전 날짜 형식이 남아있으면(같은 칸 위치에 실제
+// 날짜가 있던 시절도 있었음) 숫자를 넣어도 날짜 일련번호로 잘못 표시됨(예: 2026 → 1905-07-18).
+// "매입" 탭 데이터 범위 전체의 셀 서식을 지워서 항상 숫자 그대로 보이게 함.
+async function _expClearLedgerNumberFormat(sheetId, token, gid){
+  try {
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}:batchUpdate`,
+      { method:'POST', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
+        body: JSON.stringify({ requests:[{
+          repeatCell: {
+            range: { sheetId: gid, startRowIndex: 0, endRowIndex: 20000, startColumnIndex: 0, endColumnIndex: 17 },
+            cell: { userEnteredFormat: {} },
+            fields: 'userEnteredFormat.numberFormat'
+          }
+        }] }) }
+    );
+  } catch(e) { console.warn('[Sheets] 매입 탭 서식 초기화 실패:', e); }
 }
 // Q열(id)로 "매입" 탭에서 해당 항목의 행 번호(1-based) 찾기 — 없으면 -1 (탭이 아직 없으면 자연히 -1)
 async function _expLedgerFindRowById(sheetId, token, id){
@@ -13312,6 +13347,8 @@ async function expSheetsExportAll(){
       _poShowToast(`✅ ${allRows.length}건 완료 — 사업자명 자동 채움 (⚠️ "${EXP_LEDGER_TAB}" 탭 준비 실패)`);
       return;
     }
+    // 탭이 이미 있었을 수도 있으니(이전에 잘못된 서식이 남아있을 수 있음) 매번 서식을 다시 초기화
+    await _expClearLedgerNumberFormat(sheetId, token, gid);
     const ledgerRows = allParsed.map(d => _expLedgerRow(d));
     await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${_expLedgerRangeEnc('A1:Z')}:clear`,
