@@ -3701,7 +3701,7 @@ function handleFile(file, onDone) {
       const H=rows[hr],ci=n=>H.indexOf(n);
       // 플랫폼/쇼핑몰 컬럼은 헤더가 다양해서 후보 중 첫 번째로 찾는 걸 사용
       const findCol = (...names) => { for (const n of names) { const i = ci(n); if (i >= 0) return i; } return -1; };
-      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명'),si:ci('정산추가정보')};
+      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명'),si:ci('정산추가정보'),se:findCol('정산예정금액(배송비포함)','정산예정금액','정산금액(배송비포함)')};
       groupedOrders={};unmatchedList=[];allOrders=[];totalCount=0;loadedFileNames=[];_mergeDecisions=new Set();
       for(let i=hr+1;i<rows.length;i++){
         const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;
@@ -3736,7 +3736,7 @@ function handleFile(file, onDone) {
             ? (Math.round(_order_amt_full*(_oi+1)/_optionList.length) - Math.round(_order_amt_full*_oi/_optionList.length))
             : _order_amt_full;
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-          const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
+          const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
           // 시간대별 발주처 규칙 적용
           const vkFinal=_applyTimeVendorRule(order, vk);
           order.vendor_key=vkFinal; order.unmatched=!vkFinal;
@@ -4292,6 +4292,7 @@ function verifyVendorBuild(vendor, alias, orders){
         recv_name: o.recv_name||'', order_no: o.order_no||'',
         src_product: o.product||'', src_select: o.select_opt||'', src_disp: o.disp_opt||'',
         src_qty: Number(o.qty)||1,
+        src_settle_amt: o.settle_amt,
         dst_item: myRows.length ? '깐마늘 1kg' : '',
         dst_opt: chunkKgs.length ? `총 ${totalKg}kg = ${chunkKgs.join('+')} (${chunkKgs.length}박스)` : '',
         dst_qty: sumKg,
@@ -4335,6 +4336,7 @@ function verifyVendorBuild(vendor, alias, orders){
       }
       const bundled = plan.bundled.find(b => b.dataIdx === rep);
       const srcQtySum = idxList.reduce((s,i2) => s + (Number(orders[i2].qty)||1), 0);
+      const srcSettleSum = idxList.reduce((s,i2) => s + (Number(orders[i2].settle_amt)||0), 0);
       res.rowDetails.push({
         recv_name: o.recv_name + (idxList.length > 1 ? ` (${idxList.length}건 합배송)` : ''),
         order_no: o.order_no||'',
@@ -4342,6 +4344,7 @@ function verifyVendorBuild(vendor, alias, orders){
         src_select: o.select_opt||'',
         src_disp: o.disp_opt||'',
         src_qty:  srcQtySum,
+        src_settle_amt: idxList.some(i2 => orders[i2].settle_amt != null) ? srcSettleSum : null,
         dst_item: dstItem,
         dst_opt:  dstOpt,
         dst_qty:  dstQty,
@@ -4397,6 +4400,7 @@ function verifyVendorBuild(vendor, alias, orders){
       src_select: o.select_opt||'',
       src_disp: o.disp_opt||'',
       src_qty:  Number(o.qty)||1,
+      src_settle_amt: o.settle_amt,
       dst_item: dstItem,
       dst_opt:  dstOpt,
       dst_qty:  dstQty,
@@ -4443,6 +4447,7 @@ function renderVerifyArea(){
           <th style="padding:6px 8px;text-align:left;font-weight:600">선택사항(Q)</th>
           <th style="padding:6px 8px;text-align:left;font-weight:600">노출상품명(쿠팡)</th>
           <th style="padding:6px 8px;text-align:right;font-weight:600;white-space:nowrap" title="샵마인 원본 주문수량">주문<br>수량</th>
+          <th style="padding:6px 8px;text-align:right;font-weight:600;white-space:nowrap" title="샵마인 원본의 정산예정금액(배송비포함) — 역마진 확인용">정산예정<br>금액</th>
           <th style="padding:6px 8px;text-align:left;font-weight:600">발주서 품목/옵션</th>
           <th style="padding:6px 8px;text-align:right;font-weight:600;white-space:nowrap" title="발주서에 들어간 수량">발주<br>수량</th>
           <th style="padding:6px 8px;text-align:left;font-weight:600">이상</th>
@@ -4468,6 +4473,7 @@ function renderVerifyArea(){
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#6B7280;max-width:180px;word-break:break-word">${escHtml(rd.src_select||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:#0E7490;max-width:160px;word-break:break-word">${escHtml(rd.src_disp||'-')}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#0E7490;white-space:nowrap">${rd.src_qty}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#7C2D12;white-space:nowrap">${rd.src_settle_amt!=null?Math.round(rd.src_settle_amt).toLocaleString()+'원':'-'}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;max-width:180px;word-break:break-word">${itemOptCell}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">${qtyCell}</td>
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6;color:var(--danger);font-size:10px">${rd.issues.map(i=>'• '+escHtml(i)).join('<br>')||''}</td>
@@ -11707,7 +11713,7 @@ function handleFileAdd(file, onDone){
       const H=rows[hr],ci=n=>H.indexOf(n);
       // 플랫폼/쇼핑몰 컬럼은 헤더가 다양해서 후보 중 첫 번째로 찾는 걸 사용
       const findCol = (...names) => { for (const n of names) { const i = ci(n); if (i >= 0) return i; } return -1; };
-      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명'),si:ci('정산추가정보')};
+      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명'),si:ci('정산추가정보'),se:findCol('정산예정금액(배송비포함)','정산예정금액','정산금액(배송비포함)')};
       // 기존 주문번호 집합(중복 제외용)
       const existingOrderNos = new Set(allOrders.map(o => String(o.order_no||'').trim()).filter(Boolean));
       let added=0, dupSkipped=0;
@@ -11748,7 +11754,7 @@ function handleFileAdd(file, onDone){
             ? (Math.round(_order_amt_full*(_oi+1)/_optionList.length) - Math.round(_order_amt_full*_oi/_optionList.length))
             : _order_amt_full;
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-          const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim()};
+          const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
           const vkFinal=_applyTimeVendorRule(order, vk);
           order.vendor_key=vkFinal; order.unmatched=!vkFinal;
           allOrders.push(order);
