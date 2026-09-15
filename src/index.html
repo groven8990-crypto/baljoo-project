@@ -17055,9 +17055,10 @@ function srBrandSection(title, color, agg, opts){
   const platRows = Object.entries(agg.platMap).sort((a,b)=>b[1].sales-a[1].sales).map(([p,v],i)=>{
     const rowKey = `${title}||plat||${p}`;
     _srRowComp[rowKey] = {sales: v.sales, items: Object.values(v.comp||{})};
+    const platLabel = p === '식자재코리아' ? p + '(판매수수료없음)' : p;
     return `
     <tr style="background:${i%2===0?'#fff':'#F8FAFC'}">
-      <td style="padding:10px 14px;border-bottom:1px solid #eee">${escHtml(p)}</td>
+      <td style="padding:10px 14px;border-bottom:1px solid #eee">${escHtml(platLabel)}</td>
       <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${v.count.toLocaleString()}건</td>
       <td class="sr-amt-cell" data-rowkey="${escHtml(rowKey)}" onclick="srEditSalesAmt(this)" title="클릭해서 매출액 수정" style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee;cursor:pointer">${v.sales.toLocaleString()}원</td>
     </tr>`;}).join('');
