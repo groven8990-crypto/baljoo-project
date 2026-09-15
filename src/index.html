@@ -18903,12 +18903,13 @@ function _srBuildOneB2BSectionHtml(biz, b2bName, b2bRows, _theads, _buildFooter)
     m.count+=r.count; m.sales+=r.sales; m.purchase+=r.purchase; m.profit+=r.profit;
   }
   const HBG='#F1F5F9', HFG='#334155';
+  const _vpct = (v, s) => s > 0 ? `<span style="font-size:10px;font-weight:400;opacity:.6;margin-left:3px">(${(v/s*100).toFixed(1)}%)</span>` : '';
   const sumTrs = Object.values(byGroup).map(m=>`<tr>
     <td style="padding:9px 14px;font-size:12px;font-weight:600;border-bottom:1px solid #F2F4F6;color:#191F28">${escHtml(_srVendorName(m.vendor))}</td>
     <td style="padding:9px 14px;text-align:right;font-size:12px;border-bottom:1px solid #F2F4F6;color:#191F28">${m.count}건</td>
     <td style="padding:9px 14px;text-align:right;font-size:12px;color:#3182F6;font-weight:600;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.sales.toLocaleString()}원</td>
-    <td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.purchase.toLocaleString()}원</td>
-    <td style="padding:9px 14px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#06B981':'#F04452'};border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.profit.toLocaleString()}원</td>
+    <td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.purchase.toLocaleString()}원${_vpct(m.purchase,m.sales)}</td>
+    <td style="padding:9px 14px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#06B981':'#F04452'};border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.profit.toLocaleString()}원${_vpct(m.profit,m.sales)}</td>
   </tr>`).join('');
   const summaryTable = `<table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #ECEEF1;border-radius:0 0 0 0;overflow:hidden">
     <thead><tr style="background:${HBG}">
@@ -18923,8 +18924,8 @@ function _srBuildOneB2BSectionHtml(biz, b2bName, b2bRows, _theads, _buildFooter)
       <td style="padding:10px 14px;font-size:12px;color:#191F28;white-space:nowrap">B2B 합계</td>
       <td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28">${TB.count}건</td>
       <td style="padding:10px 14px;text-align:right;font-size:12px;color:#3182F6;font-variant-numeric:tabular-nums;white-space:nowrap">${TB.sales.toLocaleString()}원</td>
-      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;white-space:nowrap">${TB.purchase.toLocaleString()}원</td>
-      <td style="padding:10px 14px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;color:${TB.profit>=0?'#06B981':'#F04452'}">${TB.profit.toLocaleString()}원</td>
+      <td style="padding:10px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;white-space:nowrap">${TB.purchase.toLocaleString()}원${_vpct(TB.purchase,TB.sales)}</td>
+      <td style="padding:10px 14px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;color:${TB.profit>=0?'#06B981':'#F04452'}">${TB.profit.toLocaleString()}원${_vpct(TB.profit,TB.sales)}</td>
     </tr></tfoot>
   </table>`;
   return `<div style="margin-top:14px" data-b2b-biz="${escHtml(biz)}" data-b2b-name="${escHtml(b2bName)}">
