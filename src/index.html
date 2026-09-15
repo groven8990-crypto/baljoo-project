@@ -12988,30 +12988,35 @@ function _parseSheetId(url){
   return m ? m[1] : null;
 }
 function _expSheetRow(d){
-  // 컬럼 순서: A날짜|B증빙|C분류|D내용|E업체명|F공급가|G세액|H합계|I주문건수|J결제일(송금완료일)|K결제여부|L증빙확인일|M사업자명|N비고|O앱내부ID(수정·삭제 동기화용, 화면엔 안 씀)
+  // 컬럼 순서: A년|B월|C일|D증빙|E분류|F내용|G업체명|H공급가|I세액|J합계|K주문건수|L결제일(송금완료일)|M결제여부|N비고
+  //          → 여기까지 14열은 장부(YB 장부) "매입" 시트 헤더와 정확히 같은 순서라 A:N을 그대로 복사해서 붙여넣을 수 있음.
+  //          O증빙확인일|P사업자명|Q앱내부ID(수정·삭제 동기화용, 화면엔 안 씀) — 장부엔 필요 없는 앱 전용 열이라 N 뒤로 밀어둠
   const dt = d.date ? new Date(d.date + 'T00:00:00') : new Date();
   const evList = [d.ev1&&'세금계산서', d.ev2&&'계산서', d.ev3&&'현금영수증', d.ev4&&'고지서', d.ev5&&'기타', d.ev6&&'사후첨부'].filter(Boolean).join(', ');
-  const dateStr = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
   return [
-    dateStr,
+    dt.getFullYear(), dt.getMonth()+1, dt.getDate(),
     evList, '',
     d.desc||'', d.vendor||'',
     Number(d.supply)||0, Number(d.vat)||0, Number(d.total)||0,
     '', d.paidAt||'',
-    d.payType||'', d.proofAt||'', d.co||'', d.note||'',
-    d.id||''
+    d.payType||'', d.note||'',
+    d.proofAt||'', d.co||'', d.id||''
   ];
 }
-// O열(id)로 해당 항목의 시트 행 번호(1-based) 찾기 — 없으면 -1
+// id로 해당 항목의 시트 행 번호(1-based) 찾기 — 없으면 -1
+// Q열(신형: 년/월/일 분리 + 장부 순서, 앱 전용 열이 N 뒤로 밀린 형식)과
+// O열(구형: 날짜 하나로 합친 형식, id가 O에 있었음)을 둘 다 확인 — "전체 내보내기"로
+// 아직 새 형식으로 옮기지 않은 시트에서도 수정·삭제가 계속 정상 동작하게 함
 async function _expSheetsFindRowById(sheetId, token, id) {
   if (!id) return -1;
   try {
-    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/O:O`, { headers: { Authorization: 'Bearer ' + token } });
+    const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/O:Q`, { headers: { Authorization: 'Bearer ' + token } });
     if (!r.ok) return -1;
     const rows = (await r.json()).values || [];
     const idStr = String(id);
     for (let i = 0; i < rows.length; i++) {
-      if (String(rows[i][0]||'') === idStr) return i + 1;
+      const row = rows[i] || [];
+      if (String(row[0]||'') === idStr || String(row[2]||'') === idStr) return i + 1;
     }
     return -1;
   } catch(e) { return -1; }
@@ -13034,7 +13039,7 @@ async function expSheetsUpdateRow(record){
     const rowNum = await _expSheetsFindRowById(sheetId, token, record.id);
     if (rowNum < 0) { await expSheetsAppend(record); return; }
     const resp = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A${rowNum}:O${rowNum}?valueInputOption=USER_ENTERED`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A${rowNum}:Q${rowNum}?valueInputOption=USER_ENTERED`,
       { method:'PUT', headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
         body: JSON.stringify({ values:[_expSheetRow(record)] }) }
     );
@@ -13081,7 +13086,7 @@ async function expSheetsAppend(d){
 async function expSheetsExportAll(){
   const sheetId = localStorage.getItem(LS_EXP_SHEET_ID);
   if (!sheetId) { alert('구글 시트 URL을 먼저 연동해주세요.'); return; }
-  if (!confirm('구글 시트 기존 데이터를 읽어서 사업자명을 자동으로 채우고 다시 씁니다.\n로컬에만 있는 항목도 추가됩니다. (기존 시트 내용은 교체됨)\n계속할까요?')) return;
+  if (!confirm('구글 시트 기존 데이터를 읽어서 사업자명을 자동으로 채우고, 장부(YB 장부) "매입" 시트와 같은 열 순서(년/월/일 분리)로 다시 씁니다.\n로컬에만 있는 항목도 추가됩니다. (기존 시트 내용은 교체됨)\n계속할까요?')) return;
   let token;
   try { token = await gmailRequestToken(); } catch(e) { alert('구글 로그인이 필요해요.'); return; }
   const btns = document.querySelectorAll('.expExportAllBtn');
@@ -13090,7 +13095,7 @@ async function expSheetsExportAll(){
   try {
     // 1. 기존 시트 전체 읽기
     const getResp = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:O`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:Q`,
       { headers: { Authorization: 'Bearer ' + token } }
     );
     if (!getResp.ok) { _poShowToast('⚠️ 시트 읽기 실패'); return; }
@@ -13103,7 +13108,11 @@ async function expSheetsExportAll(){
     ));
 
     // 3. 시트 행 파싱 + 사업자명 채우기
+    // 신형(구): A=날짜 하나로 합침, O에 id — _expSheetRow가 예전에 쓰던 형식
+    // 장부형(신): A=년,B=월,C=일 분리, 장부와 같은 순서 + Q에 id — 지금 _expSheetRow가 쓰는 형식
+    // 아주 옛 구형: 장부형과 열 배치는 같지만 사업자명·id 열 자체가 없음(길이가 짧음)
     const _isNewFmt = r => /^\d{4}-\d{2}-\d{2}$/.test(String(r[0]||''));
+    const _isLedgerFmt = r => /^\d{4}$/.test(String(r[0]||'').trim()) && r.length >= 17;
     const existingKeys = new Set();
     const parsedFromSheet = [];
     for (const row of sheetRows) {
@@ -13135,6 +13144,23 @@ async function expSheetsExportAll(){
           note = String(row[11]||'').trim();
           co   = '';
         }
+      } else if (_isLedgerFmt(row)) {
+        const yr = parseInt(col0);
+        const mo = parseInt(row[1]) || 1;
+        const dy = parseInt(row[2]) || 1;
+        date    = yr + '-' + String(mo).padStart(2,'0') + '-' + String(dy).padStart(2,'0');
+        evStr   = String(row[3]||'');
+        desc    = String(row[5]||'').trim();
+        vendor  = String(row[6]||'').trim();
+        supply  = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
+        vat     = Number(String(row[8]||'0').replace(/,/g,'')) || 0;
+        total   = Number(String(row[9]||'0').replace(/,/g,'')) || 0;
+        paidAt  = String(row[11]||'').trim() || undefined;
+        payType = String(row[12]||'').trim() || '즉시결제';
+        note    = String(row[13]||'').trim();
+        proofAt = String(row[14]||'').trim() || undefined;
+        co      = String(row[15]||'').trim();
+        id      = String(row[16]||'').trim() || undefined;
       } else {
         if (!/^\d{4}$/.test(col0)) continue;
         const yr = parseInt(col0);
@@ -13207,7 +13233,7 @@ async function expSheetsLoad(showAlert){
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 불러오는 중...'; }
   try {
     const resp = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:O`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:Q`,
       { headers: { Authorization: 'Bearer ' + token } }
     );
     if (!resp.ok) {
@@ -13218,9 +13244,11 @@ async function expSheetsLoad(showAlert){
     const data = await resp.json();
     const rows = (data.values || []);
     // 유효한 데이터 행만 파싱
-    // 신형식: row[0]=YYYY-MM-DD 문자열, row[1]=증빙, row[3]=내용, row[4]=업체명, row[5..7]=금액, row[10]=결제여부, row[11]=비고
-    // 구형식: row[0]=년, row[1]=월, row[2]=일, row[3]=증빙, row[5]=내용, row[6]=업체명, row[7..9]=금액, row[12]=결제여부, row[13]=비고
+    // 신형(구): row[0]=YYYY-MM-DD 문자열, row[1]=증빙, row[3]=내용, row[4]=업체명, row[5..7]=금액, row[10]=결제여부, row[13]=비고
+    // 장부형(신, 지금 _expSheetRow가 쓰는 형식): row[0]=년,[1]=월,[2]=일, row[3]=증빙, row[5]=내용, row[6]=업체명, row[7..9]=금액, row[12]=결제여부, row[13]=비고, row[14]=증빙확인일
+    // 아주 옛 구형: 장부형과 열 배치는 같지만 그 뒤 사업자명·id 열이 없음(길이가 짧음)
     const _isNewFmt = (r) => /^\d{4}-\d{2}-\d{2}$/.test(String(r[0]||''));
+    const _isLedgerFmt = (r) => /^\d{4}$/.test(String(r[0]||'').trim()) && r.length >= 17;
     const parsed = [];
     for (const row of rows) {
       const col0 = String(row[0]||'').trim();
@@ -13245,6 +13273,22 @@ async function expSheetsLoad(showAlert){
           // 구형 (L=사업자명 또는 비고)
           note = String(row[11]||'').trim();
         }
+      } else if (_isLedgerFmt(row)) {
+        // 장부형 (년/월/일 분리 + 장부 순서, 앱 전용 열은 N 뒤로 밀림)
+        const yr = parseInt(col0);
+        const mo = parseInt(row[1]) || 1;
+        const dy = parseInt(row[2]) || 1;
+        date    = yr + '-' + String(mo).padStart(2,'0') + '-' + String(dy).padStart(2,'0');
+        evStr   = String(row[3]||'');
+        desc    = String(row[5]||'').trim();
+        vendor  = String(row[6]||'').trim();
+        supply  = Number(String(row[7]||'0').replace(/,/g,'')) || 0;
+        vat     = Number(String(row[8]||'0').replace(/,/g,'')) || 0;
+        total   = Number(String(row[9]||'0').replace(/,/g,'')) || 0;
+        paidAt  = String(row[11]||'').trim() || undefined;
+        payType = String(row[12]||'').trim() || '즉시결제';
+        note    = String(row[13]||'').trim();
+        proofAt = String(row[14]||'').trim() || undefined;
       } else {
         // 구형식 (년/월/일 숫자 3열) — col0이 순수 4자리 숫자여야 함 (날짜문자열 오인 방지)
         if (!/^\d{4}$/.test(col0)) continue;
