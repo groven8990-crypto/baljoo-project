@@ -17932,6 +17932,34 @@ function srAddAdItemAndRerender(biz){
   srSaveAdCosts(all);
   _srRerenderAdAndTotals(biz);
 }
+// 사업자별 "1일 고정 광고비" 기본값 — 주말처럼 며칠 건너뛰고 몰아서 입력할 때 날짜수만 곱해서 자동 입력
+const LS_AD_DAILY_DEFAULT = 'yb_ad_daily_default';
+function srLoadAdDefaults(){
+  try { return JSON.parse(localStorage.getItem(LS_AD_DAILY_DEFAULT)||'{}'); }
+  catch { return {}; }
+}
+function srSaveAdDefaults(o){
+  try { localStorage.setItem(LS_AD_DAILY_DEFAULT, JSON.stringify(o||{})); } catch(e){}
+}
+function srGetAdDefault(biz){
+  return Number(srLoadAdDefaults()[biz]) || 0;
+}
+function srApplyDefaultAdAndRerender(biz){
+  const bizSel = CSS&&CSS.escape?CSS.escape(biz):biz;
+  const amtEl = document.getElementById(`adDefAmt-${bizSel}`);
+  const daysEl = document.getElementById(`adDefDays-${bizSel}`);
+  const amt = Math.max(0, parseFloat(amtEl && amtEl.value)||0);
+  const days = Math.max(1, parseInt(daysEl && daysEl.value)||1);
+  // 다음에도 그대로 뜨도록 1일 기준 금액을 기억해둠
+  const defs = srLoadAdDefaults();
+  defs[biz] = amt;
+  srSaveAdDefaults(defs);
+  const all = srLoadAdCosts();
+  all[biz] = all[biz] || [];
+  all[biz].push({ desc: days > 1 ? `일 광고비 (${days}일치)` : '일 광고비', amount: amt * days });
+  srSaveAdCosts(all);
+  _srRerenderAdAndTotals(biz);
+}
 function srUpdateAdItem(biz, idx, field, value){
   const all = srLoadAdCosts();
   if (!all[biz] || !all[biz][idx]) return;
@@ -17982,6 +18010,7 @@ function _srBuildAdCostUI(biz){
     <button type="button" onclick="srRemoveAdItemAndRerender('${escHtml(biz)}', ${i})"
       style="border:none;background:none;cursor:pointer;color:#DC2626;font-size:14px;padding:2px 6px" title="삭제">✕</button>
   </div>`).join('');
+  const defAmt = srGetAdDefault(biz);
   return `<div class="sr-biz-ad-section" data-biz="${escHtml(biz)}" style="margin-top:8px;padding:10px 14px;background:#FEF7E0;border:1px solid #FCD34D;border-radius:6px">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <div style="font-size:13px;font-weight:700;color:#7C2D12">📢 광고비</div>
@@ -17990,6 +18019,18 @@ function _srBuildAdCostUI(biz){
         style="margin-left:auto;font-size:11px;padding:4px 10px;border:1px solid #92400E;background:#fff;color:#92400E;border-radius:4px;cursor:pointer">+ 내역 추가</button>
     </div>
     <div class="sr-profit-helper" style="margin-top:8px">${itemsHtml || '<div style="font-size:11px;color:var(--text3)">내역 없음 — + 내역 추가 눌러서 입력</div>'}</div>
+    <div class="sr-profit-helper" style="margin-top:8px;padding-top:8px;border-top:1px dashed #FCD34D;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <span style="font-size:11px;color:#92400E">1일 광고비</span>
+      <input type="number" id="adDefAmt-${bizSel}" value="${defAmt||''}" placeholder="예: ${biz==='그로븐'?'20000':'30000'}" min="0" step="1"
+        style="width:90px;padding:4px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:4px;font-variant-numeric:tabular-nums">
+      <span style="font-size:11px;color:#92400E">원 ×</span>
+      <input type="number" id="adDefDays-${bizSel}" value="1" min="1" step="1"
+        style="width:48px;padding:4px 6px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:4px">
+      <span style="font-size:11px;color:#92400E">일치</span>
+      <button type="button" onclick="srApplyDefaultAdAndRerender('${escHtml(biz)}')"
+        style="font-size:11px;padding:4px 10px;border:1px solid #92400E;background:#fff;color:#92400E;border-radius:4px;cursor:pointer">자동 입력</button>
+      <span style="font-size:10.5px;color:var(--text3)">— 주말처럼 며칠 건너뛴 날은 일수만 바꿔서 누르면 그만큼 곱해서 내역에 추가돼요 (예: 3일치)</span>
+    </div>
   </div>`;
 }
 // B2B 업체 → 발주처(공급처) 매핑 — 사용자가 수정 가능
