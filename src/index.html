@@ -394,7 +394,6 @@
       <button class="btn" onclick="goStep(1)">🏠 처음으로</button>
       <button class="btn" onclick="goStep(2)">← 이전</button>
       <button class="btn btn-green" id="genAllBtn" onclick="generateAll()">⬇ 전체 발주서 다운로드</button>
-      <button class="btn btn-primary" id="autoSendAllBtn" onclick="autoSendAll()" title="이메일은 자동 발송 + 카톡/사이트는 사본 저장 후 알림">🚀 전체 자동 발송</button>
     </div>
   </div>
 
@@ -5144,7 +5143,7 @@ function _wbToBase64(wb){
 // xl/styles.xml에 채우기(fill) 스타일을 추가하고 xl/worksheets/sheet1.xml의 대상 셀에
 // 그 스타일을 참조하도록 s="N" 속성을 심어주는 방식으로 우회함.
 // JSZip은 <script async>로 CDN에서 불러오는 라이브러리라, 페이지를 새로고침한 직후
-// 곧바로 "전체 자동 발송"을 누르면 로딩이 아직 안 끝났을 수 있음(수동 다운로드는 보통
+// 곧바로 "자동 발송"을 누르면 로딩이 아직 안 끝났을 수 있음(수동 다운로드는 보통
 // 화면을 좀 보다가 누르니 이 시점엔 이미 로딩이 끝나 있어서 안 걸림) — 무작정 즉시
 // "없다"고 포기하지 말고, 짧게 폴링하며 로딩이 끝나길 기다렸다가 판단한다.
 function _waitForJSZip(timeoutMs){
@@ -5570,140 +5569,6 @@ function gmailRemoveCard(){
   try { localStorage.removeItem('yb_gmail_card_grobn'); localStorage.removeItem('yb_gmail_card_yb'); } catch {}
   renderGmailSettingsArea();
 }
-// 메인: 전체 자동 발송
-async function autoSendAll(){
-  const keys = Object.keys(groupedOrders||{});
-  if (!keys.length) { alert('발주서가 없어요.'); return; }
-  if (!gmailGetClientId()) {
-    alert('먼저 Gmail OAuth Client ID 를 등록해 주세요.\n(설정 패널 → Gmail 연결)');
-    return;
-  }
-  const emails = loadVendorEmails();
-  const delivery = loadVendorDelivery();
-  const tpl = gmailGetTemplate();
-  const today = _localISO();
-  // 분류
-  const sendList = [];   // 이메일 발송 대상
-  const manualList = []; // 카톡/사이트 수동 처리 대상
-  const skipList = [];   // 이메일 등록 안 된 곳
-  for (const gk of sortVendorKeys(keys)) {
-    const [v,a] = gk.split('|');
-    const methods = Array.isArray(delivery[v]) ? delivery[v] : [];
-    const hasEmail = methods.includes('email') && emails[v];
-    const hasManual = methods.includes('kakao') || methods.includes('site');
-    if (hasEmail) sendList.push(gk);
-    if (hasManual) manualList.push(gk);
-    if (!hasEmail && !hasManual) skipList.push(gk);
-  }
-  if (!sendList.length && !manualList.length) {
-    alert('발송할 발주처가 없어요.\n📇 발주처 전달방식 등록 패널에서 이메일/카톡/사이트 중 하나를 지정해 주세요.');
-    return;
-  }
-  // 발송 시 같은 발주처(다른 사업자)는 1통으로 합쳐 보내므로, 메일 통수는 발주처 기준 카운트
-  const sendVendorSet = new Set(sendList.map(gk => gk.split('|')[0]));
-  const manualVendorSet = new Set(manualList.map(gk => gk.split('|')[0]));
-  // 보내기 전에 자동 검토(샵마인 원본 vs 발주서 대조)에서 의심 잡힌 발주처가 있으면 미리 경고
-  const _issueVendors = [];
-  for (const gk of [...new Set([...sendList, ...manualList])]) {
-    const [v,a] = gk.split('|');
-    try { const r = verifyVendorBuild(v, a, groupedOrders[gk]); if (r.badCnt > 0) _issueVendors.push(`${v}(${a}) ${r.badCnt}건`); } catch(e){}
-  }
-  const issueLine = _issueVendors.length
-    ? `\n\n⚠️ 자동 검토에서 의심 행이 있는 발주처: ${_issueVendors.join(', ')}\n먼저 "🔍 자동 검토"에서 확인하고 보내는 걸 권장해요.`
-    : '';
-  if (!confirm(`전체 자동 발송 시작할까요?\n\n📧 이메일 자동 발송: ${sendVendorSet.size}곳 (총 ${sendList.length}건, 같은 거래처는 한 메일로 합쳐 발송)\n💬🌐 수동 처리 알림 (사본 저장): ${manualVendorSet.size}곳\n❓ 전달방식 미지정 (건너뜀): ${skipList.length}곳\n\n· 모든 발주처는 동시에 PC 발주서 폴더에도 사본 저장됨\n· 카톡/발주사이트 거래처는 발송 후 알림 표시${issueLine}`)) return;
-  // 사전 토큰 확보 (실패하면 중단)
-  if (sendList.length) {
-    try { await gmailRequestToken(); } catch(e) { alert('Gmail 인증 실패: '+e.message); return; }
-  }
-  const sent = [], failed = [];
-  // 1) 모든 발주처 워크북 메모리 생성 + 폴더에 백업 저장
-  const builtMap = {};
-  for (const gk of [...new Set([...sendList, ...manualList])]) {
-    try {
-      const built = await buildVendorWorkbook(gk);
-      builtMap[gk] = built;
-      try { await _poWriteWorkbook(built.wb, built.fname, built.alias, {base64: built.b64}); } catch(_){}
-      // 다운로드 이력 기록
-      try { logDownload(built.vendor, built.alias, built.orders, built.fname); } catch(_){}
-    } catch(e) {
-      console.warn('발주서 생성 실패:', gk, e);
-    }
-  }
-  // 2) 이메일 발송 — 같은 발주처(다른 사업자)는 1통의 메일로 합치기 (엑셀 N개 첨부)
-  const sentVendors = new Set();
-  // 발주처별로 gk 그룹화
-  const byVendor = {};
-  for (const gk of sendList) {
-    const v = gk.split('|')[0];
-    (byVendor[v] = byVendor[v] || []).push(gk);
-  }
-  for (const [v, gks] of Object.entries(byVendor)) {
-    const to = emails[v];
-    const aliases = gks.map(gk => gk.split('|')[1]);
-    const brands = [...new Set(aliases.map(a => _brandLabel(a)).filter(Boolean))];
-    // 대표 사업자: 그로븐 우선, 없으면 첫 번째
-    const primaryBrand = brands.includes('그로븐') ? '그로븐' : (brands[0] || '');
-    const subject = _applyTpl(tpl.subject, v, today, primaryBrand, brands);
-    const body    = _applyTpl(tpl.body,    v, today, primaryBrand, brands);
-    const attachments = [];
-    const fnames = [];
-    for (const gk of gks) {
-      const built = builtMap[gk]; if (!built) continue;
-      const b64 = built.b64 || _wbToBase64(built.wb);
-      attachments.push({ name: built.fname, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', b64 });
-      fnames.push(built.fname);
-    }
-    // 디네트 대상 발주처(기본 일비): 받은메일함의 디네트 발주서도 함께 첨부
-    if (v === dinetteGetTarget()) {
-      try {
-        const dn = await fetchDinetteAttachments();
-        for (const a of dn) { attachments.push(a); fnames.push(a.name); }
-      } catch(e) { console.warn('디네트 첨부 실패:', e); }
-    }
-    // 명함은 본문 끝 인라인 이미지(서명)로 — 첨부 아님
-    const _card = gmailGetCard();
-    const inlineImages = (_card && _card.b64) ? [{ cid: 'card_sig', type: _card.type||'image/png', b64: _card.b64 }] : [];
-    const _bcc = gmailGetBcc() || undefined;
-    try {
-      await gmailSendOne({to, subject, body, attachments, inlineImages, bcc: _bcc});
-      for (const gk of gks) {
-        const [vv, aa] = gk.split('|');
-        const built = builtMap[gk];
-        sent.push({gk, vendor:vv, alias:aa, to, fname: built?.fname||''});
-        logSent({vendor:vv, alias:aa, to, fname: built?.fname||'', status:'sent', merged: gks.length>1});
-      }
-      sentVendors.add(v);
-    } catch(e) {
-      for (const gk of gks) {
-        const [vv, aa] = gk.split('|');
-        failed.push({gk, vendor:vv, alias:aa, to, error:e.message});
-        logSent({vendor:vv, alias:aa, to, fname: builtMap[gk]?.fname||'', status:'failed', error:e.message});
-      }
-      console.error('발송 실패:', v, e);
-    }
-  }
-  // 3) UI 갱신
-  if (typeof renderStep3 === 'function') renderStep3();
-  // 4) 결과 모달 (발주처 단위로 표시)
-  const sentVendorsArr = [...new Set(sent.map(s => s.vendor))];
-  const failedVendorsArr = [...new Set(failed.map(f => f.vendor))];
-  const manualVendorsArr = [...new Set(manualList.map(gk => gk.split('|')[0]))];
-  const manualMsg = manualVendorsArr.length ? manualVendorsArr.map(v => {
-    const methods = (delivery[v]||[]).filter(m => m === 'kakao' || m === 'site');
-    const labels = methods.map(m => m==='kakao'?'💬 카톡':'🌐 발주사이트').join(' + ');
-    return `  ${labels} — ${v} → 사본 폴더에 저장됨, 직접 전달 필요`;
-  }).join('\n') : '';
-  const failedMsg = failedVendorsArr.length ? '\n\n❌ 실패:\n' + failedVendorsArr.map(v => {
-    const f = failed.find(x => x.vendor===v);
-    return `  ${v} (${f.to}): ${f.error}`;
-  }).join('\n') : '';
-  const msg = `📧 이메일 자동 발송: ${sentVendorsArr.length}곳 (총 ${sent.length}건) 성공${failedVendorsArr.length?` / ${failedVendorsArr.length}곳 실패`:''}` +
-              (manualVendorsArr.length ? `\n\n📋 수동 처리 필요 (${manualVendorsArr.length}곳):\n${manualMsg}` : '') +
-              failedMsg;
-  alert(msg);
-  _poShowToast(`✅ 발송 완료: 이메일 ${sentVendorsArr.length}곳 · 수동 ${manualVendorsArr.length}곳`);
-}
 // ── Gmail 설정 패널 (코드 관리 탭에 들어감) ──
 function renderGmailSettingsArea(){
   const el = document.getElementById('gmailSettingsArea');
@@ -5837,7 +5702,7 @@ function renderGmailSettingsArea(){
       </div>`:''}
     </div>`;
 }
-// 발주처 단일/그룹 자동 발송 — autoSendAll 의 단일 발주처 버전
+// 발주처 단일/그룹 자동 발송
 // ─── 디네트 발주서 자동첨부 (일비 발송 시 받은메일함의 디네트 발주서를 함께 첨부) ───
 const LS_DINETTE_SENDER    = 'yb_dinette_sender_kw';
 const LS_DINETTE_TARGET    = 'yb_dinette_target_vendor';
@@ -15607,7 +15472,7 @@ function reconExportXlsx() {
       <ol style="font-size:13px;color:var(--text2);margin:8px 0 12px 18px;line-height:1.8">
         <li><b>업로드</b> — 여러 파일 한번에 올리면 자동 합산. 최근 10개는 원본까지 저장돼 재처리 가능.</li>
         <li><b>분석</b> — 발주처×별칭 표, 미매칭 코드 경고, 표준 코드 형식(<span class="code-tag">발주처]품목명/옵션-수량</span>)이 아닌 "비표준 코드" 확인 절차, 같은 수령인+주소를 묶는 "합배송 후보" 자동 탐지, 주문 품목·옵션·수량 인라인 수정(같은 코드에 계속 재적용됨).</li>
-        <li><b>생성</b> — "🔍 자동 검토"가 원본 선택사항/노출상품명과 대조해 수량·옵션 불일치 경고. 표에 샵마인 원본의 <b>정산예정금액(배송비포함)</b>도 같이 보여줘서, 발주 넣기 전에 역마진 나는 건 없는지 바로 확인할 수 있어요. 저장 폴더 지정 시 다이얼로그 없이 바로 저장. "🚀 전체 자동 발송"으로 일괄 처리.</li>
+        <li><b>생성</b> — "🔍 자동 검토"가 원본 선택사항/노출상품명과 대조해 수량·옵션 불일치 경고. 표에 샵마인 원본의 <b>정산예정금액(배송비포함)</b>도 같이 보여줘서, 발주 넣기 전에 역마진 나는 건 없는지 바로 확인할 수 있어요. 저장 폴더 지정 시 다이얼로그 없이 바로 저장. 발주처 카드별로 "📧 자동발송"/"💬 카카오"/"🌐 발주사이트" 버튼을 눌러 하나씩 처리.</li>
         <li><b>완료</b> — 생성 결과 요약과 파일 목록.</li>
       </ol>
       <b style="font-size:12px">자동 발송이 하는 일</b>
@@ -16012,9 +15877,9 @@ function reconExportXlsx() {
         "🔍 자동 검토"가 샵마인 원본의 선택사항·노출상품명과 발주서 결과를 대조해서 수량·옵션이 잘못
         반영되지 않았는지 확인해줘요. 발주 수량이 잘못됐으면 표의 <b>"발주 수량" 칸을 클릭</b>해서 바로
         고칠 수 있어요(같은 상품코드를 쓰는 다른 주문에도 함께 적용됨). 발주처별 전달방식(이메일/카카오톡/
-        사이트)을 등록해두면 "🚀 전체 자동 발송" 한 번으로 이메일은 Gmail로 실제 발송, 카톡/사이트는
-        파일만 저장 후 화면에 알림을 띄워요. 저장 폴더를 미리 지정해두면 다운로드할 때마다 다이얼로그
-        없이 바로 그 폴더에 저장돼요.
+        사이트)을 등록해두면 발주처 카드의 <b>"📧 자동발송"</b> 버튼으로 그 발주처만 Gmail로 실제 발송하고,
+        카톡/사이트 발주처는 파일만 저장 후 화면에 알림을 띄워요. 저장 폴더를 미리 지정해두면 다운로드할
+        때마다 다이얼로그 없이 바로 그 폴더에 저장돼요.
       </p>
       <p style="font-size:13px;color:var(--text2);line-height:1.8;margin-top:8px">
         발주처 카드 제목 옆의 <b>"📧 이메일"</b> / <b>"🌐 발주사이트"</b> 칩을 클릭하면, 등록해둔 주소로
