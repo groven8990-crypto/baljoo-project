@@ -4182,7 +4182,8 @@ function renderStep3(){
     const sendTs = sendMap[gk];
     const sendTime = sendTs ? new Date(sendTs).toTimeString().slice(0,5) : '';
     const sendMark = sendTs
-      ? `<span class="send-mark" id="sdm_${ekey(gk)}" title="오늘 ${sendTime} 이메일 발송 완료" style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;border-radius:6px;font-size:12px;font-weight:700">✅ 발송완료 ${sendTime}</span>`
+      ? `<span class="send-mark" id="sdm_${ekey(gk)}" title="오늘 ${sendTime} 이메일 발송 완료" style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;border-radius:6px;font-size:12px;font-weight:700">✅ 발송완료 ${sendTime}</span>
+         <button class="btn btn-sm" onclick="emailResendOne('${esc(gk)}')" title="잘못 보냈을 때 다시 보내기 — 제목엔 -2, -3처럼 번호가 자동으로 붙고, 본문도 재전송용 문구로 자동 교체돼요">🔁 재전송</button>`
       : '';
     const kakaoTs = kakaoMap[gk];
     const kakaoTime = kakaoTs ? new Date(kakaoTs).toTimeString().slice(0,5) : '';
@@ -5006,6 +5007,23 @@ function gmailResetTemplate(){
   renderGmailSettingsArea();
 }
 function gmailSaveTemplate(subject, body){ localStorage.setItem(LS_GMAIL_TPL, JSON.stringify({subject,body})); }
+// 🔁 재전송 전용 템플릿 — "🔁 재전송" 버튼으로 다시 보낼 때는 이 제목/본문을 씀 (일반 발송과 다르게
+// "다시 보내드립니다, 이전 메일은 무시해주세요" 같은 문구가 자동으로 들어가게 하기 위함)
+const LS_GMAIL_RESEND_TPL = 'yb_gmail_resend_tpl';
+function gmailGetResendTemplate(){
+  const def = {
+    subject: '[{BRAND}]({YYMMDD}) 발주서',
+    body: '안녕하세요, {VENDOR} 담당자님\n\n{BRANDS} 발주서를 다시 보내드립니다. 이전에 받으신 메일은 무시하고 이 메일 기준으로 처리 부탁드립니다.\n감사합니다.'
+  };
+  try { return {...def, ...JSON.parse(localStorage.getItem(LS_GMAIL_RESEND_TPL)||'{}')}; } catch { return def; }
+}
+function gmailSaveResendTemplate(subject, body){ localStorage.setItem(LS_GMAIL_RESEND_TPL, JSON.stringify({subject,body})); }
+function gmailResetResendTemplate(){
+  if (!confirm('재전송 메일 템플릿을 기본값으로 되돌릴까요?')) return;
+  localStorage.removeItem(LS_GMAIL_RESEND_TPL);
+  _poShowToast('재전송 템플릿 기본값 복원됨');
+  renderGmailSettingsArea();
+}
 function gmailGetBcc(){ return (localStorage.getItem(LS_GMAIL_BCC)||'').trim(); }
 function gmailSetBcc(v){ const s=String(v||'').trim(); if(s) localStorage.setItem(LS_GMAIL_BCC,s); else localStorage.removeItem(LS_GMAIL_BCC); }
 function loadSendHistory(){ try{ return JSON.parse(localStorage.getItem(LS_SEND_HISTORY)||'[]'); }catch{ return []; } }
@@ -5014,6 +5032,26 @@ function logSent(entry){
   const hist = loadSendHistory();
   hist.push({ ...entry, ts: Date.now() });
   saveSendHistory(hist);
+}
+// 재전송 횟수 — 발주처별로 "오늘 몇 번째 재전송인지" 기억해서 메일 제목에 -2, -3 처럼 번호를 붙임
+const LS_RESEND_COUNT = 'yb_resend_count'; // { 'vendor|yyyy-mm-dd': N }
+function _resendKey(vendor){ return vendor + '|' + _localISO(); }
+function bumpResendCount(vendor){
+  try {
+    const m = JSON.parse(localStorage.getItem(LS_RESEND_COUNT)||'{}');
+    const k = _resendKey(vendor);
+    m[k] = (m[k]||0) + 1;
+    localStorage.setItem(LS_RESEND_COUNT, JSON.stringify(m));
+    return m[k];
+  } catch(e) { return 1; }
+}
+// 제목의 첫 ")" 바로 뒤에 "-N"을 끼워넣음 — 기본 제목이 "[그로븐](260519) 발주서" 형태라
+// "[그로븐](260519)-2 발주서"가 됨. ")"가 없는 제목이면 그냥 끝에 붙임.
+function _injectResendSuffix(subject, n){
+  const suffix = '-' + n;
+  const idx = String(subject||'').indexOf(')');
+  if (idx === -1) return (subject||'') + suffix;
+  return subject.slice(0, idx+1) + suffix + subject.slice(idx+1);
 }
 // GIS 초기화 (토큰 클라이언트 생성)
 function gmailEnsureTokenClient(){
@@ -5696,6 +5734,16 @@ function renderGmailSettingsArea(){
         </div>
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">🔁 재전송 메일 템플릿 <span style="font-size:10px;font-weight:400;color:var(--text3)">(발주서 카드의 "🔁 재전송" 버튼을 누르면 이 제목/본문으로 보내요)</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">제목엔 첫 ")" 바로 뒤에 <code>-2</code>, <code>-3</code>... 번호가 자동으로 붙어요 (예: 기본 제목이면 <code>[그로븐](260519)-2 발주서</code>). 치환 변수는 위와 동일.</div>
+        <input class="inp" id="gmailResendTplSubject" value="${escHtml(gmailGetResendTemplate().subject)}" placeholder="제목" style="margin-bottom:6px">
+        <textarea class="inp" id="gmailResendTplBody" rows="6" placeholder="본문">${escHtml(gmailGetResendTemplate().body)}</textarea>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn btn-sm" onclick="gmailSaveResendTemplate(document.getElementById('gmailResendTplSubject').value, document.getElementById('gmailResendTplBody').value);_poShowToast('재전송 템플릿 저장됨')">💾 템플릿 저장</button>
+          <button class="btn btn-sm" onclick="gmailResetResendTemplate()" style="color:var(--text3)">↺ 기본값 복원</button>
+        </div>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">💬 카카오 설정 <span style="font-size:10px;font-weight:400;color:var(--text3)">(선택사항 — 없어도 발주서 복사 후 카톡 붙여넣기 가능)</span></div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
           앱 키 없이도 💬 카톡 버튼을 누르면 발주 내용이 <b>클립보드에 자동 복사</b>돼요.<br>
@@ -5836,7 +5884,8 @@ async function fetchDinetteAttachments(token){
   } catch(e){ console.warn('[디네트] 첨부 검색 실패:', e); return []; }
 }
 
-async function autoSendVendor(vendorName){
+async function autoSendVendor(vendorName, opts){
+  opts = opts || {};
   if (!gmailGetClientId()) {
     alert('먼저 Gmail OAuth Client ID 를 등록해 주세요.\n(⚙️ 코드 관리 → 📧 Gmail 자동발송)');
     return;
@@ -5852,7 +5901,7 @@ async function autoSendVendor(vendorName){
     emails[vendorName] = newEmail.trim();
     saveVendorEmails(emails);
   }
-  const tpl = gmailGetTemplate();
+  const tpl = opts.resend ? gmailGetResendTemplate() : gmailGetTemplate();
   const today = _localISO();
   try { await gmailRequestToken(); } catch(e) { alert('Gmail 인증 실패: '+e.message); return; }
   // 워크북 모두 생성 + 폴더 백업
@@ -5868,8 +5917,12 @@ async function autoSendVendor(vendorName){
   if (!built.length) { alert('발주서 생성에 실패했어요.'); return; }
   const brands = [...new Set(built.map(b => _brandLabel(b.alias)).filter(Boolean))];
   const primaryBrand = brands.includes('그로븐') ? '그로븐' : (brands[0] || '');
-  const subject = _applyTpl(tpl.subject, vendorName, today, primaryBrand, brands);
+  let subject = _applyTpl(tpl.subject, vendorName, today, primaryBrand, brands);
   const body    = _applyTpl(tpl.body,    vendorName, today, primaryBrand, brands);
+  if (opts.resend) {
+    const n = bumpResendCount(vendorName) + 1; // 원래 발송을 1로 치고, 첫 재전송이 2
+    subject = _injectResendSuffix(subject, n);
+  }
   const attachments = built.map(b => ({
     name: b.fname,
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -5910,6 +5963,12 @@ async function autoSendVendor(vendorName){
 function emailOne(gk){
   const [v] = gk.split('|');
   autoSendVendor(v);
+}
+// 이미 자동발송된 발주처를 다시 보냄 — 제목에 -2/-3... 번호 자동 추가 + 본문은 재전송용 템플릿 사용
+function emailResendOne(gk){
+  const [v] = gk.split('|');
+  if (!confirm(`${v} 발주서를 다시 보낼까요?\n(제목에 번호가 자동으로 붙고, 본문도 재전송 문구로 바뀌어요)`)) return;
+  autoSendVendor(v, {resend: true});
 }
 function _legacyEmailOne_unused(gk){
   const [v,a]=gk.split('|');
