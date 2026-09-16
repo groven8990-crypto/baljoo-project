@@ -5602,7 +5602,16 @@ async function autoSendAll(){
   // 발송 시 같은 발주처(다른 사업자)는 1통으로 합쳐 보내므로, 메일 통수는 발주처 기준 카운트
   const sendVendorSet = new Set(sendList.map(gk => gk.split('|')[0]));
   const manualVendorSet = new Set(manualList.map(gk => gk.split('|')[0]));
-  if (!confirm(`전체 자동 발송 시작할까요?\n\n📧 이메일 자동 발송: ${sendVendorSet.size}곳 (총 ${sendList.length}건, 같은 거래처는 한 메일로 합쳐 발송)\n💬🌐 수동 처리 알림 (사본 저장): ${manualVendorSet.size}곳\n❓ 전달방식 미지정 (건너뜀): ${skipList.length}곳\n\n· 모든 발주처는 동시에 PC 발주서 폴더에도 사본 저장됨\n· 카톡/발주사이트 거래처는 발송 후 알림 표시`)) return;
+  // 보내기 전에 자동 검토(샵마인 원본 vs 발주서 대조)에서 의심 잡힌 발주처가 있으면 미리 경고
+  const _issueVendors = [];
+  for (const gk of [...new Set([...sendList, ...manualList])]) {
+    const [v,a] = gk.split('|');
+    try { const r = verifyVendorBuild(v, a, groupedOrders[gk]); if (r.badCnt > 0) _issueVendors.push(`${v}(${a}) ${r.badCnt}건`); } catch(e){}
+  }
+  const issueLine = _issueVendors.length
+    ? `\n\n⚠️ 자동 검토에서 의심 행이 있는 발주처: ${_issueVendors.join(', ')}\n먼저 "🔍 자동 검토"에서 확인하고 보내는 걸 권장해요.`
+    : '';
+  if (!confirm(`전체 자동 발송 시작할까요?\n\n📧 이메일 자동 발송: ${sendVendorSet.size}곳 (총 ${sendList.length}건, 같은 거래처는 한 메일로 합쳐 발송)\n💬🌐 수동 처리 알림 (사본 저장): ${manualVendorSet.size}곳\n❓ 전달방식 미지정 (건너뜀): ${skipList.length}곳\n\n· 모든 발주처는 동시에 PC 발주서 폴더에도 사본 저장됨\n· 카톡/발주사이트 거래처는 발송 후 알림 표시${issueLine}`)) return;
   // 사전 토큰 확보 (실패하면 중단)
   if (sendList.length) {
     try { await gmailRequestToken(); } catch(e) { alert('Gmail 인증 실패: '+e.message); return; }
@@ -5962,13 +5971,79 @@ async function autoSendVendor(vendorName, opts){
 }
 function emailOne(gk){
   const [v] = gk.split('|');
-  autoSendVendor(v);
+  _showSendConfirmModal(v, () => autoSendVendor(v));
 }
 // 이미 자동발송된 발주처를 다시 보냄 — 제목에 -2/-3... 번호 자동 추가 + 본문은 재전송용 템플릿 사용
 function emailResendOne(gk){
   const [v] = gk.split('|');
-  if (!confirm(`${v} 발주서를 다시 보낼까요?\n(제목에 번호가 자동으로 붙고, 본문도 재전송 문구로 바뀌어요)`)) return;
-  autoSendVendor(v, {resend: true});
+  _showSendConfirmModal(v, () => autoSendVendor(v, {resend: true}), true);
+}
+// 발송 전 마지막 확인 팝업에 넣을 "샵마인 원본 vs 발주서" 대조 표 — verifyVendorBuild를 그대로 재사용해서
+// 자동 검토 화면과 판정 기준이 항상 같음(다른 로직을 새로 만들지 않음)
+function _buildSendConfirmHtml(vendorName){
+  const gks = Object.keys(groupedOrders||{}).filter(gk => gk.split('|')[0] === vendorName);
+  let totalIssues = 0, totalRows = 0;
+  const sections = gks.map(gk => {
+    const [v,a] = gk.split('|');
+    let r;
+    try { r = verifyVendorBuild(v, a, groupedOrders[gk]); } catch(e) { return `<div style="color:var(--danger);font-size:12px;margin-top:8px">⚠️ ${escHtml(a)} 검토 중 오류: ${escHtml(e.message)}</div>`; }
+    totalIssues += r.badCnt; totalRows += r.rowDetails.length;
+    const rowsHtml = r.rowDetails.map(rd => `
+      <tr style="background:${rd.issues.length?'#FEF2F2':'#fff'}">
+        <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6">${escHtml(rd.recv_name)}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;color:#374151;max-width:160px;word-break:break-word">${escHtml(rd.src_product||'-')}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;color:#6B7280;max-width:140px;word-break:break-word">${escHtml(rd.src_select||'-')}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">${rd.src_qty}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;max-width:160px;word-break:break-word">${escHtml((rd.dst_item+' '+rd.dst_opt).trim()||'-')}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">${rd.dst_qty!=null?rd.dst_qty:'-'}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;color:var(--danger);font-size:10px">${rd.issues.map(i=>'• '+escHtml(i)).join('<br>')||''}</td>
+      </tr>`).join('');
+    return `
+      <div style="margin-top:12px">
+        <div style="font-weight:600;font-size:12px;margin-bottom:4px">${escHtml(v)} <span class="badge badge-purple">${escHtml(a)}</span> — ${r.rowDetails.length}건 ${r.badCnt?`<span style="color:var(--danger)">⚠️ 의심 ${r.badCnt}건</span>`:'<span style="color:#16a34a">✅ 이상없음</span>'}</div>
+        <div style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:4px">
+        <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff">
+          <thead><tr style="background:#F3F4F6;color:#374151">
+            <th style="padding:5px 6px;text-align:left">받는사람</th>
+            <th style="padding:5px 6px;text-align:left">원본 상품명</th>
+            <th style="padding:5px 6px;text-align:left">선택사항</th>
+            <th style="padding:5px 6px;text-align:right;white-space:nowrap">주문<br>수량</th>
+            <th style="padding:5px 6px;text-align:left">발주서 품목/옵션</th>
+            <th style="padding:5px 6px;text-align:right;white-space:nowrap">발주<br>수량</th>
+            <th style="padding:5px 6px;text-align:left">이상</th>
+          </tr></thead>
+          <tbody>${rowsHtml || `<tr><td colspan="7" style="padding:10px;text-align:center;color:var(--text3)">주문 없음</td></tr>`}</tbody>
+        </table>
+        </div>
+      </div>`;
+  }).join('');
+  return { html: sections, totalIssues, totalRows };
+}
+function _showSendConfirmModal(vendorName, onConfirm, isResend){
+  const { html, totalIssues, totalRows } = _buildSendConfirmHtml(vendorName);
+  document.getElementById('sendConfirmModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'sendConfirmModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:12px;max-width:920px;width:100%;max-height:88vh;overflow:auto;padding:20px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="font-size:16px;font-weight:700">📧 ${escHtml(vendorName)} ${isResend?'재전송':'발송'} 전 마지막 확인</div>
+        <button class="btn btn-sm" style="margin-left:auto" onclick="document.getElementById('sendConfirmModal').remove()">닫기</button>
+      </div>
+      <div class="alert ${totalIssues?'alert-warn':'alert-info'}" style="margin-bottom:6px;font-size:12px">
+        ${totalIssues ? `⚠️ 자동 검토에서 <b>${totalIssues}건</b>이 의심돼요 — 아래 빨간 줄을 꼭 확인하세요.` : `✅ 자동 검토 결과 이상 없음 (총 ${totalRows}건)`}
+        발주서의 품목·옵션·수량이 원본 주문과 맞는지 한 번 더 눈으로 확인한 다음 보내세요.
+      </div>
+      ${html || '<div style="padding:14px;color:var(--text3);font-size:13px">이 발주처 주문이 없어요.</div>'}
+      <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="document.getElementById('sendConfirmModal').remove()">취소</button>
+        <button class="btn btn-primary" id="sendConfirmGoBtn">✅ 확인했어요, ${isResend?'재전송':'발송'}하기</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e=>{ if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+  document.getElementById('sendConfirmGoBtn').onclick = () => { modal.remove(); onConfirm(); };
 }
 function _legacyEmailOne_unused(gk){
   const [v,a]=gk.split('|');
