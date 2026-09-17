@@ -10032,27 +10032,16 @@ function switchExpSubTab(name) {
   }
   if (name === 'bank')  { _sbSyncBankInfo().then(()=>renderBankList()).catch(()=>renderBankList()); }
   if (name === 'write') expSheetInitUi();
-  _expListAutoSyncSetActive(name === 'list');
 }
 
-// 지출결의서 작성이력을 보고 있는 동안엔, 재동기화 버튼을 누르지 않아도 다른 컴퓨터에서
-// 방금 누른 송금완료/증빙 체크가 자동으로 반영되게 함 (Supabase 개별 upsert라 안전하게 병합됨).
-// 이 화면을 안 보고 있을 땐 쓸데없이 계속 요청하지 않도록 인터벌을 꺼둠.
-let _expListAutoSyncActive = false;
-let _expListAutoSyncTimer  = null;
-function _expListAutoSyncSetActive(active) {
-  _expListAutoSyncActive = active;
-  if (_expListAutoSyncTimer) { clearInterval(_expListAutoSyncTimer); _expListAutoSyncTimer = null; }
-  if (active) {
-    _expListAutoSyncTimer = setInterval(() => { if (!document.hidden) _sbSyncExpHist().catch(()=>{}); }, 20000);
-  }
-}
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && _expListAutoSyncActive) _sbSyncExpHist().catch(()=>{});
-});
-window.addEventListener('focus', () => {
-  if (_expListAutoSyncActive) _sbSyncExpHist().catch(()=>{});
-});
+// 지출결의서 송금완료/증빙 체크는 다른 컴퓨터가 바로 반영받아야 하는 정보라, 어느 탭을 보고
+// 있든 상관없이 이 페이지가 열려있는 동안엔 항상 동기화되게 함(Supabase 개별 upsert 기반이라
+// 안전하게 병합됨 — 재동기화 버튼을 누르거나 특정 탭을 열어야만 반영되는 게 아니라 자동으로 됨).
+// 작성이력 탭이 안 보이는 동안 갱신된 내용은 renderExpHistList가 화면에 안 보여도 무해하게
+// localStorage만 갱신해두고, 나중에 그 탭을 열면 바로 최신 상태로 보임.
+setInterval(() => { _sbSyncExpHist().catch(()=>{}); }, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) _sbSyncExpHist().catch(()=>{}); });
+window.addEventListener('focus', () => { _sbSyncExpHist().catch(()=>{}); });
 
 function setExpCoFilter(co) {
   _expCoFilter = co;
