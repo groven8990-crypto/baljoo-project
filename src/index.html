@@ -2474,6 +2474,22 @@ function _mergeCloudValue(key, cloudRaw, localRaw) {
       // 확인 처리는 한쪽 방향으로만 진행되는 상태라, 합집합으로 합쳐도 안전함
       return JSON.stringify([...new Set([...cloud, ...local])]);
     }
+    if ((key === 'yb_exphist' || key === 'yb_inchist') && Array.isArray(cloud) && Array.isArray(local)) {
+      // 지출/입금결의서 이력은 그냥 클라우드로 덮어쓰면 위험함 — 이 컴퓨터에서 push가
+      // 한동안 실패해서 클라우드 스냅샷이 오래된 상태로 굳어있으면, 최근에 이 컴퓨터에서
+      // 쌓인 기록이 재동기화 한 번에 통째로 옛날 걸로 사라져버림. id 기준 합집합으로 합쳐서
+      // 어느 쪽에만 있는 기록도 없어지지 않게 하고, 같은 id는 로컬 값을 우선함
+      const deletedKeys = key === 'yb_exphist'
+        ? new Set(JSON.parse(localStorage.getItem(LS_EXP_DELETED)||'[]'))
+        : new Set();
+      const dKey = rec => (rec.date||'')+'|'+(rec.vendor||'')+'|'+(rec.total||0);
+      const map = new Map();
+      for (const rec of cloud) { if (rec && rec.id != null && !deletedKeys.has(dKey(rec))) map.set(rec.id, rec); }
+      for (const rec of local) { if (rec && rec.id != null) map.set(rec.id, rec); }
+      const merged = [...map.values()];
+      merged.sort((a,b) => (b.date||'') < (a.date||'') ? -1 : (b.date||'') > (a.date||'') ? 1 : 0);
+      return JSON.stringify(merged);
+    }
     if (!Array.isArray(cloud) && typeof cloud === 'object' && cloud !== null
         && !Array.isArray(local) && typeof local === 'object' && local !== null) {
       // 발주처 이메일처럼 단순 key→value 맵인 것들 — 로컬에 있는 값을 우선하고,
