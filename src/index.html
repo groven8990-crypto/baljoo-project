@@ -15638,7 +15638,7 @@ function reconExportXlsx() {
       </div>
       <p style="font-size:13px;color:var(--text2);margin-top:12px">
         <b>📦 매입/순이익</b>은 매입단가표 데이터 + 판매수수료(플랫폼별로 다름, 예: 일반 12%, 식자재코리아
-        0%, 톡딜 3.3%)를 매출에 적용해 순이익을 계산해요. <b>💳 예치금 현황</b>은 발주처별 선충전/사용
+        0%, 톡딜 3.3%, 네이버 7%)를 매출에 적용해 순이익을 계산해요. <b>💳 예치금 현황</b>은 발주처별 선충전/사용
         잔액을 관리하는 단순 원장(그로븐/YB 스토어별 구분)입니다.
       </p>
       <p style="font-size:13px;color:var(--text2);margin-top:12px">
@@ -15781,7 +15781,7 @@ function reconExportXlsx() {
       <div class="preview-row" style="flex-direction:column;align-items:flex-start;gap:4px">
         <b style="font-size:13px">05 · 플랫폼별 판매수수료가 다 다름</b>
         <span style="font-size:12.5px;color:var(--text2)">
-          매입/순이익 계산의 수수료율은 플랫폼마다 다릅니다(일반 12%, 식자재코리아 0%, 톡딜 3.3% 등).
+          매입/순이익 계산의 수수료율은 플랫폼마다 다릅니다(일반 12%, 식자재코리아 0%, 톡딜 3.3%, 네이버 7% 등).
           새 판매채널이 생기면 수수료율부터 확인해야 순이익이 안 틀어져요.
         </span>
       </div>
@@ -15980,7 +15980,7 @@ function reconExportXlsx() {
     <div class="card">
       <div class="card-title">5단계 · 📦 하루 마감 — 매입 / 순이익</div>
       <p style="font-size:13px;color:var(--text2);line-height:1.8">
-        매입단가표 데이터 + 플랫폼별 판매수수료(일반 12% · 식자재코리아 0% · 톡딜 3.3% · B2B 0%)를
+        매입단가표 데이터 + 플랫폼별 판매수수료(일반 12% · 식자재코리아 0% · 톡딜 3.3% · 네이버 7% · B2B 0%)를
         매출에 적용해 발주처별 순이익을 계산해요. B2B 매출도 같은 발주처의 일반 매입과 섞이지 않고
         별도 "B2B 매출" 표로 완전히 분리되며, <b>같은 사업자 안에 서로 다른 B2B 거래처(예: 다올유통,
         개인주문)가 있으면 거래처별로 각각 별도 섹션</b>으로 나뉘어서 발주처 칸에 거래처명이 섞여
@@ -16949,6 +16949,7 @@ function srFee(plat){
   const p = String(plat||'');
   if (p === '식자재코리아' || p.includes('B2B')) return 0;  // B2B 직거래는 플랫폼 수수료 없음
   if (p.includes('톡딜')) return 0.033;  // 카카오톡딜 판매수수료 3.3%
+  if (p.includes('네이버')) return 0.07;  // 네이버 판매수수료 약 7% (러프)
   return 0.12;
 }
 const LS_PRODUCT_ALIASES = 'yb_product_aliases';
