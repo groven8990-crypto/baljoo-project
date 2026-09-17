@@ -2137,27 +2137,39 @@ async function _sbSyncExpHist() {
     const local = loadExpHist();
     const deletedKeys = new Set(JSON.parse(localStorage.getItem(LS_EXP_DELETED)||'[]'));
     const existingKeys = new Set(local.map(d => (d.date||'')+'|'+(d.vendor||'')+'|'+(d.total||0)));
-    const existingIds  = new Set(local.map(d => d.id));
-    let added = 0;
+    const byId = new Map(local.map((d,i) => [d.id, i]));
+    let added = 0, updated = 0;
     for (const row of rows) {
       const rec = row.data;
       if (!rec) continue;
       const recId = rec.id || row.id;
       const key = (rec.date||'')+'|'+(rec.vendor||'')+'|'+(rec.total||0);
       if (deletedKeys.has(key)) continue;
-      if (existingIds.has(recId)) continue;
+      if (!rec.id) rec.id = recId;
+      if (byId.has(recId)) {
+        // 이미 있는 기록 — 다른 컴퓨터에서 송금완료/증빙체크 등을 바꿨으면 최신 내용으로 갱신
+        // (예전엔 여기서 그냥 건너뛰어서, 다른 컴퓨터의 송금확인 토글이 반영 안 되는 문제가 있었음)
+        const idx = byId.get(recId);
+        if (JSON.stringify(local[idx]) !== JSON.stringify(rec)) {
+          local[idx] = rec;
+          updated++;
+        }
+        continue;
+      }
       if (existingKeys.has(key)) continue;
       existingKeys.add(key);
-      existingIds.add(recId);
-      if (!rec.id) rec.id = recId;
+      byId.set(recId, local.length);
       local.push(rec);
       added++;
     }
-    if (added > 0) {
+    if (added > 0 || updated > 0) {
       local.sort((a,b) => (b.date||'') < (a.date||'') ? -1 : (b.date||'') > (a.date||'') ? 1 : 0);
       saveExpHist(local);
       renderExpHistList();
-      _poShowToast('☁️ ' + added + '건 동기화됐어요');
+      const parts = [];
+      if (added)   parts.push(added + '건 추가');
+      if (updated) parts.push(updated + '건 갱신');
+      _poShowToast('☁️ ' + parts.join(' · ') + '됐어요');
     }
   } catch(e) { console.warn('[SB] sync exp_hist error:', e); }
 }
@@ -10018,7 +10030,27 @@ function switchExpSubTab(name) {
   }
   if (name === 'bank')  { _sbSyncBankInfo().then(()=>renderBankList()).catch(()=>renderBankList()); }
   if (name === 'write') expSheetInitUi();
+  _expListAutoSyncSetActive(name === 'list');
 }
+
+// 지출결의서 작성이력을 보고 있는 동안엔, 재동기화 버튼을 누르지 않아도 다른 컴퓨터에서
+// 방금 누른 송금완료/증빙 체크가 자동으로 반영되게 함 (Supabase 개별 upsert라 안전하게 병합됨).
+// 이 화면을 안 보고 있을 땐 쓸데없이 계속 요청하지 않도록 인터벌을 꺼둠.
+let _expListAutoSyncActive = false;
+let _expListAutoSyncTimer  = null;
+function _expListAutoSyncSetActive(active) {
+  _expListAutoSyncActive = active;
+  if (_expListAutoSyncTimer) { clearInterval(_expListAutoSyncTimer); _expListAutoSyncTimer = null; }
+  if (active) {
+    _expListAutoSyncTimer = setInterval(() => { if (!document.hidden) _sbSyncExpHist().catch(()=>{}); }, 20000);
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && _expListAutoSyncActive) _sbSyncExpHist().catch(()=>{});
+});
+window.addEventListener('focus', () => {
+  if (_expListAutoSyncActive) _sbSyncExpHist().catch(()=>{});
+});
 
 function setExpCoFilter(co) {
   _expCoFilter = co;
