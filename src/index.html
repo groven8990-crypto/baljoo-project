@@ -5887,6 +5887,7 @@ function _buildSendConfirmHtml(vendorName){
         <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6">${escHtml(rd.recv_name)}</td>
         <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;color:#374151;max-width:160px;word-break:break-word">${escHtml(rd.src_product||'-')}</td>
         <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;color:#6B7280;max-width:140px;word-break:break-word">${escHtml(rd.src_select||'-')}</td>
+        <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;color:#0E7490;max-width:160px;word-break:break-word">${escHtml(rd.src_disp||'-')}</td>
         <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">${rd.src_qty}</td>
         <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;max-width:160px;word-break:break-word">${escHtml((rd.dst_item+' '+rd.dst_opt).trim()||'-')}</td>
         <td style="padding:4px 6px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">${rd.dst_qty!=null?rd.dst_qty:'-'}</td>
@@ -5901,12 +5902,13 @@ function _buildSendConfirmHtml(vendorName){
             <th style="padding:5px 6px;text-align:left">받는사람</th>
             <th style="padding:5px 6px;text-align:left">원본 상품명</th>
             <th style="padding:5px 6px;text-align:left">선택사항</th>
+            <th style="padding:5px 6px;text-align:left">노출상품명(쿠팡)</th>
             <th style="padding:5px 6px;text-align:right;white-space:nowrap">주문<br>수량</th>
             <th style="padding:5px 6px;text-align:left">발주서 품목/옵션</th>
             <th style="padding:5px 6px;text-align:right;white-space:nowrap">발주<br>수량</th>
             <th style="padding:5px 6px;text-align:left">이상</th>
           </tr></thead>
-          <tbody>${rowsHtml || `<tr><td colspan="7" style="padding:10px;text-align:center;color:var(--text3)">주문 없음</td></tr>`}</tbody>
+          <tbody>${rowsHtml || `<tr><td colspan="8" style="padding:10px;text-align:center;color:var(--text3)">주문 없음</td></tr>`}</tbody>
         </table>
         </div>
       </div>`;
