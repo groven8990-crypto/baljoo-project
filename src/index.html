@@ -15623,22 +15623,26 @@ function reconExportXlsx() {
       <p style="font-size:13px;color:var(--text2);margin:8px 0 0">
         구글시트는 자동 기록만 해줄 뿐, 장부(매입란)에 옮겨 적는 건 사람이 해야 해요. 실무에서 쓰는 방법:
         ① 작성 이력 탭의 <b>"📥 Excel 내보내기"</b>를 누르면 장부 매입 시트와 같은 열 순서로 정리된 엑셀이
-        바로 다운로드돼요(사업자명이 O열에 추가로 붙어 나옴). ② 그 엑셀에서 헤더 행을 클릭한 다음
+        바로 다운로드돼요(시트 이름 "매입", O열에 사업자명 추가). ② 헤더 행을 클릭한 다음
         <b>"정렬 및 필터"</b>로 필터를 켜고 O열 "사업자명"을 그로븐/옐로우브릿지로 필터링. ③ 필터링된
         내용을 복사해서 그로븐은 그로븐 장부, 옐로우브릿지는 옐로우브릿지 장부의 "매입" 시트에 붙여넣으면 끝.
       </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
         <div>
           <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/exphist-export-btn.png" alt="① Excel 내보내기 클릭" style="width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
           <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:4px">① "Excel 내보내기" 클릭</div>
         </div>
         <div>
-          <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/exphist-export-filter.png" alt="② 헤더 행 클릭 후 정렬 및 필터로 사업자명 필터링" style="width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
-          <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:4px">② 헤더 행 클릭 → "정렬 및 필터" → 사업자명(O열) 필터링<br><span style="color:var(--warn)">(사진은 필터 걸기 전 예시)</span></div>
+          <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/exphist-export-sheet.png" alt="내려받은 엑셀 — 시트명 매입, O열 사업자명" style="width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
+          <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:4px">② 내려받은 엑셀 확인 — 시트명 "매입", O열 "사업자명"</div>
         </div>
         <div>
-          <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/exphist-ledger-yb.png" alt="③ 필터링한 내용을 옐로우브릿지 장부 매입 시트에 붙여넣기" style="width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
-          <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:4px">③ 그로븐/옐로우브릿지 장부 "매입" 시트에 붙여넣기</div>
+          <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/exphist-export-filter.png" alt="헤더 행 클릭 후 정렬 및 필터로 사업자명 필터링" style="width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
+          <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:4px">③ 헤더 행 클릭 → "정렬 및 필터" → 사업자명(O열) 필터링<br><span style="color:var(--warn)">(사진은 필터 걸기 전 예시)</span></div>
+        </div>
+        <div>
+          <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/exphist-ledger-yb.png" alt="필터링한 내용을 옐로우브릿지 장부 매입 시트에 붙여넣기" style="width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
+          <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:4px">④ 그로븐/옐로우브릿지 장부 "매입" 시트에 붙여넣기</div>
         </div>
       </div>
       <div class="alert alert-info" style="margin-top:10px">
