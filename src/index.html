@@ -15622,11 +15622,29 @@ function reconExportXlsx() {
       <b style="font-size:12px;margin-top:12px;display:inline-block">장부에 옮겨 적는 실제 방법 (지출결의서만)</b>
       <p style="font-size:13px;color:var(--text2);margin:8px 0 0">
         구글시트는 자동 기록만 해줄 뿐, 장부(매입란)에 옮겨 적는 건 사람이 해야 해요. 실무에서 쓰는 방법:
-        작성 이력 탭의 <b>"📥 Excel 내보내기"</b>를 누르면 장부 매입 시트와 같은 열 순서로 정리된 엑셀이
-        바로 다운로드돼요(사업자명이 O열에 추가로 붙어 나옴). 그 엑셀에서 O열 "사업자명"으로 필터를 걸어서,
-        그로븐 항목은 그로븐 장부의 "매입" 시트에, 옐로우브릿지 항목은 옐로우브릿지 장부의 "매입" 시트에
-        옮겨 적으면 끝.
+        ① 작성 이력 탭의 <b>"📥 Excel 내보내기"</b>를 누르면 장부 매입 시트와 같은 열 순서로 정리된 엑셀이
+        바로 다운로드돼요(사업자명이 O열에 추가로 붙어 나옴). ② 그 엑셀에서 헤더 행을 클릭한 다음
+        <b>"정렬 및 필터"</b>로 필터를 켜고 O열 "사업자명"을 그로븐/옐로우브릿지로 필터링. ③ 필터링된
+        내용을 복사해서 그로븐은 그로븐 장부, 옐로우브릿지는 옐로우브릿지 장부의 "매입" 시트에 붙여넣으면 끝.
       </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
+        <div>
+          <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/exphist-export-btn.png" alt="① Excel 내보내기 클릭" style="width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
+          <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:4px">① "Excel 내보내기" 클릭</div>
+        </div>
+        <div>
+          <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/exphist-export-filter.png" alt="② 헤더 행 클릭 후 정렬 및 필터로 사업자명 필터링" style="width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
+          <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:4px">② 헤더 행 클릭 → "정렬 및 필터" → 사업자명(O열) 필터링<br><span style="color:var(--warn)">(사진은 필터 걸기 전 예시)</span></div>
+        </div>
+        <div>
+          <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/exphist-ledger-yb.png" alt="③ 필터링한 내용을 옐로우브릿지 장부 매입 시트에 붙여넣기" style="width:100%;border-radius:8px;border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.06)">
+          <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:4px">③ 그로븐/옐로우브릿지 장부 "매입" 시트에 붙여넣기</div>
+        </div>
+      </div>
+      <div class="alert alert-info" style="margin-top:10px">
+        💡 붙여넣기 전에 정렬해두면 편해요 — 먼저 <b>"일"</b> 오름차순으로 한 번 정렬하고, 이어서 <b>"월"</b>
+        오름차순으로 한 번 더 정렬하면 날짜 순서대로 정리돼서 이어 붙여넣기 쉬워요.
+      </div>
       <div class="alert alert-warn" style="margin-top:12px">
         ⚠ 입금결의서에는 <b>재무회계과 MEMO</b> 칸이 미리보기 오른쪽에 추가로 있어요(지출결의서엔 없음).
         Supabase 프로젝트 URL/키가 코드에 하드코딩돼있고 테이블 RLS(행 단위 접근 제어)가 꺼져있는
