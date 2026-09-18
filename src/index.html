@@ -15247,12 +15247,12 @@ function reconExportXlsx() {
     </div>
     <div id="srDinetteGmailList" style="margin-bottom:10px"></div>
     <div class="upload-zone" id="srDinetteZone" onclick="document.getElementById('srDinetteFile').click()"
+         style="padding:10px 16px;display:flex;align-items:center;gap:8px;text-align:left"
          ondragover="event.preventDefault();this.classList.add('dragover')"
          ondragleave="this.classList.remove('dragover')"
          ondrop="srDropDinette(event)">
-      <div style="font-size:24px;margin-bottom:4px">🐟</div>
-      <div style="font-weight:600;margin-bottom:2px">또는 그로븐_발주-디네트.xlsx 직접 끌어다 놓거나 클릭</div>
-      <div style="font-size:11px;color:var(--text3)">둘 다 없으면 디네트 없이 보고서 만들어요</div>
+      <span style="font-size:16px;flex-shrink:0">🐟</span>
+      <span style="font-size:12.5px;color:var(--text2)"><b>또는</b> 그로븐_발주-디네트.xlsx 직접 끌어다 놓거나 클릭 <span style="color:var(--text3)">— 둘 다 없으면 디네트 없이 보고서 만들어요</span></span>
       <input type="file" id="srDinetteFile" accept=".xls,.xlsx" style="display:none" onchange="srLoadDinette(this.files[0]); this.value='';">
     </div>
     <div id="srDinetteInfo" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
@@ -15665,6 +15665,13 @@ function reconExportXlsx() {
         <li><b>💲 매출금액 직접 지정</b> — 특정 판매자상품코드(+선택적으로 별칭)의 매출액을 고정값으로 덮어씀. 쿠팡처럼 쿠폰 할인이 원본 파일에 안 잡히는 경우에 사용.</li>
         <li><b>✏️ 수동 이력 추가</b> — 자동 파이프라인을 못 쓰는 날을 위한 수기 입력 모달. 구글 Cloud Vision API로 보고서 스크린샷에서 숫자를 자동으로 읽어올 수 있음(사용자가 API 키 직접 등록 필요).</li>
       </ul>
+      <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/dinette-upload-card.png" alt="디네트 발주서 업로드 카드 — Gmail 검색 + 파일 업로드" style="width:100%;border-radius:8px;border:1px solid var(--border);margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
+      <div class="alert alert-info" style="margin-bottom:12px">
+        💰 <b>디네트 판매가가 바뀌면?</b> 위 카드의 "▶ 💡 디네트 판매단가 / 계산법"을 펼쳐서 바뀐 단가를
+        직접 입력하세요(빈칸으로 두면 기본값 사용, 입력하면 자동 저장). 코드를 고칠 필요 없이 여기서
+        바로 바뀐 판매가·배송비·추가할인을 반영할 수 있어요.
+      </div>
+      <img src="https://raw.githubusercontent.com/groven8990-crypto/baljoo-project/main/src/guide/dinette-price-panel.png" alt="디네트 판매단가 / 계산법 펼친 화면" style="width:100%;border-radius:8px;border:1px solid var(--border);margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06)">
       <div class="alert alert-warn">
         ⚠ 저장 버튼이 두 개, 역할이 다름 — "💾 이력에 저장"은 <b>주간 매출·매입 탭에 누적</b>되는 것이고,
         "🖼 이미지(PNG) 저장"은 그냥 그림 파일 다운로드예요. <b>이미지만 저장하면 주간 합산에는 안
