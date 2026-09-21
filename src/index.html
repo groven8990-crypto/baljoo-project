@@ -5091,7 +5091,7 @@ function gmailEnsureTokenClient(){
   }
   const cid = gmailGetClientId();
   if (!cid) {
-    alert('먼저 Gmail OAuth Client ID 를 등록해 주세요. (설정 패널)');
+    alert('먼저 Gmail OAuth Client ID 를 등록해 주세요.\n(⚙️ 코드 관리 → 📧 Gmail 자동발송)');
     return false;
   }
   _gmailTokenClient = google.accounts.oauth2.initTokenClient({
