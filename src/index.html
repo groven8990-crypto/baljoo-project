@@ -17412,6 +17412,7 @@ function srAggregate(orders){
   const platMap={},prodMap={};let totalSales=0;
   // B2B(문자주문 등)로 등록된 주문 — 일반 플랫폼/제품 표에서 빼고 별도 집계 (디네트처럼 구분 표시)
   const b2bMap={};  // key = 거래처명 ('B2B-' 접두어 제거)
+  const _b2bPurchaseDb = (typeof srLoadPurchaseDB === 'function') ? srLoadPurchaseDB() : {};
   let regCount=0, regSales=0;
   // 깐마늘 전용 상세: 플랫폼(쿠팡/스마트스토어 등) × 옵션 단위 집계
   const garlicMap = {};  // key = platformLabel + '||' + option
@@ -17419,8 +17420,15 @@ function srAggregate(orders){
     const amt=(typeof _srSalesAmt==='function')?_srSalesAmt(o):(Number(o.order_amt)||0);totalSales+=amt;
     if (_srIsManualB2B(o)) {
       const bn = String(o.shop_mall).replace(/^B2B-/,'').trim() || '미지정';
-      if(!b2bMap[bn])b2bMap[bn]={count:0,sales:0};
+      if(!b2bMap[bn])b2bMap[bn]={count:0,sales:0,purchase:0};
       b2bMap[bn].count++;b2bMap[bn].sales+=amt;
+      // 순마진 표시용 매입가 — "✍️ 기타 B2B 거래처 수기 입력"의 "+ 추가" 버튼이 계산하는 것과
+      // 동일한 방식(개당 매입단가 × 수량)으로 계산. 합배송/박스 단위 계산까지는 안 함(단순 근사)
+      try {
+        const key = (typeof srPurchaseKey === 'function' ? srPurchaseKey(o) : '') + '|b2b:' + bn;
+        const unit = Number((_b2bPurchaseDb[key]||{}).unit) || 0;
+        b2bMap[bn].purchase += unit * (Number(o.qty)||1) * (Number(o.code_qty)||1);
+      } catch(e){}
       continue;
     }
     regCount++; regSales+=amt;
@@ -17571,33 +17579,41 @@ function srBrandSection(title, color, agg, opts){
     ${srB2BDetailHtml(agg)}
     ${srGarlicDetailHtml(agg, color)}`;
 }
-// B2B(문자주문 등으로 등록된) 매출 — 일반 플랫폼 표와 분리해서 거래처별로 표시
+// B2B(문자주문 등으로 등록된) 매출 — 일반 플랫폼 표와 분리해서 거래처별로 표시, 순마진(매출-매입)도 같이 보여줌
 function srB2BDetailHtml(agg){
   const map = agg.b2bMap || {};
   const entries = Object.entries(map).sort((a,b)=>b[1].sales-a[1].sales);
   if (entries.length === 0) return '';
   const HEAD_BG='#F1F5F9', HEAD_FG='#334155';
-  const total = entries.reduce((s,[,v])=>({count:s.count+v.count, sales:s.sales+v.sales}), {count:0,sales:0});
-  const rows = entries.map(([name,v],i)=>`
+  const total = entries.reduce((s,[,v])=>({count:s.count+v.count, sales:s.sales+v.sales, purchase:s.purchase+(v.purchase||0)}), {count:0,sales:0,purchase:0});
+  const rows = entries.map(([name,v],i)=>{
+    const purchase = v.purchase||0;
+    const margin = v.sales - purchase;
+    return `
     <tr style="background:${i%2===0?'#FFF7ED':'#FFEFDC'}">
       <td style="padding:8px 14px;border-bottom:1px solid #F5DEC0;color:#7B4B00">${escHtml(name)}</td>
       <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #F5DEC0;color:#7B4B00">${v.count.toLocaleString()}건</td>
       <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #F5DEC0;color:#7B4B00">${v.sales.toLocaleString()}원</td>
-    </tr>`).join('');
+      <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #F5DEC0;color:${margin<0?'#DC2626':'#166534'};font-weight:600">${margin.toLocaleString()}원</td>
+    </tr>`;
+  }).join('');
+  const totalMargin = total.sales - total.purchase;
   return `
     <div style="background:#FDF0E0;color:#7B4B00;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #E8A54B">🏭 B2B 매출 (문자주문 등)</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FFF7ED">
-      <colgroup><col style="width:50%"><col style="width:22%"><col style="width:28%"></colgroup>
+      <colgroup><col style="width:34%"><col style="width:18%"><col style="width:24%"><col style="width:24%"></colgroup>
       <thead><tr style="background:#F5DEC0">
         <th style="padding:8px 14px;text-align:left;color:#7B4B00;font-weight:700">거래처</th>
         <th style="padding:8px 14px;text-align:right;color:#7B4B00;font-weight:700">주문건수</th>
         <th style="padding:8px 14px;text-align:right;color:#7B4B00;font-weight:700">매출액</th>
+        <th style="padding:8px 14px;text-align:right;color:#7B4B00;font-weight:700">순마진</th>
       </tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr style="background:#F0DBBE;font-weight:700">
         <td style="padding:8px 14px;color:#7B4B00">합계</td>
         <td style="padding:8px 14px;text-align:right;color:#7B4B00">${total.count.toLocaleString()}건</td>
         <td style="padding:8px 14px;text-align:right;color:#7B4B00">${total.sales.toLocaleString()}원</td>
+        <td style="padding:8px 14px;text-align:right;color:${totalMargin<0?'#DC2626':'#166534'}">${totalMargin.toLocaleString()}원</td>
       </tr></tfoot>
     </table>`;
 }
@@ -18449,7 +18465,7 @@ function srRender(){
   const totalSales = selfSales + dnAgg.sales + gcAgg.sales;
   const totalCnt   = selfCnt + dnAgg.count + gcAgg.count;
   // B2B 매출 합계 — 디네트/그린켐(전용 업로드) + 문자주문 등으로 등록된 B2B (그로븐/옐로우브릿지에 이미 포함된 매출을 별도 표시용으로 합산)
-  const _b2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales}),{count:0,sales:0});
+  const _b2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales,purchase:s.purchase+(v.purchase||0)}),{count:0,sales:0,purchase:0});
   const _manualB2b = (()=>{ const g=_b2bTotals(grAgg.b2bMap), y=_b2bTotals(ybAgg.b2bMap); return {count:g.count+y.count, sales:g.sales+y.sales}; })();
   const b2bSales = dnAgg.sales + gcAgg.sales + _manualB2b.sales;
   const b2bCnt   = dnAgg.count + gcAgg.count + _manualB2b.count;
@@ -20349,9 +20365,10 @@ function wrMergeAggs(snaps, brandKey){
       prodMap[p].sales += v.sales||0;
     }
     for (const [n,v] of Object.entries(a.b2bMap||{})) {
-      if (!b2bMap[n]) b2bMap[n] = {count:0,sales:0};
+      if (!b2bMap[n]) b2bMap[n] = {count:0,sales:0,purchase:0};
       b2bMap[n].count += v.count||0;
       b2bMap[n].sales += v.sales||0;
+      b2bMap[n].purchase += v.purchase||0;
     }
   }
   return {totalSales, count, platMap, prodMap, b2bMap, regSales, regCount};
@@ -20489,7 +20506,7 @@ function wrRender(){
   const totalSales = selfSales + dnAgg.sales + gcAgg.sales;
   const totalCnt   = selfCnt + dnAgg.count + gcAgg.count;
   // B2B 매출 합계 — 디네트/그린켐(전용 업로드) + 문자주문 등으로 등록된 B2B
-  const _wrB2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales}),{count:0,sales:0});
+  const _wrB2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales,purchase:s.purchase+(v.purchase||0)}),{count:0,sales:0,purchase:0});
   const _wrManualB2b = (()=>{ const g=_wrB2bTotals(grAgg.b2bMap), y=_wrB2bTotals(ybAgg.b2bMap); return {count:g.count+y.count, sales:g.sales+y.sales}; })();
   const b2bSales = dnAgg.sales + gcAgg.sales + _wrManualB2b.sales;
   const b2bCnt   = dnAgg.count + gcAgg.count + _wrManualB2b.count;
