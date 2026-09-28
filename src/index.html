@@ -15406,8 +15406,8 @@ function reconExportXlsx() {
     </details>
   </div>
   <div class="card">
-    <div class="card-title">🌿 그린켐 발주서 (박대) 업로드 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택</span></div>
-    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">디네트와 같은 형식(규격 D열에 <code>4p</code> / <code>3p</code> / <code>2p+</code> / <code>p+</code>, 수량 E열)의 발주 엑셀이에요. 판매가는 그린켐 납품단가표 기준 고정가(4P 5개 5,500원·10개 10,500원 / 3P 5개 7,000원·10개 14,000원 / 2P+ 8개 16,000원·10개 20,000원 / P+ 8개 22,000원·10개 27,300원)로 자동 계산되고, 아래 📦 매입/순이익에서 일비 매입단가를 입력하면 그 차이로 순이익까지 계산돼요.</div>
+    <div class="card-title">🌿 그린켐 발주서 업로드 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택</span></div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">그린켐 주문은 일비 발주서랑 같은 형식(받는분성명/전화번호/주소/품목명/수량 등)이에요. <b>품목명 문장을 그대로 읽어서</b>, 처음 보는 품목이면 판매단가를 한 번 등록해두면 다음부터 같은 문구는 자동으로 그 단가를 써요(코드 관리에서 미확인 코드 등록하는 것과 같은 방식).</div>
     <div class="upload-zone" id="srGrinchemZone" onclick="document.getElementById('srGrinchemFile').click()"
          style="padding:10px 16px;display:flex;align-items:center;gap:8px;text-align:left"
          ondragover="event.preventDefault();this.classList.add('dragover')"
@@ -15418,6 +15418,7 @@ function reconExportXlsx() {
       <input type="file" id="srGrinchemFile" accept=".xls,.xlsx" style="display:none" onchange="srLoadGrinchem(this.files[0]); this.value='';">
     </div>
     <div id="srGrinchemInfo" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+    <div id="grinchemUnregList" style="margin-top:8px"></div>
   </div>
   <div class="card">
     <div class="card-title">✍️ 기타 B2B 거래처 수기 입력 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 엑셀 없이 직접 입력</span></div>
@@ -17903,11 +17904,34 @@ function srClearDinette(){
     srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
   }
 }
-// ─ 그린켐(박대, B2B) — 디네트와 같은 파일 형식이지만 판매가는 고정표가 아니라
-// "일비 매입단가 + 100원"으로 계산됨(마진을 거의 안 남기고 파는 거래처) ─
-// 주의: 식별자를 "Grinchem"으로 지음 — 기존 "그린캠"(별개 발주처, 리뷰주문 분리 기능에서
+// ─ 그린켐(B2B) — 실제로는 일비 발주서와 같은 형식(받는분성명/전화번호/주소/품목명/수량 등)의
+// 발주서라, 규격이 D열에 코드로 딱 들어있지 않고 품목명 문장에 섞여 있음(예: "부세조기
+// 특대형 28cm내외 5미"). 그래서 규격을 정규식으로 추측하지 않고, "코드 관리"의 미확인 코드
+// 등록과 같은 방식으로 — 품목명 문장을 그대로 사전에 등록해서 판매단가를 매핑함.
+// 주의: 식별자를 "Grinchem"으로 지음 — 기존 "그린캠"(별개 발주처, 리뷰주문 분리 기능이
 // srGrincam* 식별자를 이미 쓰고 있음)과 이름이 헷갈려서 겹치면 함수가 서로 덮어써짐
-let srGrinchemRows = null;
+const LS_GRINCHEM_ITEM_PRICE = 'yb_grinchem_item_price';
+function loadGrinchemItemPrices(){ try{ return JSON.parse(localStorage.getItem(LS_GRINCHEM_ITEM_PRICE)||'{}'); }catch{ return {}; } }
+function saveGrinchemItemPrices(m){ try{ localStorage.setItem(LS_GRINCHEM_ITEM_PRICE, JSON.stringify(m||{})); }catch(e){} }
+function _grinchemNormItem(name){ return String(name||'').trim().replace(/\s+/g,' '); }
+// 굴비(부세조기) 실제 납품단가 — "1미에 4천원" 기준으로 계산해서 기본값으로 등록해둠(사용자가 직접
+// 등록한 값이 있으면 덮어쓰지 않음). 다른 품목명(예: 박대)은 아직 없으므로 미등록으로 남아 확인창이 뜸.
+function _srSeedGrinchemDefaultPrices(){
+  const prices = loadGrinchemItemPrices();
+  const defaults = {
+    '부세조기 특대형 28cm내외 5미': 5 * 4000,
+    '부세조기 특대형 28cm내외 3미': 3 * 4000,
+  };
+  let changed = false;
+  for (const [item, price] of Object.entries(defaults)) {
+    const key = _grinchemNormItem(item);
+    if (!prices[key]) { prices[key] = { price, registeredAt: Date.now() }; changed = true; }
+  }
+  if (changed) saveGrinchemItemPrices(prices);
+}
+_srSeedGrinchemDefaultPrices();
+let srGrinchemStagedRows = [];    // 파일에서 읽은 원본 행 전체(재처리에 계속 씀) — {recv_name,recv_phone,addr,item,qty,memo}
+let srGrinchemUnregistered = [];  // 판매단가가 아직 등록 안 된 품목 [{key,item,count,qtySum}]
 let srGrinchemFileName = '';
 function srDropGrinchem(e){
   e.preventDefault();
@@ -17915,15 +17939,52 @@ function srDropGrinchem(e){
   const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
   if (f) srLoadGrinchem(f);
 }
-// 그린켐 납품단가표(박대) — 2026.09.04 기준 실제 납품 단가. 규격별로 정해진 수량(묶음)에서만
-// 가격이 고정돼있고, 매입가(일비)와는 무관한 별도의 고정 판매가임. 정책 바뀌면 이 표를 수정.
-const SR_GRINCHEM_PRICE = {
-  '4p':  { 5: 5500,  10: 10500 },
-  '3p':  { 5: 7000,  10: 14000 },
-  '2p+': { 8: 16000, 10: 20000 },
-  'p+':  { 8: 22000, 10: 27300 },
-};
-const SR_GRINCHEM_LABEL = {'4p':'박대 4P','3p':'박대 3P','2p+':'박대 2P+','p+':'박대 P+'};
+// 그린켐 주문(allOrders에 이미 반영된 것 포함)을 전부 지우고, 현재 등록된 판매단가 사전
+// 기준으로 srGrinchemStagedRows를 처음부터 다시 주문으로 변환 — 새 품목 단가를 등록한
+// 직후에도 그 자리에서 바로 반영되게 함
+function _srProcessGrinchemStaged(){
+  for (let i = allOrders.length - 1; i >= 0; i--) {
+    if (/^그린켐/.test(allOrders[i].order_no||'')) allOrders.splice(i, 1);
+  }
+  const prices = loadGrinchemItemPrices();
+  const unregMap = {};
+  const vendor = (typeof srGetB2BVendor === 'function' ? srGetB2BVendor('그린켐') : '') || '일비';
+  const prefixes = VENDOR_PREFIXES[vendor] || (loadCustomVendors()[vendor]||{}).prefixes || [vendor+']'];
+  let idx = 0;
+  for (const r of srGrinchemStagedRows) {
+    const key = _grinchemNormItem(r.item);
+    if (!key) continue;
+    const saved = prices[key];
+    if (!saved || !saved.price) {
+      if (!unregMap[key]) unregMap[key] = { key, item: r.item, count:0, qtySum:0 };
+      unregMap[key].count++;
+      unregMap[key].qtySum += r.qty;
+      continue;
+    }
+    const order = {
+      vendor_code: prefixes[0] + r.item, vendor_opt: '', vendor_key: null,
+      alias: '로또상회', alias_raw: '로또상회',
+      shop_mall: 'B2B-그린켐',
+      item_name: r.item, option_name: '',
+      opt_mapped:false, opt_needs_check:false, mapped_code:'', unmatched:false,
+      recv_name: r.recv_name||'', recv_phone: r.recv_phone||'',
+      zip:'', addr: r.addr||'',
+      memo: r.memo||'',
+      product: r.item,
+      select_opt:'', disp_opt:'',
+      qty: r.qty, code_qty:1,
+      order_no: `그린켐${idx++}_`+Date.now(),
+      buyer:'', buyer_phone:'',
+      carrier:'',
+      order_amt: saved.price * r.qty,
+      order_date: _localISO(),
+    };
+    allOrders.push(order);
+  }
+  srGrinchemUnregistered = Object.values(unregMap);
+  totalCount = allOrders.length;
+  rematchAllOrders();
+}
 function srLoadGrinchem(file){
   if (!file) return;
   srGrinchemFileName = file.name;
@@ -17933,18 +17994,26 @@ function srLoadGrinchem(file){
       const wb = XLSX.read(e.target.result, {type:'array'});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''}).slice(1);
-      srGrinchemRows = rows.filter(r => String(r[3]||'').trim().toLowerCase() in SR_GRINCHEM_PRICE);
-      srSeedGrinchemPurchasePrices();
+      // 일비 발주서와 같은 열 순서: A받는분성명 B전화번호 C주소 D품목명 E수량 F배송메세지
+      srGrinchemStagedRows = rows.filter(r => String(r[3]||'').trim()).map(r => ({
+        recv_name: String(r[0]||'').trim(),
+        recv_phone: String(r[1]||'').trim(),
+        addr: String(r[2]||'').trim(),
+        item: String(r[3]||'').trim(),
+        qty: parseInt(r[4]) || 1,
+        memo: String(r[5]||'').trim(),
+      }));
+      _srProcessGrinchemStaged();
       const info = document.getElementById('srGrinchemInfo');
-      const valid = srGrinchemRows.length;
-      info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(file.name)} — ${valid}건 인식</span> <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">제거</button>`;
+      const unregCount = srGrinchemUnregistered.reduce((s,u)=>s+u.count,0);
+      const converted = srGrinchemStagedRows.length - unregCount;
+      info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(file.name)} — ${srGrinchemStagedRows.length}건 중 ${converted}건 반영</span>${srGrinchemUnregistered.length ? ` <span style="color:var(--warn)">· 품목 ${srGrinchemUnregistered.length}개 단가 미등록(아래에서 등록)</span>` : ''} <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">제거</button>`;
+      renderGrinchemUnregisteredList();
       const rpt = document.getElementById('srReport');
       if (rpt && rpt.innerHTML.trim()) {
         srRender();
         if (_srLastSnapshot && srLoadHistory().some(s => s.date === _srLastSnapshot.date)) {
           srSaveSnapshot(_srLastSnapshot);
-          const statusEl = document.getElementById('srStatus');
-          if (statusEl) statusEl.innerHTML += ' <span style="color:var(--text3);font-size:11px">· 그린켐 포함 이력 자동 갱신됨</span>';
         }
       } else {
         srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
@@ -17956,8 +18025,14 @@ function srLoadGrinchem(file){
   reader.readAsArrayBuffer(file);
 }
 function srClearGrinchem(){
-  srGrinchemRows = null; srGrinchemFileName = '';
+  for (let i = allOrders.length - 1; i >= 0; i--) {
+    if (/^그린켐/.test(allOrders[i].order_no||'')) allOrders.splice(i, 1);
+  }
+  totalCount = allOrders.length;
+  rematchAllOrders();
+  srGrinchemStagedRows = []; srGrinchemUnregistered = []; srGrinchemFileName = '';
   document.getElementById('srGrinchemInfo').innerHTML = '';
+  renderGrinchemUnregisteredList();
   const rpt = document.getElementById('srReport');
   if (rpt && rpt.innerHTML.trim()) {
     srRender();
@@ -17965,75 +18040,40 @@ function srClearGrinchem(){
     srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
   }
 }
-// 납품단가표에서 규격+수량으로 정확히 찾은 가격을 씀. 표에 없는 수량(예: 15개 등 변칙 수량)이
-// 들어오면, 그 규격의 가장 작은 기준 수량의 개당 단가로 비례 계산(근사치) — 실제로는 거의 항상
-// 표에 있는 수량으로만 주문이 들어오므로 fallback이 쓰일 일은 드묾
-function srGrinchemPrice(spec, qty){
-  const table = SR_GRINCHEM_PRICE[spec];
-  if (!table) return 0;
-  qty = Number(qty) || 0;
-  if (table[qty] != null) return table[qty];
-  const tiers = Object.keys(table).map(Number).sort((a,b)=>a-b);
-  const base = tiers[0];
-  const perUnit = table[base] / base;
-  return Math.round(perUnit * qty);
+// 처음 보는 품목명 — 판매단가 입력창을 보여주고, 등록하면 대기 중이던 행들을 그 자리에서
+// 바로 주문으로 변환(재업로드 필요 없음)
+function renderGrinchemUnregisteredList(){
+  const el = document.getElementById('grinchemUnregList');
+  if (!el) return;
+  if (!srGrinchemUnregistered.length) { el.innerHTML = ''; return; }
+  const rows = srGrinchemUnregistered.map((u,i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #FBBF24;background:#FFFBEB;border-radius:6px;margin-bottom:4px;font-size:12px">
+      <span style="flex:1;color:#92400E">${escHtml(u.item)} <span style="color:var(--text3)">(${u.count}건, 총 ${u.qtySum}개)</span></span>
+      <input type="number" min="0" id="grinchemPriceInput_${i}" placeholder="이 품목 판매단가(1건당)" style="width:150px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
+      <button class="btn btn-sm btn-primary" onclick="registerGrinchemItemPrice(${i})">등록</button>
+    </div>`).join('');
+  el.innerHTML = `<div style="font-size:11px;color:#92400E;font-weight:600;margin-bottom:4px">⚠ 처음 보는 품목 — 판매단가 등록 필요 (${srGrinchemUnregistered.length}개)</div>${rows}`;
 }
-function srAggregateGrinchem(rows){
-  if (!rows || !rows.length) return {count:0, sales:0, byCfg:{}};
-  let sales = 0;
-  const byCfg = {};
-  for (const r of rows) {
-    const spec = String(r[3]||'').trim().toLowerCase();
-    if (!(spec in SR_GRINCHEM_PRICE)) continue;
-    const qty = parseInt(r[4]) || Object.keys(SR_GRINCHEM_PRICE[spec]).map(Number)[0];
-    const price = srGrinchemPrice(spec, qty);
-    sales += price;
-    if (!byCfg[spec]) byCfg[spec] = {count:0, sales:0, qty:0};
-    byCfg[spec].count++;
-    byCfg[spec].sales += price;
-    byCfg[spec].qty += qty;
+function registerGrinchemItemPrice(i){
+  const u = srGrinchemUnregistered[i];
+  if (!u) return;
+  const priceInput = document.getElementById('grinchemPriceInput_'+i);
+  const price = Math.max(0, parseInt(priceInput?.value||'0')||0);
+  if (!price) { alert('판매단가를 입력해주세요.'); return; }
+  const prices = loadGrinchemItemPrices();
+  prices[u.key] = { price, registeredAt: Date.now() };
+  saveGrinchemItemPrices(prices);
+  _srProcessGrinchemStaged();
+  const info = document.getElementById('srGrinchemInfo');
+  if (info) {
+    const unregCount = srGrinchemUnregistered.reduce((s,x)=>s+x.count,0);
+    const converted = srGrinchemStagedRows.length - unregCount;
+    info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(srGrinchemFileName)} — ${srGrinchemStagedRows.length}건 중 ${converted}건 반영</span>${srGrinchemUnregistered.length ? ` <span style="color:var(--warn)">· 품목 ${srGrinchemUnregistered.length}개 단가 미등록(아래에서 등록)</span>` : ''} <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">제거</button>`;
   }
-  return {count: rows.length, sales, byCfg};
-}
-// 그린켐용 일비 매입단가(개당) — 실제 매입가 기준. 매입/순이익 화면에서 사용자가 직접
-// 고치면 그 값이 우선되고, 한 번도 값이 없을 때만(최초 1회) 이 기본값으로 채워짐.
-// 2P/P 규격은 일비 매입가는 있지만 그린켐 판매단가표엔 없어서(=그린켐에 안 팔림) 여기서 제외.
-const SR_GRINCHEM_COST_SEED = { '4p': 1000, '3p': 1300, '2p+': 1900, 'p+': 2600 };
-function srSeedGrinchemPurchasePrices(){
-  try {
-    const db = srLoadPurchaseDB();
-    const supplier = srGetB2BVendor('그린켐') || '일비';
-    let changed = false;
-    for (const [spec, unit] of Object.entries(SR_GRINCHEM_COST_SEED)) {
-      const key = ['그로븐', supplier, '박대', spec.toUpperCase(), 'b2b:그린켐'].join('|');
-      if (!db[key] || !db[key].unit) {
-        db[key] = Object.assign({}, db[key], { unit });
-        changed = true;
-      }
-    }
-    if (changed) srSavePurchaseDB(db);
-  } catch(e) { console.warn('그린켐 매입단가 기본값 등록 실패:', e); }
-}
-function srGrinchemSection(agg){
-  if (!agg || agg.count === 0) return '';
-  const GC='#166534', HEAD_BG='#F1F5F9', HEAD_FG='#334155';
-  return `
-    <div style="background:${GC};color:#fff;padding:8px 14px;margin-top:18px;font-weight:700;font-size:13px;border-radius:4px 4px 0 0">B2B업체 (그린켐)</div>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">
-      <colgroup><col style="width:50%"><col style="width:22%"><col style="width:28%"></colgroup>
-      <thead><tr style="background:${HEAD_BG}">
-        <th style="padding:9px 14px;text-align:left;color:${HEAD_FG};font-weight:700">제품</th>
-        <th style="padding:9px 14px;text-align:right;color:${HEAD_FG};font-weight:700">주문건수</th>
-        <th style="padding:9px 14px;text-align:right;color:${HEAD_FG};font-weight:700">매출액</th>
-      </tr></thead>
-      <tbody>
-        <tr style="background:#fff">
-          <td style="padding:10px 14px;border-bottom:1px solid #eee">박대</td>
-          <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${agg.count.toLocaleString()}건</td>
-          <td style="padding:10px 14px;text-align:right;border-bottom:1px solid #eee">${agg.sales.toLocaleString()}원</td>
-        </tr>
-      </tbody>
-    </table>`;
+  renderGrinchemUnregisteredList();
+  const rpt = document.getElementById('srReport');
+  if (rpt && rpt.innerHTML.trim()) srRender();
+  else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
 }
 // ─ 디네트 발주서를 Gmail에서 검색해서 바로 업로드 (송장입력 탭의 Gmail 검색과 같은 방식) ─
 // 발신자/제목/파일명 중 디네트 발신 키워드(설정: 코드 관리 → Gmail 자동발송 설정 → 디네트 발주서 자동첨부)가
@@ -18493,16 +18533,15 @@ function srRender(){
   const yb=allOrders.filter(o=>srBrand(o.alias)==='yb');
   const grAgg=srAggregate(gr), ybAgg=srAggregate(yb);
   const dnAgg=srAggregateDinette(srDinetteRows);
-  const gcAgg=srAggregateGrinchem(srGrinchemRows);
   const selfSales = grAgg.totalSales + ybAgg.totalSales;
   const selfCnt   = grAgg.count + ybAgg.count;
-  const totalSales = selfSales + dnAgg.sales + gcAgg.sales;
-  const totalCnt   = selfCnt + dnAgg.count + gcAgg.count;
-  // B2B 매출 합계 — 디네트/그린켐(전용 업로드) + 문자주문 등으로 등록된 B2B (그로븐/옐로우브릿지에 이미 포함된 매출을 별도 표시용으로 합산)
+  const totalSales = selfSales + dnAgg.sales;
+  const totalCnt   = selfCnt + dnAgg.count;
+  // B2B 매출 합계 — 디네트(전용 업로드) + 문자주문/그린켐 등으로 등록된 B2B (그로븐/옐로우브릿지에 이미 포함된 매출을 별도 표시용으로 합산)
   const _b2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales,purchase:s.purchase+(v.purchase||0)}),{count:0,sales:0,purchase:0});
   const _manualB2b = (()=>{ const g=_b2bTotals(grAgg.b2bMap), y=_b2bTotals(ybAgg.b2bMap); return {count:g.count+y.count, sales:g.sales+y.sales}; })();
-  const b2bSales = dnAgg.sales + gcAgg.sales + _manualB2b.sales;
-  const b2bCnt   = dnAgg.count + gcAgg.count + _manualB2b.count;
+  const b2bSales = dnAgg.sales + _manualB2b.sales;
+  const b2bCnt   = dnAgg.count + _manualB2b.count;
   // 보고일자
   let dateStr=document.getElementById('srReportDate').value;
   if(!dateStr){
@@ -18538,7 +18577,6 @@ function srRender(){
       <div id="srGrobnSection">${srBrandSection('그로븐 (로또상회)', '#1E3A5F', grAgg)}</div>
       <div id="srYbSection">${srBrandSection('옐로우브릿지 (자꾸가게)', '#3A1E5F', ybAgg)}</div>
       <div id="srDinetteSection">${srDinetteSection(dnAgg)}</div>
-      <div id="srGrinchemSection">${srGrinchemSection(gcAgg)}</div>
       <div style="margin-top:18px;font-size:10px;color:#888;text-align:right">발주일자 ${dateStr} 기준 · 발주 자동화 시스템</div>
     </div>`;
   document.getElementById('srReport').innerHTML=html;
@@ -18559,7 +18597,7 @@ function srRender(){
   // 미리보기만 — 이력 저장은 사용자가 명시적으로 💾 이력에 저장 눌러야 함
   _srLastSnapshot = {
     date: dateStr,
-    grAgg, ybAgg, dnAgg, gcAgg,
+    grAgg, ybAgg, dnAgg,
     selfSales, selfCnt, totalSales, totalCnt,
     profitRows, profitSummary,
     adTotal, adByBiz,
@@ -18569,7 +18607,7 @@ function srRender(){
   const sumAmt = totalSales > 0 ? '' : ' <span style="color:var(--warn);font-size:11px">(주문금액 0 — AB/AH/AI 컬럼이 다른 위치일 수 있어요)</span>';
   const already = srLoadHistory().some(s => s.date === dateStr);
   const histHint = already ? ' <span style="color:var(--warn);font-size:11px">· 이 날짜는 이미 이력에 있어요 (저장 시 덮어쓰기)</span>' : ' <span style="color:var(--text3);font-size:11px">· 주간에 합산하려면 💾 이력에 저장</span>';
-  statusEl.innerHTML=`<span style="color:var(--success)">✅ 보고서 생성 — 로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건 · 디네트 ${dnAgg.count}건 · 그린켐 ${gcAgg.count}건 · 총 ${totalCnt}건 / 매출 ${totalSales.toLocaleString()}원</span>${histHint}${sumAmt}`;
+  statusEl.innerHTML=`<span style="color:var(--success)">✅ 보고서 생성 — 로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건 · 디네트 ${dnAgg.count}건 · 총 ${totalCnt}건 / 매출 ${totalSales.toLocaleString()}원</span>${histHint}${sumAmt}`;
 }
 let _srLastSnapshot = null;
 
@@ -18839,59 +18877,6 @@ function _srBuildDinetteProfitRows(db){
   }
   return out;
 }
-// 그린켐(박대, B2B) — 디네트와 같은 구조지만 판매가는 "일비 매입단가 + 100원"으로 계산
-function _srBuildGrinchemProfitRows(db){
-  if (!Array.isArray(srGrinchemRows) || srGrinchemRows.length === 0) return [];
-  const supplier = srGetB2BVendor('그린켐') || '일비';
-  const b2bName = '그린켐';
-  const bySpec = {};
-  for (let i = 0; i < srGrinchemRows.length; i++) {
-    const r = srGrinchemRows[i];
-    const spec = String(r[3]||'').trim().toLowerCase();
-    if (!(spec in SR_GRINCHEM_PRICE)) continue;
-    const qty = parseInt(r[4]) || Object.keys(SR_GRINCHEM_PRICE[spec]).map(Number)[0];
-    const price = (typeof srGrinchemPrice==='function') ? srGrinchemPrice(spec, qty) : 0;
-    if (!bySpec[spec]) bySpec[spec] = { orders: [], totalSales: 0 };
-    bySpec[spec].orders.push({
-      recv_name: String(r[0]||'').trim() || '(이름없음)',
-      order_no: `grincam-${spec}-${i}`,
-      qty,
-      units: qty,
-      salesAmt: price
-    });
-    bySpec[spec].totalSales += price;
-  }
-  const out = [];
-  for (const [spec, info] of Object.entries(bySpec)) {
-    const optionDisplay = spec.toUpperCase();
-    const key = ['그로븐', supplier, '박대', optionDisplay, 'b2b:'+b2bName].join('|');
-    const saved = (db || {})[key] || {};
-    out.push({
-      key,
-      brand: '그로븐',
-      vendor: supplier,
-      detailVendor: `${b2bName} ${supplier}`,
-      item: '박대',
-      option: optionDisplay,
-      isB2B: true,
-      b2bName,
-      count: info.orders.length,
-      qtySum: info.orders.reduce((s,o)=>s+o.qty, 0),
-      reviewCount: 0,
-      reviewQty:   0,
-      sales: info.totalSales,
-      fee: 0,
-      orderDetail: info.orders,
-      unit:    Number(saved.unit)||0,
-      reviewUnit: Number(saved.reviewUnit)||0,
-      shipFee: Number(saved.shipFee != null ? saved.shipFee : saved.ship)||0,
-      shipTiers: Array.isArray(saved.shipTiers) ? saved.shipTiers.slice() : [],
-      consol:  Number(saved.consol)||0,
-      taxable: !!saved.taxable
-    });
-  }
-  return out;
-}
 function srBuildProfitRows(orders){
   const db = srLoadPurchaseDB();
   const map = {};  // key → row
@@ -18970,20 +18955,6 @@ function srBuildProfitRows(orders){
       ex.orderDetail.push(...dr.orderDetail);
     } else {
       map[dr.key] = dr;
-    }
-  }
-  // 그린켐(B2B) 행 추가 — 디네트와 같은 방식, 판매가만 다름(매입단가+100원)
-  const grinchemExtraRows = _srBuildGrinchemProfitRows(db);
-  for (const gr2 of grinchemExtraRows) {
-    if (map[gr2.key]) {
-      const ex = map[gr2.key];
-      ex.count    += gr2.count;
-      ex.qtySum   += gr2.qtySum;
-      ex.sales    += gr2.sales;
-      ex.fee      += gr2.fee;
-      ex.orderDetail.push(...gr2.orderDetail);
-    } else {
-      map[gr2.key] = gr2;
     }
   }
   // 파생 계산
@@ -19077,7 +19048,7 @@ function _srBizSubtitle(biz){ return biz==='그로븐' ? '로또상회' : (biz==
 // B2B 업체 → 발주처 매핑 편집 UI (디네트/그린켐이 업로드돼있을 때만 표시)
 function _srBuildB2BMappingUI(){
   const hasDinette = Array.isArray(srDinetteRows) && srDinetteRows.length > 0;
-  const hasGrinchem = Array.isArray(srGrinchemRows) && srGrinchemRows.length > 0;
+  const hasGrinchem = Array.isArray(allOrders) && allOrders.some(o => o.shop_mall === 'B2B-그린켐');
   if (!hasDinette && !hasGrinchem) return '';
   const map = srLoadB2BVendorMap();
   // 현재 업로드된 B2B 업체만 표시
@@ -20423,22 +20394,6 @@ function wrMergeDinette(snaps){
   }
   return {count, sales, byCfg};
 }
-function wrMergeGrinchem(snaps){
-  let sales=0, count=0;
-  const byCfg = {};
-  for (const s of snaps) {
-    const a = s.gcAgg; if (!a) continue;
-    sales += a.sales||0;
-    count += a.count||0;
-    for (const [k,v] of Object.entries(a.byCfg||{})) {
-      if (!byCfg[k]) byCfg[k] = {count:0, sales:0, qty:0};
-      byCfg[k].count += v.count||0;
-      byCfg[k].sales += v.sales||0;
-      byCfg[k].qty   += v.qty||0;
-    }
-  }
-  return {count, sales, byCfg};
-}
 // 주간 광고비 수동 오버라이드 — 화면에서만 즉시 반영 (저장 안 함)
 let _wrCurrentProfitTotal = 0;
 function wrApplyAdOverride(v){
@@ -20532,18 +20487,17 @@ function wrRender(){
   const grAgg = wrMergeAggs(inWeek, 'grAgg');
   const ybAgg = wrMergeAggs(inWeek, 'ybAgg');
   const dnAgg = wrMergeDinette(inWeek);
-  const gcAgg = wrMergeGrinchem(inWeek);
   const pur   = wrMergePurchase(inWeek);  // 매입 누적
   _wrCurrentProfitTotal = pur.total.profit;  // 광고비 오버라이드 시 차감 기준값
   const selfSales = grAgg.totalSales + ybAgg.totalSales;
   const selfCnt   = grAgg.count + ybAgg.count;
-  const totalSales = selfSales + dnAgg.sales + gcAgg.sales;
-  const totalCnt   = selfCnt + dnAgg.count + gcAgg.count;
-  // B2B 매출 합계 — 디네트/그린켐(전용 업로드) + 문자주문 등으로 등록된 B2B
+  const totalSales = selfSales + dnAgg.sales;
+  const totalCnt   = selfCnt + dnAgg.count;
+  // B2B 매출 합계 — 디네트(전용 업로드) + 문자주문/그린켐 등으로 등록된 B2B
   const _wrB2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales,purchase:s.purchase+(v.purchase||0)}),{count:0,sales:0,purchase:0});
   const _wrManualB2b = (()=>{ const g=_wrB2bTotals(grAgg.b2bMap), y=_wrB2bTotals(ybAgg.b2bMap); return {count:g.count+y.count, sales:g.sales+y.sales}; })();
-  const b2bSales = dnAgg.sales + gcAgg.sales + _wrManualB2b.sales;
-  const b2bCnt   = dnAgg.count + gcAgg.count + _wrManualB2b.count;
+  const b2bSales = dnAgg.sales + _wrManualB2b.sales;
+  const b2bCnt   = dnAgg.count + _wrManualB2b.count;
   // ── 직전 주 비교 + 최근 4주 추이 ──
   const prevAnyDate = new Date(range.mon); prevAnyDate.setDate(prevAnyDate.getDate() - 7);
   const prevRange = wrWeekRange(_localISO(prevAnyDate));
@@ -20615,16 +20569,14 @@ function wrRender(){
       <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.grAgg?.count||0).toLocaleString()}건</td>
       <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.ybAgg?.count||0).toLocaleString()}건</td>
       <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.dnAgg?.count||0).toLocaleString()}건</td>
-      <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.gcAgg?.count||0).toLocaleString()}건</td>
       <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.totalSales||0).toLocaleString()}원</td>
     </tr>`).join('');
-  // 플랫폼 통합 (브랜드 무관 + 디네트/그린켐) — 도넛 + 표 공용
+  // 플랫폼 통합 (브랜드 무관 + 디네트/그린켐 등 B2B) — 도넛 + 표 공용
   const _plat = {};
   const _addP = (mp) => { for (const [p,v] of Object.entries(mp||{})) { _plat[p] = (_plat[p]||0) + (v.sales||0); }};
   _addP(grAgg.platMap); _addP(ybAgg.platMap);
   _addP(grAgg.b2bMap); _addP(ybAgg.b2bMap);
   if (dnAgg.sales > 0) _plat['디네트(B2B)'] = (_plat['디네트(B2B)']||0) + dnAgg.sales;
-  if (gcAgg.sales > 0) _plat['그린켐(B2B)'] = (_plat['그린켐(B2B)']||0) + gcAgg.sales;
   const platSorted = Object.entries(_plat).sort((a,b)=>b[1]-a[1]);
   const platTotal = platSorted.reduce((s,[,v])=>s+v, 0);
   const PASTEL = ['#5B8FD9','#E89090','#F5A977','#9F87E0','#6FCE9F','#F5C547','#76C4E8','#E588B8','#B5A8E5','#8FD68F','#E89B9B','#C49EE0'];
@@ -20670,7 +20622,6 @@ function wrRender(){
               <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">로또상회</th>
               <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">자꾸가게</th>
               <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">디네트</th>
-              <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">그린켐</th>
               <th style="padding:7px 12px;text-align:right;color:${HEAD_FG};font-weight:700">매출 합계</th>
             </tr></thead>
             <tbody>${dailyRows}</tbody>
@@ -20679,7 +20630,6 @@ function wrRender(){
               <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${grAgg.count.toLocaleString()}건</td>
               <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${ybAgg.count.toLocaleString()}건</td>
               <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${dnAgg.count.toLocaleString()}건</td>
-              <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${gcAgg.count.toLocaleString()}건</td>
               <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${totalSales.toLocaleString()}원</td>
             </tr></tfoot>
           </table>
@@ -20822,9 +20772,8 @@ function wrRender(){
         <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 3/4</div>
       </div>
       <div class="wr-page" data-page="4" style="background:#fff;padding:22px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.06);margin-top:14px">
-        <div style="font-size:16px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / B2B (디네트·그린켐) <span style="font-size:11px;color:#888;font-weight:400">[4/4]</span></div>
+        <div style="font-size:16px;font-weight:700;color:#212121">${range.start.replace(/-/g,'.')} ~ ${range.end.replace(/-/g,'.')} / B2B (디네트) <span style="font-size:11px;color:#888;font-weight:400">[4/4]</span></div>
         ${srDinetteSection(dnAgg) || '<div style="padding:30px 0;text-align:center;color:#888;font-size:13px">디네트 발주 없음</div>'}
-        ${srGrinchemSection(gcAgg) || '<div style="padding:30px 0;text-align:center;color:#888;font-size:13px">그린켐 발주 없음</div>'}
         <div style="margin-top:14px;font-size:10px;color:#888;text-align:right">${range.start} ~ ${range.end} · 발주 자동화 시스템 · 4/4</div>
       </div>
     </div>`;
@@ -20832,10 +20781,10 @@ function wrRender(){
   document.getElementById('wrImageBtn').disabled = false;
   status.innerHTML = `<span style="color:var(--success)">✅ 주간 보고서: ${range.start} ~ ${range.end} · ${inWeek.length}일 합산 · 총 ${totalSales.toLocaleString()}원</span>`;
   // 차트 렌더링
-  wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, gcAgg, pur);
+  wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, pur);
 }
 let _wrChartDaily=null, _wrChartPlatform=null, _wrChartVendorPur=null;
-function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, gcAgg, pur){
+function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, pur){
   if (typeof Chart === 'undefined') return;
   if (_wrChartDaily) { _wrChartDaily.destroy(); _wrChartDaily=null; }
   if (_wrChartPlatform) { _wrChartPlatform.destroy(); _wrChartPlatform=null; }
@@ -20847,7 +20796,6 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, gcAgg, pur){
     const grSales = byDate.map(s => (s.grAgg?.totalSales)||0);
     const ybSales = byDate.map(s => (s.ybAgg?.totalSales)||0);
     const dnSales = byDate.map(s => (s.dnAgg?.sales)||0);
-    const gcSales = byDate.map(s => (s.gcAgg?.sales)||0);
     const totSales = byDate.map(s => (s.totalSales)||0);
     const BAR_BASE = {type:'bar', borderRadius:4, stack:'s1', barPercentage:0.6, categoryPercentage:0.5, maxBarThickness:28};
     _wrChartDaily = new Chart(c1.getContext('2d'), {
@@ -20857,7 +20805,6 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, gcAgg, pur){
           {...BAR_BASE, label:'로또상회', data:grSales, backgroundColor:'#5B8FD9'},
           {...BAR_BASE, label:'자꾸가게', data:ybSales, backgroundColor:'#9F87E0'},
           {...BAR_BASE, label:'디네트',   data:dnSales, backgroundColor:'#F5A977'},
-          {...BAR_BASE, label:'그린켐',   data:gcSales, backgroundColor:'#6FCE9F'},
           {type:'line', label:'총 매출', data:totSales, borderColor:'#2E8E64', backgroundColor:'rgba(46,142,100,0.10)', tension:0.35, pointRadius:3, pointBackgroundColor:'#2E8E64', borderWidth:2.5, fill:false}
         ]
       },
@@ -20887,7 +20834,6 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, gcAgg, pur){
     addPlat(grAgg.b2bMap);
     addPlat(ybAgg.b2bMap);
     if (dnAgg.sales > 0) platCombined['디네트(B2B)'] = (platCombined['디네트(B2B)']||0) + dnAgg.sales;
-    if (gcAgg.sales > 0) platCombined['그린켐(B2B)'] = (platCombined['그린켐(B2B)']||0) + gcAgg.sales;
     const sorted = Object.entries(platCombined).sort((a,b)=>b[1]-a[1]);
     const labels = sorted.map(([p])=>p);
     const data   = sorted.map(([,v])=>v);
