@@ -4131,6 +4131,39 @@ function addManualB2BEntry(){
   const rpt = document.getElementById('srReport');
   if (rpt && rpt.innerHTML.trim()) srRender();
   else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+  renderManualB2BList();
+}
+// 방금 추가한(또는 예전에 추가해둔) "기타 B2B" 항목들을 목록으로 보여주고, 잘못 넣은 건
+// 디네트/그린켐 카드의 "제거"처럼 바로 지울 수 있게 함 — order_no가 "수동B2B"로 시작하는
+// 주문만 이 카드로 추가된 것이므로 그걸로 골라냄
+function renderManualB2BList(){
+  const el = document.getElementById('mbEntryList');
+  if (!el) return;
+  const entries = (Array.isArray(allOrders) ? allOrders : []).filter(o => /^수동B2B/.test(o.order_no||''));
+  if (!entries.length) { el.innerHTML = ''; return; }
+  const rows = entries.map(o => {
+    const bn = String(o.shop_mall||'').replace(/^B2B-/,'');
+    const label = o.item_name + (o.option_name ? (' '+o.option_name) : '');
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;background:var(--card);font-size:12px">
+      <span style="font-weight:600">${escHtml(bn)}</span>
+      <span style="color:var(--text3)">${escHtml(label)} × ${o.qty}개 · 매출 ${Number(o.order_amt||0).toLocaleString()}원</span>
+      <button class="btn btn-sm" style="margin-left:auto;color:var(--danger);border-color:var(--danger);padding:2px 8px;font-size:11px" onclick="removeManualB2BEntry('${esc(o.order_no)}')">제거</button>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">추가된 항목 (${entries.length}건)</div>${rows}`;
+}
+function removeManualB2BEntry(orderNo){
+  const idx = allOrders.findIndex(o => o.order_no === orderNo);
+  if (idx < 0) return;
+  allOrders.splice(idx, 1);
+  totalCount = Math.max(0, (totalCount||1) - 1);
+  rematchAllOrders();
+  renderStep2(); renderUnmatchedHints();
+  if (typeof renderOmPreview === 'function') renderOmPreview();
+  const rpt = document.getElementById('srReport');
+  if (rpt && rpt.innerHTML.trim()) srRender();
+  else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+  renderManualB2BList();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -11787,7 +11820,7 @@ function switchTab(name){
     if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}try{_invGmailRenderSenderChip();}catch(e){}try{_restoreInvSaveFolder();}catch(e){}try{checkInvImportFolder();}catch(e){console.error(e);}}
     if(name==='recon'){try{reconInitIfNeeded();}catch(e){console.error(e);}}
     if(name==='report'){try{const d=document.getElementById('rptDate');if(d&&!d.value)d.value=_localISO();}catch(e){console.error(e);}}
-    if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}}
+    if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}try{renderManualB2BList();}catch(e){console.error(e);}}
     if(name==='weeklyreport'){try{const d=document.getElementById('wrAnyDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
   }catch(e){console.error('switchTab 오류:',e);}
 }
@@ -15409,6 +15442,7 @@ function reconExportXlsx() {
     <div id="mbError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
     <button class="btn btn-primary" onclick="addManualB2BEntry()">+ 추가</button>
     <div id="mbStatus" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+    <div id="mbEntryList" style="margin-top:10px"></div>
   </div>
   <div class="card">
     <div class="card-title">📋 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 발주서 노란색 행 = 리뷰주문으로 인식</span></div>
