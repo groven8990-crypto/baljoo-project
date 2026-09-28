@@ -4200,38 +4200,46 @@ function addManualSelfEntry(){
   const vendor_code = prefix + item + (option ? ('/'+option) : '');
   const alias = co === '그로븐' ? '로또상회' : '자꾸가게';
 
-  const order = {
-    vendor_code, vendor_opt: '', vendor_key: null,
-    alias, alias_raw: alias,
-    shop_mall: platform || '수기입력',
-    item_name: item, option_name: option,
-    opt_mapped: false, opt_needs_check: false, mapped_code: '', unmatched: false,
-    recv_name: '', recv_phone: '',
-    zip: '', addr: '',
-    memo: '',
-    product: item + (option ? (' '+option) : ''),
-    select_opt: option, disp_opt: '',
-    qty, code_qty: 1,
-    order_no: '자사수기' + Date.now(),
-    buyer: '', buyer_phone: '',
-    carrier: '',
-    order_amt: amt,
-    order_date: _localISO(),
-  };
-  allOrders.push(order);
-  totalCount = (totalCount||0) + 1;
+  // 건수(주문건수)가 입력한 수량 그대로 보이게, 1건짜리 주문을 수량만큼 나눠서 넣음(합계는 동일) —
+  // 매출 보고서/매입·순이익 화면 둘 다 "건수"를 order 객체 개수로 세기 때문
+  const batchId = '자사수기' + Date.now();
+  const pushed = [];
+  for (let i = 0; i < qty; i++) {
+    const order = {
+      vendor_code, vendor_opt: '', vendor_key: null,
+      alias, alias_raw: alias,
+      shop_mall: platform || '수기입력',
+      item_name: item, option_name: option,
+      opt_mapped: false, opt_needs_check: false, mapped_code: '', unmatched: false,
+      recv_name: '', recv_phone: '',
+      zip: '', addr: '',
+      memo: '',
+      product: item + (option ? (' '+option) : ''),
+      select_opt: option, disp_opt: '',
+      qty: 1, code_qty: 1,
+      order_no: batchId + '_' + i,
+      buyer: '', buyer_phone: '',
+      carrier: '',
+      order_amt: salePrice,
+      order_date: _localISO(),
+    };
+    allOrders.push(order);
+    pushed.push(order);
+  }
+  totalCount = (totalCount||0) + qty;
   rematchAllOrders();  // order.vendor_key 등이 이 자리에서 그대로 채워짐(같은 객체 참조)
 
-  if (!order.vendor_key) {
+  const anyOrder = pushed[0];
+  if (!anyOrder.vendor_key) {
     errEl.textContent = `'${vendor}' 코드로 매칭이 안 됐어요 — 발주처명을 다시 확인해주세요. (주문은 일단 추가됨)`;
   }
 
   // 매입단가를 입력했으면, 매입/순이익 화면에서 따로 안 채워도 되게 바로 등록 (B2B 접미사 없이 —
   // 일반 자사 매출이라 같은 발주처/품목의 다른 주문(자동 인식분 포함)과 같은 행으로 합쳐짐)
-  if (unit > 0 && order.vendor_key) {
+  if (unit > 0 && anyOrder.vendor_key) {
     try {
       const db = srLoadPurchaseDB();
-      const key = srPurchaseKey(order);
+      const key = srPurchaseKey(anyOrder);
       db[key] = Object.assign({}, db[key], { unit });
       srSavePurchaseDB(db);
     } catch(e) { console.warn('매입단가 자동등록 실패:', e); }
@@ -4262,23 +4270,36 @@ function addManualSelfEntry(){
 function renderManualSelfList(){
   const el = document.getElementById('myEntryList');
   if (!el) return;
-  const entries = (Array.isArray(allOrders) ? allOrders : []).filter(o => /^자사수기/.test(o.order_no||''));
+  const entries = (Array.isArray(allOrders) ? allOrders : []).filter(o => /^자사수기\d+_\d+$/.test(o.order_no||''));
   if (!entries.length) { el.innerHTML = ''; return; }
-  const rows = entries.map(o => {
-    const label = o.item_name + (o.option_name ? (' '+o.option_name) : '');
+  // 수량만큼 1건씩 나눠 넣은 주문들을 batchId(추가 시각) 기준으로 묶어서 한 줄로 보여줌
+  const batches = {};
+  const order = [];
+  for (const o of entries) {
+    const batchId = String(o.order_no).replace(/_\d+$/, '');
+    if (!batches[batchId]) { batches[batchId] = { batchId, alias:o.alias, item_name:o.item_name, option_name:o.option_name, qty:0, amt:0 }; order.push(batchId); }
+    batches[batchId].qty += Number(o.qty)||1;
+    batches[batchId].amt += Number(o.order_amt)||0;
+  }
+  const rows = order.map(batchId => {
+    const b = batches[batchId];
+    const label = b.item_name + (b.option_name ? (' '+b.option_name) : '');
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;background:var(--card);font-size:12px">
-      <span style="font-weight:600">${escHtml(o.alias||'')}</span>
-      <span style="color:var(--text3)">${escHtml(label)} × ${o.qty}개 · 매출 ${Number(o.order_amt||0).toLocaleString()}원</span>
-      <button class="btn btn-sm" style="margin-left:auto;color:var(--danger);border-color:var(--danger);padding:2px 8px;font-size:11px" onclick="removeManualSelfEntry('${esc(o.order_no)}')">제거</button>
+      <span style="font-weight:600">${escHtml(b.alias||'')}</span>
+      <span style="color:var(--text3)">${escHtml(label)} × ${b.qty}개 · 매출 ${b.amt.toLocaleString()}원</span>
+      <button class="btn btn-sm" style="margin-left:auto;color:var(--danger);border-color:var(--danger);padding:2px 8px;font-size:11px" onclick="removeManualSelfEntry('${esc(batchId)}')">제거</button>
     </div>`;
   }).join('');
-  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">추가된 항목 (${entries.length}건)</div>${rows}`;
+  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">추가된 항목 (${order.length}건)</div>${rows}`;
 }
-function removeManualSelfEntry(orderNo){
-  const idx = allOrders.findIndex(o => o.order_no === orderNo);
-  if (idx < 0) return;
-  allOrders.splice(idx, 1);
-  totalCount = Math.max(0, (totalCount||1) - 1);
+function removeManualSelfEntry(batchId){
+  const before = allOrders.length;
+  for (let i = allOrders.length - 1; i >= 0; i--) {
+    if (String(allOrders[i].order_no||'').startsWith(batchId + '_')) allOrders.splice(i, 1);
+  }
+  const removed = before - allOrders.length;
+  if (!removed) return;
+  totalCount = Math.max(0, (totalCount||removed) - removed);
   rematchAllOrders();
   renderStep2(); renderUnmatchedHints();
   if (typeof renderOmPreview === 'function') renderOmPreview();
