@@ -4053,9 +4053,10 @@ function addManualB2BEntry(){
   const item    = (document.getElementById('mbItem').value||'').trim();
   const option  = (document.getElementById('mbOption').value||'').trim();
   const qty     = Math.max(1, parseInt(document.getElementById('mbQty').value||'1')||1);
-  const amtRaw  = (document.getElementById('mbAmt').value||'').trim();
-  const amt     = Math.max(0, parseInt(amtRaw||'0')||0);
-  const unit    = Math.max(0, parseInt(document.getElementById('mbUnit').value||'0')||0);
+  const unitRaw = (document.getElementById('mbUnit').value||'').trim();
+  const unit    = Math.max(0, parseInt(unitRaw||'0')||0);
+  const priceRaw = (document.getElementById('mbSalePrice').value||'').trim();
+  const salePrice = Math.max(0, parseInt(priceRaw||'0')||0);
   const co      = document.querySelector('input[name="mbCo"]:checked')?.value || '그로븐';
 
   if (!b2bName) { errEl.textContent = '거래처명을 입력해주세요.'; return; }
@@ -4065,8 +4066,9 @@ function addManualB2BEntry(){
     return;
   }
   if (!item)   { errEl.textContent = '품목명을 입력해주세요.'; return; }
-  if (!amtRaw || amt <= 0) { errEl.textContent = '매출금액을 입력해주세요.'; return; }
+  if (!priceRaw || salePrice <= 0) { errEl.textContent = '판매단가(개당)를 입력해주세요.'; return; }
 
+  const amt = salePrice * qty;  // 매출총액 = 판매단가(개당) × 수량 — 직접 계산 안 해도 되게 여기서 곱함
   const prefixes = VENDOR_PREFIXES[vendor] || (loadCustomVendors()[vendor]||{}).prefixes || [vendor+']'];
   const prefix = prefixes[0];
   const vendor_code = prefix + item + (option ? ('/'+option) : '');
@@ -4110,14 +4112,19 @@ function addManualB2BEntry(){
 
   const statusEl = document.getElementById('mbStatus');
   if (statusEl) {
-    statusEl.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(b2bName)} — ${escHtml(item)}${option?(' '+escHtml(option)):''} ${qty}개 추가됨 (매출 ${amt.toLocaleString()}원${unit>0?`, 매입단가 ${unit.toLocaleString()}원`:''})</span>`;
+    const marginPerUnit = salePrice - unit;
+    const marginTotal = marginPerUnit * qty;
+    const marginText = unit > 0
+      ? ` · 마진 개당 ${marginPerUnit.toLocaleString()}원 × ${qty}개 = ${marginTotal.toLocaleString()}원`
+      : ' · 매입단가를 안 넣어서 마진은 매입/순이익 화면에서 확인하세요';
+    statusEl.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(b2bName)} — ${escHtml(item)}${option?(' '+escHtml(option)):''} ${qty}개 추가됨 (매출 ${amt.toLocaleString()}원${unit>0?`, 매입 ${(unit*qty).toLocaleString()}원`:''}${marginText})</span>`;
   }
   // 거래처명/발주처는 남겨서 같은 회사의 다른 품목을 연달아 입력하기 편하게 함
   document.getElementById('mbItem').value = '';
   document.getElementById('mbOption').value = '';
   document.getElementById('mbQty').value = '1';
-  document.getElementById('mbAmt').value = '';
   document.getElementById('mbUnit').value = '';
+  document.getElementById('mbSalePrice').value = '';
 
   renderStep2(); renderUnmatchedHints();
   if (typeof renderOmPreview === 'function') renderOmPreview();
@@ -15381,7 +15388,7 @@ function reconExportXlsx() {
   </div>
   <div class="card">
     <div class="card-title">✍️ 기타 B2B 거래처 수기 입력 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 엑셀 없이 직접 입력</span></div>
-    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">엑셀 발주서가 따로 없는 B2B 거래처(대량 선물 주문 등)를 매출·매입까지 한 번에 입력해요. <b>거래처명을 다르게 적으면 계속 다른 회사를 추가</b>할 수 있어요.</div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">엑셀 발주서가 따로 없는 B2B 거래처(대량 선물 주문 등)를 매출·매입까지 한 번에 입력해요. <b>매입단가·판매단가를 각각 개당 가격으로 입력하면 그 차이(마진)가 자동 계산</b>돼요. 거래처명을 다르게 적으면 계속 다른 회사를 추가할 수 있어요.</div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="mbCo" value="그로븐" checked> 그로븐 (로또상회)</label>
       <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="mbCo" value="옐로우브릿지"> 옐로우브릿지 (자꾸가게)</label>
@@ -15396,8 +15403,8 @@ function reconExportXlsx() {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
       <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">수량</label><input class="inp" id="mbQty" type="number" min="1" value="1"></div>
-      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">매출금액 (총액, 원)</label><input class="inp" id="mbAmt" type="number" min="0" placeholder="이 거래처한테 받은 총액"></div>
-      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">매입단가 (개당, 원)</label><input class="inp" id="mbUnit" type="number" min="0" placeholder="비워두면 매입/순이익에서 나중 입력"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">매입단가 (개당, 원)</label><input class="inp" id="mbUnit" type="number" min="0" placeholder="일비 등에서 사온 가격"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">판매단가 (개당, 원)</label><input class="inp" id="mbSalePrice" type="number" min="0" placeholder="이 거래처한테 받는 가격"></div>
     </div>
     <div id="mbError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
     <button class="btn btn-primary" onclick="addManualB2BEntry()">+ 추가</button>
