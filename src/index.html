@@ -15569,7 +15569,7 @@ function reconExportXlsx() {
   </div>
   <div class="card">
     <div class="card-title">🧄 자사 매출 수기 입력 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 샵마인에 안 잡히는 자사 주문 직접 입력</span></div>
-    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">우리뜰 마늘처럼 샵마인 발송대기 파일에 아예 안 잡히는(이미 운송장이 찍혀서 들어오는 등) 자사 상품 매출을 직접 입력해요. <b>매입단가·판매단가를 각각 개당 가격으로 입력하면 그 차이(마진)가 자동 계산</b>돼요.</div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">우리뜰 마늘처럼 샵마인 발송대기 파일에 아예 안 잡히는(이미 운송장이 찍혀서 들어오는 등) 자사 상품 매출을 직접 입력해요. <b>매입단가·판매단가를 각각 개당 가격으로 입력하면 그 차이(마진)가 자동 계산</b>돼요. 플랫폼을 비워두면 오픈마켓 수수료 없는 직거래로 계산해요(직접 판 게 아니라 쿠팡 등에서 판 거면 플랫폼명을 적어주세요).</div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="myCo" value="그로븐" checked> 그로븐 (로또상회)</label>
       <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="myCo" value="옐로우브릿지"> 옐로우브릿지 (자꾸가게)</label>
@@ -17351,7 +17351,9 @@ function srPlatform(o){
 }
 function srFee(plat){
   const p = String(plat||'');
-  if (p === '식자재코리아' || p.includes('B2B')) return 0;  // B2B 직거래는 플랫폼 수수료 없음
+  // B2B/자사 수기입력(플랫폼 미지정)은 오픈마켓을 거치지 않는 직거래라 판매수수료가 안 붙음.
+  // "🧄 자사 매출 수기 입력"에서 플랫폼을 비워두면 shop_mall이 '수기입력'으로 들어감(addManualSelfEntry)
+  if (p === '식자재코리아' || p === '수기입력' || p.includes('B2B')) return 0;
   if (p.includes('톡딜')) return 0.033;  // 카카오톡딜 판매수수료 3.3%
   if (p.includes('네이버')) return 0.07;  // 네이버 판매수수료 약 7% (러프)
   return 0.12;
