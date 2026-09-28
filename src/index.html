@@ -2429,6 +2429,7 @@ const CLOUD_SYNC_KEYS = [
   'yb_product_aliases',    // 상품명 별칭
   'yb_dinette_event_mode', // 디네트 행사 모드
   'yb_code_confirmed',     // 비표준 코드 확인 처리
+  'yb_instant_pay_vendors',// 즉시결제 거래처 설정 (지출결의서 입력 바로가기 버튼)
 ];
 
 // 클라우드에 보낼 때 무거운 파일 본문은 제외
@@ -2485,6 +2486,11 @@ function _mergeCloudValue(key, cloudRaw, localRaw) {
     const local = localRaw != null ? JSON.parse(localRaw) : null;
     if (key === 'yb_code_confirmed' && Array.isArray(cloud) && Array.isArray(local)) {
       // 확인 처리는 한쪽 방향으로만 진행되는 상태라, 합집합으로 합쳐도 안전함
+      return JSON.stringify([...new Set([...cloud, ...local])]);
+    }
+    if (key === 'yb_instant_pay_vendors' && Array.isArray(cloud) && Array.isArray(local)) {
+      // 즉시결제 거래처 체크도 한쪽 방향으로만 켜지는 목록이라, 합집합으로 합쳐도 안전함
+      // (다른 컴퓨터에서 켜둔 게 이 컴퓨터에서 재동기화 한 번에 없어지지 않게 함)
       return JSON.stringify([...new Set([...cloud, ...local])]);
     }
     if ((key === 'yb_exphist' || key === 'yb_inchist') && Array.isArray(cloud) && Array.isArray(local)) {
