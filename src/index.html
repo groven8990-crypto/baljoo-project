@@ -17877,6 +17877,7 @@ function srLoadGrinchem(file){
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''}).slice(1);
       srGrinchemRows = rows.filter(r => String(r[3]||'').trim().toLowerCase() in SR_GRINCHEM_PRICE);
+      srSeedGrinchemPurchasePrices();
       const info = document.getElementById('srGrinchemInfo');
       const valid = srGrinchemRows.length;
       info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(file.name)} — ${valid}건 인식</span> <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">제거</button>`;
@@ -17936,6 +17937,25 @@ function srAggregateGrinchem(rows){
     byCfg[spec].qty += qty;
   }
   return {count: rows.length, sales, byCfg};
+}
+// 그린켐용 일비 매입단가(개당) — 실제 매입가 기준. 매입/순이익 화면에서 사용자가 직접
+// 고치면 그 값이 우선되고, 한 번도 값이 없을 때만(최초 1회) 이 기본값으로 채워짐.
+// 2P/P 규격은 일비 매입가는 있지만 그린켐 판매단가표엔 없어서(=그린켐에 안 팔림) 여기서 제외.
+const SR_GRINCHEM_COST_SEED = { '4p': 1000, '3p': 1300, '2p+': 1900, 'p+': 2600 };
+function srSeedGrinchemPurchasePrices(){
+  try {
+    const db = srLoadPurchaseDB();
+    const supplier = srGetB2BVendor('그린켐') || '일비';
+    let changed = false;
+    for (const [spec, unit] of Object.entries(SR_GRINCHEM_COST_SEED)) {
+      const key = ['그로븐', supplier, '박대', spec.toUpperCase(), 'b2b:그린켐'].join('|');
+      if (!db[key] || !db[key].unit) {
+        db[key] = Object.assign({}, db[key], { unit });
+        changed = true;
+      }
+    }
+    if (changed) srSavePurchaseDB(db);
+  } catch(e) { console.warn('그린켐 매입단가 기본값 등록 실패:', e); }
 }
 function srGrinchemSection(agg){
   if (!agg || agg.count === 0) return '';
