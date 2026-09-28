@@ -18561,15 +18561,21 @@ function srRender(){
   const yb=allOrders.filter(o=>srBrand(o.alias)==='yb');
   const grAgg=srAggregate(gr), ybAgg=srAggregate(yb);
   const dnAgg=srAggregateDinette(srDinetteRows);
-  const selfSales = grAgg.totalSales + ybAgg.totalSales;
-  const selfCnt   = grAgg.count + ybAgg.count;
-  const totalSales = selfSales + dnAgg.sales;
-  const totalCnt   = selfCnt + dnAgg.count;
-  // B2B 매출 합계 — 디네트(전용 업로드) + 문자주문/그린켐 등으로 등록된 B2B (그로븐/옐로우브릿지에 이미 포함된 매출을 별도 표시용으로 합산)
+  // 자사 매출액 = 순수 플랫폼(그로븐/옐로우브릿지) 매출만 — regSales/regCount는 그 브랜드 안에
+  // 섞여 들어온 문자주문/그린켐 같은 B2B 주문을 뺀 값 (안 빼면 B2B가 자사에도 잡히고 B2B에도
+  // 잡혀서 자사+B2B 합계가 총 매출액보다 커지는 이중계산 오류가 남)
+  const selfSales = grAgg.regSales + ybAgg.regSales;
+  const selfCnt   = grAgg.regCount + ybAgg.regCount;
+  // B2B 매출 합계 — 디네트(전용 업로드) + 문자주문/그린켐 등으로 그로븐/옐로우브릿지 안에 등록된 B2B
   const _b2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales,purchase:s.purchase+(v.purchase||0)}),{count:0,sales:0,purchase:0});
   const _manualB2b = (()=>{ const g=_b2bTotals(grAgg.b2bMap), y=_b2bTotals(ybAgg.b2bMap); return {count:g.count+y.count, sales:g.sales+y.sales}; })();
   const b2bSales = dnAgg.sales + _manualB2b.sales;
   const b2bCnt   = dnAgg.count + _manualB2b.count;
+  // 총 매출액 = 자사 + B2B (이렇게 구해야 화면에 보이는 세 숫자가 서로 정확히 더해짐)
+  const totalSales = selfSales + b2bSales;
+  const totalCnt   = selfCnt + b2bCnt;
+  const selfPct = totalSales > 0 ? Math.round(selfSales / totalSales * 100) : 0;
+  const b2bPct  = totalSales > 0 ? 100 - selfPct : 0;
   // 보고일자
   let dateStr=document.getElementById('srReportDate').value;
   if(!dateStr){
@@ -18584,21 +18590,23 @@ function srRender(){
       <div id="srReportHeader">
         <div style="font-size:20px;font-weight:700;color:#212121">${titleDate} / 일일 매출 현황</div>
         <div style="font-size:11px;color:#888;margin-top:2px">발주일자 기준</div>
-        <div style="background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
-          <div>
-            <div style="font-size:11px;color:#888">총 매출액</div>
-            <div style="font-size:22px;font-weight:700;color:#1A56DB;margin-top:2px">${totalSales.toLocaleString()}원</div>
+        <div style="background:#EBF0F8;padding:18px;margin-top:14px;border-radius:6px">
+          <div style="text-align:center;padding-bottom:14px;margin-bottom:14px;border-bottom:1px dashed #C7D2E8">
+            <div style="font-size:12px;color:#5B6B8C;font-weight:600">총 매출액</div>
+            <div style="font-size:28px;font-weight:800;color:#1A56DB;margin-top:4px">${totalSales.toLocaleString()}원</div>
             <div style="font-size:11px;color:#888;margin-top:2px">총 ${totalCnt.toLocaleString()}건</div>
           </div>
-          <div>
-            <div style="font-size:11px;color:#888">자사 매출액</div>
-            <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px">${selfSales.toLocaleString()}원</div>
-            <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
-          </div>
-          <div>
-            <div style="font-size:11px;color:#888">B2B 매출액</div>
-            <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${b2bSales.toLocaleString()}원</div>
-            <div style="font-size:11px;color:#888;margin-top:2px">${b2bCnt.toLocaleString()}건</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="background:#fff;border-radius:6px;padding:12px;text-align:center">
+              <div style="font-size:11px;color:#888">자사 매출액 <span style="color:#1A56DB;font-weight:600">${selfPct}%</span></div>
+              <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px">${selfSales.toLocaleString()}원</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.regCount}건 · 자꾸가게 ${ybAgg.regCount}건</div>
+            </div>
+            <div style="background:#fff;border-radius:6px;padding:12px;text-align:center">
+              <div style="font-size:11px;color:#888">B2B 매출액 <span style="color:#7B4B00;font-weight:600">${b2bPct}%</span></div>
+              <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${b2bSales.toLocaleString()}원</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">${b2bCnt.toLocaleString()}건</div>
+            </div>
           </div>
         </div>
       </div>
@@ -20517,15 +20525,20 @@ function wrRender(){
   const dnAgg = wrMergeDinette(inWeek);
   const pur   = wrMergePurchase(inWeek);  // 매입 누적
   _wrCurrentProfitTotal = pur.total.profit;  // 광고비 오버라이드 시 차감 기준값
-  const selfSales = grAgg.totalSales + ybAgg.totalSales;
-  const selfCnt   = grAgg.count + ybAgg.count;
-  const totalSales = selfSales + dnAgg.sales;
-  const totalCnt   = selfCnt + dnAgg.count;
+  // 자사 매출액 = 순수 플랫폼 매출만(regSales/regCount) — 안 그러면 그 안에 섞인 B2B가
+  // 자사에도, B2B 항목에도 이중으로 잡혀서 자사+B2B 합계가 총 매출액보다 커지는 오류가 생김
+  const selfSales = grAgg.regSales + ybAgg.regSales;
+  const selfCnt   = grAgg.regCount + ybAgg.regCount;
   // B2B 매출 합계 — 디네트(전용 업로드) + 문자주문/그린켐 등으로 등록된 B2B
   const _wrB2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales,purchase:s.purchase+(v.purchase||0)}),{count:0,sales:0,purchase:0});
   const _wrManualB2b = (()=>{ const g=_wrB2bTotals(grAgg.b2bMap), y=_wrB2bTotals(ybAgg.b2bMap); return {count:g.count+y.count, sales:g.sales+y.sales}; })();
   const b2bSales = dnAgg.sales + _wrManualB2b.sales;
   const b2bCnt   = dnAgg.count + _wrManualB2b.count;
+  // 총 매출액 = 자사 + B2B
+  const totalSales = selfSales + b2bSales;
+  const totalCnt   = selfCnt + b2bCnt;
+  const selfPct = totalSales > 0 ? Math.round(selfSales / totalSales * 100) : 0;
+  const b2bPct  = totalSales > 0 ? 100 - selfPct : 0;
   // ── 직전 주 비교 + 최근 4주 추이 ──
   const prevAnyDate = new Date(range.mon); prevAnyDate.setDate(prevAnyDate.getDate() - 7);
   const prevRange = wrWeekRange(_localISO(prevAnyDate));
@@ -20594,8 +20607,8 @@ function wrRender(){
   const dailyRows = byDate.map((s,i)=>`
     <tr style="background:${i%2===0?'#fff':'#F8FAFC'}">
       <td style="padding:7px 12px;border-bottom:1px solid #eee">${escHtml(s.date)}</td>
-      <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.grAgg?.count||0).toLocaleString()}건</td>
-      <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.ybAgg?.count||0).toLocaleString()}건</td>
+      <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.grAgg?.regCount ?? s.grAgg?.count ?? 0).toLocaleString()}건</td>
+      <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.ybAgg?.regCount ?? s.ybAgg?.count ?? 0).toLocaleString()}건</td>
       <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.dnAgg?.count||0).toLocaleString()}건</td>
       <td style="padding:7px 12px;text-align:right;border-bottom:1px solid #eee">${(s.totalSales||0).toLocaleString()}원</td>
     </tr>`).join('');
@@ -20625,21 +20638,23 @@ function wrRender(){
         <!-- ═════════ 📊 매출 현황 섹션 ═════════ -->
         <div style="margin-top:18px;background:linear-gradient(135deg,#1E40AF,#3B82F6);color:#fff;padding:12px 18px;border-radius:8px;font-size:16px;font-weight:700;letter-spacing:.5px">📊 매출 현황</div>
         <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 8px 8px;padding:16px">
-          <div style="background:#EBF0F8;padding:18px;border-radius:6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
-            <div>
-              <div style="font-size:11px;color:#888">총 매출액</div>
-              <div style="font-size:22px;font-weight:700;color:#1A56DB;margin-top:2px">${totalSales.toLocaleString()}원</div>
+          <div style="background:#EBF0F8;padding:18px;border-radius:6px">
+            <div style="text-align:center;padding-bottom:14px;margin-bottom:14px;border-bottom:1px dashed #C7D2E8">
+              <div style="font-size:12px;color:#5B6B8C;font-weight:600">총 매출액</div>
+              <div style="font-size:28px;font-weight:800;color:#1A56DB;margin-top:4px">${totalSales.toLocaleString()}원</div>
               <div style="font-size:11px;color:#888;margin-top:2px">총 ${totalCnt.toLocaleString()}건</div>
             </div>
-            <div>
-              <div style="font-size:11px;color:#888">자사 매출액</div>
-              <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px">${selfSales.toLocaleString()}원</div>
-              <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.count}건 · 자꾸가게 ${ybAgg.count}건</div>
-            </div>
-            <div>
-              <div style="font-size:11px;color:#888">B2B 매출액</div>
-              <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${b2bSales.toLocaleString()}원</div>
-              <div style="font-size:11px;color:#888;margin-top:2px">${b2bCnt.toLocaleString()}건</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div style="background:#fff;border-radius:6px;padding:12px;text-align:center">
+                <div style="font-size:11px;color:#888">자사 매출액 <span style="color:#1A56DB;font-weight:600">${selfPct}%</span></div>
+                <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px">${selfSales.toLocaleString()}원</div>
+                <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.regCount}건 · 자꾸가게 ${ybAgg.regCount}건</div>
+              </div>
+              <div style="background:#fff;border-radius:6px;padding:12px;text-align:center">
+                <div style="font-size:11px;color:#888">B2B 매출액 <span style="color:#7B4B00;font-weight:600">${b2bPct}%</span></div>
+                <div style="font-size:18px;font-weight:700;color:#7B4B00;margin-top:2px">${b2bSales.toLocaleString()}원</div>
+                <div style="font-size:11px;color:#888;margin-top:2px">${b2bCnt.toLocaleString()}건</div>
+              </div>
             </div>
           </div>
           ${compareRowHtml}
@@ -20655,8 +20670,8 @@ function wrRender(){
             <tbody>${dailyRows}</tbody>
             <tfoot><tr style="background:${FOOT_BG};font-weight:700">
               <td style="padding:7px 12px;color:${HEAD_FG}">합계</td>
-              <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${grAgg.count.toLocaleString()}건</td>
-              <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${ybAgg.count.toLocaleString()}건</td>
+              <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${grAgg.regCount.toLocaleString()}건</td>
+              <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${ybAgg.regCount.toLocaleString()}건</td>
               <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${dnAgg.count.toLocaleString()}건</td>
               <td style="padding:7px 12px;text-align:right;color:${HEAD_FG}">${totalSales.toLocaleString()}원</td>
             </tr></tfoot>
