@@ -15407,7 +15407,7 @@ function reconExportXlsx() {
   </div>
   <div class="card">
     <div class="card-title">🌿 그린켐 발주서 업로드 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택</span></div>
-    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">그린켐 주문은 일비 발주서랑 같은 형식(받는분성명/전화번호/주소/품목명/수량 등)이에요. <b>품목명 문장을 그대로 읽어서</b>, 처음 보는 품목이면 판매단가를 한 번 등록해두면 다음부터 같은 문구는 자동으로 그 단가를 써요(코드 관리에서 미확인 코드 등록하는 것과 같은 방식).</div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">그린켐 주문은 일비 발주서랑 같은 형식(받는분성명/전화번호/주소/품목명/수량 등)이에요. <b>품목명 문장을 그대로 읽어서</b>, 처음 보는 품목이면 매입단가(우리가 사입하는 원가)와 판매단가(그린켐에게 받는 금액)를 한 번 등록해두면 다음부터 같은 문구는 자동으로 그 단가로 순마진까지 계산해요(코드 관리에서 미확인 코드 등록하는 것과 같은 방식).</div>
     <div class="upload-zone" id="srGrinchemZone" onclick="document.getElementById('srGrinchemFile').click()"
          style="padding:10px 16px;display:flex;align-items:center;gap:8px;text-align:left"
          ondragover="event.preventDefault();this.classList.add('dragover')"
@@ -17914,18 +17914,25 @@ const LS_GRINCHEM_ITEM_PRICE = 'yb_grinchem_item_price';
 function loadGrinchemItemPrices(){ try{ return JSON.parse(localStorage.getItem(LS_GRINCHEM_ITEM_PRICE)||'{}'); }catch{ return {}; } }
 function saveGrinchemItemPrices(m){ try{ localStorage.setItem(LS_GRINCHEM_ITEM_PRICE, JSON.stringify(m||{})); }catch(e){} }
 function _grinchemNormItem(name){ return String(name||'').trim().replace(/\s+/g,' '); }
-// 굴비(부세조기) 실제 납품단가 — "1미에 4천원" 기준으로 계산해서 기본값으로 등록해둠(사용자가 직접
-// 등록한 값이 있으면 덮어쓰지 않음). 다른 품목명(예: 박대)은 아직 없으므로 미등록으로 남아 확인창이 뜸.
+// 굴비(부세조기) 실제 매입/납품단가 — 사용자가 준 "납품 단가표"(부세 23-26cm 3미=12,600원/
+// 5미=21,000원) + "우리는 1미에 4천원으로 받아온다"는 매입단가를 그대로 기본값으로 등록해둠
+// (사용자가 직접 등록한 값이 있으면 덮어쓰지 않음). 다른 품목명(예: 박대)은 아직 없으므로
+// 미등록으로 남아 확인창이 뜸 — 판매단가만이 아니라 매입단가도 같이 등록해야 순마진이 나옴.
 function _srSeedGrinchemDefaultPrices(){
   const prices = loadGrinchemItemPrices();
   const defaults = {
-    '부세조기 특대형 28cm내외 5미': 5 * 4000,
-    '부세조기 특대형 28cm내외 3미': 3 * 4000,
+    '부세조기 특대형 28cm내외 5미': { price: 21000, cost: 5 * 4000 },
+    '부세조기 특대형 28cm내외 3미': { price: 12600, cost: 3 * 4000 },
   };
   let changed = false;
-  for (const [item, price] of Object.entries(defaults)) {
+  for (const [item, v] of Object.entries(defaults)) {
     const key = _grinchemNormItem(item);
-    if (!prices[key]) { prices[key] = { price, registeredAt: Date.now() }; changed = true; }
+    // cost 필드가 없으면 매입단가 없이 매출만 잡던 구버전 자동 등록값 — 정정된 기준값으로 교체.
+    // 매입단가까지 같이 있는 값은 (자동이든 수동이든) 이미 확정된 값이니 건드리지 않음.
+    if (!prices[key] || prices[key].cost == null) {
+      prices[key] = { price: v.price, cost: v.cost, registeredAt: Date.now() };
+      changed = true;
+    }
   }
   if (changed) saveGrinchemItemPrices(prices);
 }
@@ -17951,6 +17958,7 @@ function _srProcessGrinchemStaged(){
   const vendor = (typeof srGetB2BVendor === 'function' ? srGetB2BVendor('그린켐') : '') || '일비';
   const prefixes = VENDOR_PREFIXES[vendor] || (loadCustomVendors()[vendor]||{}).prefixes || [vendor+']'];
   let idx = 0;
+  const newOrders = [];  // rematchAllOrders 이후 vendor_key로 매입단가(cost)를 등록해야 하니 잠시 보관
   for (const r of srGrinchemStagedRows) {
     const key = _grinchemNormItem(r.item);
     if (!key) continue;
@@ -17980,10 +17988,26 @@ function _srProcessGrinchemStaged(){
       order_date: _localISO(),
     };
     allOrders.push(order);
+    newOrders.push({ order, cost: Number(saved.cost)||0 });
   }
   srGrinchemUnregistered = Object.values(unregMap);
   totalCount = allOrders.length;
-  rematchAllOrders();
+  rematchAllOrders();  // order.vendor_key 등이 이 자리에서 채워짐(같은 객체 참조라 newOrders에서도 바로 보임)
+  // 매입단가(개당 원가) 자동 등록 — "기타 B2B 수기 입력"과 동일한 매입 DB에 써서 순마진이 바로 계산되게 함.
+  // 이미 값이 있으면(매입/순이익 화면에서 손으로 고친 값 포함) 덮어쓰지 않음
+  try {
+    const db = srLoadPurchaseDB();
+    let dbChanged = false;
+    for (const { order, cost } of newOrders) {
+      if (!cost || !order.vendor_key) continue;
+      const pkey = srPurchaseKey(order) + '|b2b:그린켐';
+      if (db[pkey] == null || db[pkey].unit == null) {
+        db[pkey] = Object.assign({}, db[pkey], { unit: cost });
+        dbChanged = true;
+      }
+    }
+    if (dbChanged) srSavePurchaseDB(db);
+  } catch(e) { console.warn('그린켐 매입단가 자동등록 실패:', e); }
 }
 function srLoadGrinchem(file){
   if (!file) return;
@@ -18049,19 +18073,23 @@ function renderGrinchemUnregisteredList(){
   const rows = srGrinchemUnregistered.map((u,i) => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #FBBF24;background:#FFFBEB;border-radius:6px;margin-bottom:4px;font-size:12px">
       <span style="flex:1;color:#92400E">${escHtml(u.item)} <span style="color:var(--text3)">(${u.count}건, 총 ${u.qtySum}개)</span></span>
-      <input type="number" min="0" id="grinchemPriceInput_${i}" placeholder="이 품목 판매단가(1건당)" style="width:150px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
+      <input type="number" min="0" id="grinchemCostInput_${i}" placeholder="매입단가(1건당)" style="width:130px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
+      <input type="number" min="0" id="grinchemPriceInput_${i}" placeholder="판매단가(1건당)" style="width:130px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
       <button class="btn btn-sm btn-primary" onclick="registerGrinchemItemPrice(${i})">등록</button>
     </div>`).join('');
-  el.innerHTML = `<div style="font-size:11px;color:#92400E;font-weight:600;margin-bottom:4px">⚠ 처음 보는 품목 — 판매단가 등록 필요 (${srGrinchemUnregistered.length}개)</div>${rows}`;
+  el.innerHTML = `<div style="font-size:11px;color:#92400E;font-weight:600;margin-bottom:4px">⚠ 처음 보는 품목 — 매입단가·판매단가 등록 필요 (${srGrinchemUnregistered.length}개, 둘 다 있어야 순마진이 계산돼요)</div>${rows}`;
 }
 function registerGrinchemItemPrice(i){
   const u = srGrinchemUnregistered[i];
   if (!u) return;
   const priceInput = document.getElementById('grinchemPriceInput_'+i);
+  const costInput = document.getElementById('grinchemCostInput_'+i);
   const price = Math.max(0, parseInt(priceInput?.value||'0')||0);
-  if (!price) { alert('판매단가를 입력해주세요.'); return; }
+  const cost = Math.max(0, parseInt(costInput?.value||'0')||0);
+  if (!price) { alert('판매단가(그린켐에게 받는 금액)를 입력해주세요.'); return; }
+  if (!cost) { alert('매입단가(우리가 사입하는 원가)를 입력해주세요 — 순마진 계산에 필요해요.'); return; }
   const prices = loadGrinchemItemPrices();
-  prices[u.key] = { price, registeredAt: Date.now() };
+  prices[u.key] = { price, cost, registeredAt: Date.now() };
   saveGrinchemItemPrices(prices);
   _srProcessGrinchemStaged();
   const info = document.getElementById('srGrinchemInfo');
