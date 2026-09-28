@@ -4850,6 +4850,9 @@ function expQuickFromOrder(gk){
   const cnt = orders.length;
   const co = (typeof srBrandFromAlias === 'function') ? srBrandFromAlias(alias) : (String(alias||'').includes('로또상회') ? '그로븐' : '옐로우브릿지');
   switchTab('expense');
+  // 직전에 "작성이력" 등 다른 서브탭을 보고 있었으면 그 상태가 그대로 남아있어서, 폼은 채워지는데
+  // 화면은 작성이력에 머물러 있는 것처럼 보였음 — 무조건 작성 서브탭으로 강제 전환
+  if (typeof switchExpSubTab === 'function') switchExpSubTab('write');
   // 직전에 다른 거래처로 채워뒀던 값(특히 메모 — applyBankTemplate은 메모가 비어있을 때만 채우게
   // 돼있어서, 안 지우고 넘어가면 이전 거래처의 예금주/계좌 메모가 그대로 남아 섞여 보임)이
   // 남아있지 않도록 폼을 먼저 완전히 초기화한 뒤 채움
