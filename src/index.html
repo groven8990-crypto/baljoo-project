@@ -4039,6 +4039,8 @@ function _populateManualOrderVendorList(){
   if (dl) dl.innerHTML = optsHtml;
   const dl2 = document.getElementById('mbVendorList');
   if (dl2) dl2.innerHTML = optsHtml;
+  const dl3 = document.getElementById('myVendorList');
+  if (dl3) dl3.innerHTML = optsHtml;
 }
 
 // ── 매출 보고용 "✍️ 기타 B2B 거래처 수기 입력" — 엑셀 없이 매출+매입을 한 번에 입력 ──
@@ -4164,6 +4166,126 @@ function removeManualB2BEntry(orderNo){
   if (rpt && rpt.innerHTML.trim()) srRender();
   else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
   renderManualB2BList();
+}
+
+// ── 매출 보고용 "🧄 자사 매출 수기 입력" — 우리뜰 마늘처럼 샵마인 발송대기 파일에 아예 안
+// 잡히는(예: 이미 운송장이 찍혀서 들어옴) 자사 상품 매출을 직접 입력. addManualB2BEntry와
+// 거의 같은 구조지만 shop_mall에 'B2B-'를 안 붙여서 일반 자사 매출(regSales/platMap/prodMap)
+// 쪽으로 잡히게 함 — B2B 거래처가 아니라 그로븐/옐로우브릿지 본인 판매이기 때문.
+function addManualSelfEntry(){
+  const errEl = document.getElementById('myError');
+  if (errEl) errEl.textContent = '';
+  const vendor  = (document.getElementById('myVendor').value||'').trim();
+  const platform= (document.getElementById('myPlatform').value||'').trim();
+  const item    = (document.getElementById('myItem').value||'').trim();
+  const option  = (document.getElementById('myOption').value||'').trim();
+  const qty     = Math.max(1, parseInt(document.getElementById('myQty').value||'1')||1);
+  const unitRaw = (document.getElementById('myUnit').value||'').trim();
+  const unit    = Math.max(0, parseInt(unitRaw||'0')||0);
+  const priceRaw = (document.getElementById('mySalePrice').value||'').trim();
+  const salePrice = Math.max(0, parseInt(priceRaw||'0')||0);
+  const co      = document.querySelector('input[name="myCo"]:checked')?.value || '그로븐';
+
+  if (!vendor)  { errEl.textContent = '발주처를 입력해주세요.'; return; }
+  if (!VENDOR_PREFIXES[vendor] && !loadCustomVendors()[vendor]) {
+    errEl.textContent = `'${vendor}' 은 등록된 발주처가 아니에요. ⚙️ 코드 관리 → 발주처 양식에서 먼저 등록하거나, 발주처명을 정확히 입력해주세요.`;
+    return;
+  }
+  if (!item)   { errEl.textContent = '품목명을 입력해주세요.'; return; }
+  if (!priceRaw || salePrice <= 0) { errEl.textContent = '판매단가(개당)를 입력해주세요.'; return; }
+
+  const amt = salePrice * qty;
+  const prefixes = VENDOR_PREFIXES[vendor] || (loadCustomVendors()[vendor]||{}).prefixes || [vendor+']'];
+  const prefix = prefixes[0];
+  const vendor_code = prefix + item + (option ? ('/'+option) : '');
+  const alias = co === '그로븐' ? '로또상회' : '자꾸가게';
+
+  const order = {
+    vendor_code, vendor_opt: '', vendor_key: null,
+    alias, alias_raw: alias,
+    shop_mall: platform || '수기입력',
+    item_name: item, option_name: option,
+    opt_mapped: false, opt_needs_check: false, mapped_code: '', unmatched: false,
+    recv_name: '', recv_phone: '',
+    zip: '', addr: '',
+    memo: '',
+    product: item + (option ? (' '+option) : ''),
+    select_opt: option, disp_opt: '',
+    qty, code_qty: 1,
+    order_no: '자사수기' + Date.now(),
+    buyer: '', buyer_phone: '',
+    carrier: '',
+    order_amt: amt,
+    order_date: _localISO(),
+  };
+  allOrders.push(order);
+  totalCount = (totalCount||0) + 1;
+  rematchAllOrders();  // order.vendor_key 등이 이 자리에서 그대로 채워짐(같은 객체 참조)
+
+  if (!order.vendor_key) {
+    errEl.textContent = `'${vendor}' 코드로 매칭이 안 됐어요 — 발주처명을 다시 확인해주세요. (주문은 일단 추가됨)`;
+  }
+
+  // 매입단가를 입력했으면, 매입/순이익 화면에서 따로 안 채워도 되게 바로 등록 (B2B 접미사 없이 —
+  // 일반 자사 매출이라 같은 발주처/품목의 다른 주문(자동 인식분 포함)과 같은 행으로 합쳐짐)
+  if (unit > 0 && order.vendor_key) {
+    try {
+      const db = srLoadPurchaseDB();
+      const key = srPurchaseKey(order);
+      db[key] = Object.assign({}, db[key], { unit });
+      srSavePurchaseDB(db);
+    } catch(e) { console.warn('매입단가 자동등록 실패:', e); }
+  }
+
+  const statusEl = document.getElementById('myStatus');
+  if (statusEl) {
+    const marginPerUnit = salePrice - unit;
+    const marginTotal = marginPerUnit * qty;
+    const marginText = unit > 0
+      ? ` · 마진 개당 ${marginPerUnit.toLocaleString()}원 × ${qty}개 = ${marginTotal.toLocaleString()}원`
+      : ' · 매입단가를 안 넣어서 마진은 매입/순이익 화면에서 확인하세요';
+    statusEl.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(vendor)} · ${escHtml(item)}${option?(' '+escHtml(option)):''} ${qty}개 추가됨 (매출 ${amt.toLocaleString()}원${unit>0?`, 매입 ${(unit*qty).toLocaleString()}원`:''}${marginText})</span>`;
+  }
+  document.getElementById('myItem').value = '';
+  document.getElementById('myOption').value = '';
+  document.getElementById('myQty').value = '1';
+  document.getElementById('myUnit').value = '';
+  document.getElementById('mySalePrice').value = '';
+
+  renderStep2(); renderUnmatchedHints();
+  if (typeof renderOmPreview === 'function') renderOmPreview();
+  const rpt = document.getElementById('srReport');
+  if (rpt && rpt.innerHTML.trim()) srRender();
+  else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+  renderManualSelfList();
+}
+function renderManualSelfList(){
+  const el = document.getElementById('myEntryList');
+  if (!el) return;
+  const entries = (Array.isArray(allOrders) ? allOrders : []).filter(o => /^자사수기/.test(o.order_no||''));
+  if (!entries.length) { el.innerHTML = ''; return; }
+  const rows = entries.map(o => {
+    const label = o.item_name + (o.option_name ? (' '+o.option_name) : '');
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;background:var(--card);font-size:12px">
+      <span style="font-weight:600">${escHtml(o.alias||'')}</span>
+      <span style="color:var(--text3)">${escHtml(label)} × ${o.qty}개 · 매출 ${Number(o.order_amt||0).toLocaleString()}원</span>
+      <button class="btn btn-sm" style="margin-left:auto;color:var(--danger);border-color:var(--danger);padding:2px 8px;font-size:11px" onclick="removeManualSelfEntry('${esc(o.order_no)}')">제거</button>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">추가된 항목 (${entries.length}건)</div>${rows}`;
+}
+function removeManualSelfEntry(orderNo){
+  const idx = allOrders.findIndex(o => o.order_no === orderNo);
+  if (idx < 0) return;
+  allOrders.splice(idx, 1);
+  totalCount = Math.max(0, (totalCount||1) - 1);
+  rematchAllOrders();
+  renderStep2(); renderUnmatchedHints();
+  if (typeof renderOmPreview === 'function') renderOmPreview();
+  const rpt = document.getElementById('srReport');
+  if (rpt && rpt.innerHTML.trim()) srRender();
+  else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+  renderManualSelfList();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -11820,7 +11942,7 @@ function switchTab(name){
     if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}try{_invGmailRenderSenderChip();}catch(e){}try{_restoreInvSaveFolder();}catch(e){}try{checkInvImportFolder();}catch(e){console.error(e);}}
     if(name==='recon'){try{reconInitIfNeeded();}catch(e){console.error(e);}}
     if(name==='report'){try{const d=document.getElementById('rptDate');if(d&&!d.value)d.value=_localISO();}catch(e){console.error(e);}}
-    if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}try{renderManualB2BList();}catch(e){console.error(e);}}
+    if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}try{renderManualB2BList();}catch(e){console.error(e);}try{renderManualSelfList();}catch(e){console.error(e);}}
     if(name==='weeklyreport'){try{const d=document.getElementById('wrAnyDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
   }catch(e){console.error('switchTab 오류:',e);}
 }
@@ -15444,6 +15566,31 @@ function reconExportXlsx() {
     <button class="btn btn-primary" onclick="addManualB2BEntry()">+ 추가</button>
     <div id="mbStatus" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
     <div id="mbEntryList" style="margin-top:10px"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🧄 자사 매출 수기 입력 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 샵마인에 안 잡히는 자사 주문 직접 입력</span></div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">우리뜰 마늘처럼 샵마인 발송대기 파일에 아예 안 잡히는(이미 운송장이 찍혀서 들어오는 등) 자사 상품 매출을 직접 입력해요. <b>매입단가·판매단가를 각각 개당 가격으로 입력하면 그 차이(마진)가 자동 계산</b>돼요.</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="myCo" value="그로븐" checked> 그로븐 (로또상회)</label>
+      <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="myCo" value="옐로우브릿지"> 옐로우브릿지 (자꾸가게)</label>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">발주처 (실제 매입한 공급처)</label><input class="inp" id="myVendor" list="myVendorList" placeholder="예: 우리뜰"><datalist id="myVendorList"></datalist></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">플랫폼 (선택)</label><input class="inp" id="myPlatform" placeholder="비워두면 '수기입력'으로 표시"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">품목명</label><input class="inp" id="myItem" placeholder="예: 마늘"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">옵션 (선택)</label><input class="inp" id="myOption" placeholder="예: 1kg"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">수량</label><input class="inp" id="myQty" type="number" min="1" value="1"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">매입단가 (개당, 원)</label><input class="inp" id="myUnit" type="number" min="0" placeholder="우리뜰 등에서 사온 가격"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">판매단가 (개당, 원)</label><input class="inp" id="mySalePrice" type="number" min="0" placeholder="고객한테 받는 가격"></div>
+    </div>
+    <div id="myError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
+    <button class="btn btn-primary" onclick="addManualSelfEntry()">+ 추가</button>
+    <div id="myStatus" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+    <div id="myEntryList" style="margin-top:10px"></div>
   </div>
   <div class="card">
     <div class="card-title">📋 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 발주서 노란색 행 = 리뷰주문으로 인식</span></div>
