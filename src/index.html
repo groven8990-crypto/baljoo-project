@@ -4033,10 +4033,97 @@ function addManualOrder(){
   _poShowToast(`✅ 주문이 추가됐어요: ${item} → ${vendor}`);
 }
 function _populateManualOrderVendorList(){
+  const names = [...new Set(Object.keys(VENDOR_PREFIXES).concat(Object.keys(loadCustomVendors()||{})))].sort();
+  const optsHtml = names.map(v => `<option value="${escHtml(v)}">`).join('');
   const dl = document.getElementById('moVendorList');
-  if (!dl) return;
-  const names = Object.keys(VENDOR_PREFIXES).concat(Object.keys(loadCustomVendors()||{}));
-  dl.innerHTML = [...new Set(names)].sort().map(v => `<option value="${escHtml(v)}">`).join('');
+  if (dl) dl.innerHTML = optsHtml;
+  const dl2 = document.getElementById('mbVendorList');
+  if (dl2) dl2.innerHTML = optsHtml;
+}
+
+// ── 매출 보고용 "✍️ 기타 B2B 거래처 수기 입력" — 엑셀 없이 매출+매입을 한 번에 입력 ──
+// addManualOrder(문자로 들어온 주문 추가)와 같은 주문 객체 모양을 그대로 재사용해서 기존
+// B2B 집계 파이프라인(srAggregate의 b2bMap, srBuildProfitRows의 isManualB2B)에 자동으로 얹힘.
+// 매입단가까지 바로 입력하면, 매입/순이익 화면에서 따로 안 채워도 그 값으로 바로 계산됨.
+function addManualB2BEntry(){
+  const errEl = document.getElementById('mbError');
+  if (errEl) errEl.textContent = '';
+  const b2bName = (document.getElementById('mbName').value||'').trim();
+  const vendor  = (document.getElementById('mbVendor').value||'').trim();
+  const item    = (document.getElementById('mbItem').value||'').trim();
+  const option  = (document.getElementById('mbOption').value||'').trim();
+  const qty     = Math.max(1, parseInt(document.getElementById('mbQty').value||'1')||1);
+  const amtRaw  = (document.getElementById('mbAmt').value||'').trim();
+  const amt     = Math.max(0, parseInt(amtRaw||'0')||0);
+  const unit    = Math.max(0, parseInt(document.getElementById('mbUnit').value||'0')||0);
+  const co      = document.querySelector('input[name="mbCo"]:checked')?.value || '그로븐';
+
+  if (!b2bName) { errEl.textContent = '거래처명을 입력해주세요.'; return; }
+  if (!vendor)  { errEl.textContent = '발주처를 입력해주세요.'; return; }
+  if (!VENDOR_PREFIXES[vendor] && !loadCustomVendors()[vendor]) {
+    errEl.textContent = `'${vendor}' 은 등록된 발주처가 아니에요. ⚙️ 코드 관리 → 발주처 양식에서 먼저 등록하거나, 발주처명을 정확히 입력해주세요.`;
+    return;
+  }
+  if (!item)   { errEl.textContent = '품목명을 입력해주세요.'; return; }
+  if (!amtRaw || amt <= 0) { errEl.textContent = '매출금액을 입력해주세요.'; return; }
+
+  const prefixes = VENDOR_PREFIXES[vendor] || (loadCustomVendors()[vendor]||{}).prefixes || [vendor+']'];
+  const prefix = prefixes[0];
+  const vendor_code = prefix + item + (option ? ('/'+option) : '');
+  const alias = co === '그로븐' ? '로또상회' : '자꾸가게';
+
+  const order = {
+    vendor_code, vendor_opt: '', vendor_key: null,
+    alias, alias_raw: alias,
+    shop_mall: 'B2B-' + b2bName,
+    item_name: item, option_name: option,
+    opt_mapped: false, opt_needs_check: false, mapped_code: '', unmatched: false,
+    recv_name: b2bName, recv_phone: '',
+    zip: '', addr: '',
+    memo: '',
+    product: item + (option ? (' '+option) : ''),
+    select_opt: option, disp_opt: '',
+    qty, code_qty: 1,
+    order_no: '수동B2B' + Date.now(),
+    buyer: '', buyer_phone: '',
+    carrier: '',
+    order_amt: amt,
+    order_date: _localISO(),
+  };
+  allOrders.push(order);
+  totalCount = (totalCount||0) + 1;
+  rematchAllOrders();  // order.vendor_key 등이 이 자리에서 그대로 채워짐(같은 객체 참조)
+
+  if (!order.vendor_key) {
+    errEl.textContent = `'${vendor}' 코드로 매칭이 안 됐어요 — 발주처명을 다시 확인해주세요. (주문은 일단 추가됨)`;
+  }
+
+  // 매입단가를 입력했으면, 매입/순이익 화면에서 따로 안 채워도 되게 바로 등록
+  if (unit > 0 && order.vendor_key) {
+    try {
+      const db = srLoadPurchaseDB();
+      const key = srPurchaseKey(order) + '|b2b:' + b2bName;
+      db[key] = Object.assign({}, db[key], { unit });
+      srSavePurchaseDB(db);
+    } catch(e) { console.warn('매입단가 자동등록 실패:', e); }
+  }
+
+  const statusEl = document.getElementById('mbStatus');
+  if (statusEl) {
+    statusEl.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(b2bName)} — ${escHtml(item)}${option?(' '+escHtml(option)):''} ${qty}개 추가됨 (매출 ${amt.toLocaleString()}원${unit>0?`, 매입단가 ${unit.toLocaleString()}원`:''})</span>`;
+  }
+  // 거래처명/발주처는 남겨서 같은 회사의 다른 품목을 연달아 입력하기 편하게 함
+  document.getElementById('mbItem').value = '';
+  document.getElementById('mbOption').value = '';
+  document.getElementById('mbQty').value = '1';
+  document.getElementById('mbAmt').value = '';
+  document.getElementById('mbUnit').value = '';
+
+  renderStep2(); renderUnmatchedHints();
+  if (typeof renderOmPreview === 'function') renderOmPreview();
+  const rpt = document.getElementById('srReport');
+  if (rpt && rpt.innerHTML.trim()) srRender();
+  else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -11693,7 +11780,7 @@ function switchTab(name){
     if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}try{_invGmailRenderSenderChip();}catch(e){}try{_restoreInvSaveFolder();}catch(e){}try{checkInvImportFolder();}catch(e){console.error(e);}}
     if(name==='recon'){try{reconInitIfNeeded();}catch(e){console.error(e);}}
     if(name==='report'){try{const d=document.getElementById('rptDate');if(d&&!d.value)d.value=_localISO();}catch(e){console.error(e);}}
-    if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
+    if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}}
     if(name==='weeklyreport'){try{const d=document.getElementById('wrAnyDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
   }catch(e){console.error('switchTab 오류:',e);}
 }
@@ -15291,6 +15378,30 @@ function reconExportXlsx() {
       <input type="file" id="srGrinchemFile" accept=".xls,.xlsx" style="display:none" onchange="srLoadGrinchem(this.files[0]); this.value='';">
     </div>
     <div id="srGrinchemInfo" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">✍️ 기타 B2B 거래처 수기 입력 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 엑셀 없이 직접 입력</span></div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">엑셀 발주서가 따로 없는 B2B 거래처(대량 선물 주문 등)를 매출·매입까지 한 번에 입력해요. <b>거래처명을 다르게 적으면 계속 다른 회사를 추가</b>할 수 있어요.</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="mbCo" value="그로븐" checked> 그로븐 (로또상회)</label>
+      <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="mbCo" value="옐로우브릿지"> 옐로우브릿지 (자꾸가게)</label>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">거래처명 (B2B)</label><input class="inp" id="mbName" placeholder="예: OO상사"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">발주처 (실제 매입한 공급처)</label><input class="inp" id="mbVendor" list="mbVendorList" placeholder="예: 일비"><datalist id="mbVendorList"></datalist></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">품목명</label><input class="inp" id="mbItem" placeholder="예: 명절 선물세트"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">옵션 (선택)</label><input class="inp" id="mbOption" placeholder="옵션이 있으면 입력"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">수량</label><input class="inp" id="mbQty" type="number" min="1" value="1"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">매출금액 (총액, 원)</label><input class="inp" id="mbAmt" type="number" min="0" placeholder="이 거래처한테 받은 총액"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">매입단가 (개당, 원)</label><input class="inp" id="mbUnit" type="number" min="0" placeholder="비워두면 매입/순이익에서 나중 입력"></div>
+    </div>
+    <div id="mbError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
+    <button class="btn btn-primary" onclick="addManualB2BEntry()">+ 추가</button>
+    <div id="mbStatus" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
   </div>
   <div class="card">
     <div class="card-title">📋 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 발주서 노란색 행 = 리뷰주문으로 인식</span></div>
