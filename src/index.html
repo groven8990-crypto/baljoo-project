@@ -15367,7 +15367,7 @@ function reconExportXlsx() {
   </div>
   <div class="card">
     <div class="card-title">🌿 그린켐 발주서 (박대) 업로드 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택</span></div>
-    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">디네트와 같은 형식(규격 D열에 <code>4p</code> / <code>3p</code> / <code>2p+</code>, 수량 E열)의 발주 엑셀이에요. 그린켐은 일비한테 받아오는 매입가에 <b>딱 100원만 마진을 붙여</b> 넘기는 거래처라, 판매가 = 일비 매입단가(아래 📦 매입/순이익에서 등록) + 100원으로 자동 계산돼요.</div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">디네트와 같은 형식(규격 D열에 <code>4p</code> / <code>3p</code> / <code>2p+</code> / <code>p+</code>, 수량 E열)의 발주 엑셀이에요. 판매가는 그린켐 납품단가표 기준 고정가(4P 5개 5,500원·10개 10,500원 / 3P 5개 7,000원·10개 14,000원 / 2P+ 8개 16,000원·10개 20,000원 / P+ 8개 22,000원·10개 27,300원)로 자동 계산되고, 아래 📦 매입/순이익에서 일비 매입단가를 입력하면 그 차이로 순이익까지 계산돼요.</div>
     <div class="upload-zone" id="srGrinchemZone" onclick="document.getElementById('srGrinchemFile').click()"
          style="padding:10px 16px;display:flex;align-items:center;gap:8px;text-align:left"
          ondragover="event.preventDefault();this.classList.add('dragover')"
@@ -17858,6 +17858,15 @@ function srDropGrinchem(e){
   const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
   if (f) srLoadGrinchem(f);
 }
+// 그린켐 납품단가표(박대) — 2026.09.04 기준 실제 납품 단가. 규격별로 정해진 수량(묶음)에서만
+// 가격이 고정돼있고, 매입가(일비)와는 무관한 별도의 고정 판매가임. 정책 바뀌면 이 표를 수정.
+const SR_GRINCHEM_PRICE = {
+  '4p':  { 5: 5500,  10: 10500 },
+  '3p':  { 5: 7000,  10: 14000 },
+  '2p+': { 8: 16000, 10: 20000 },
+  'p+':  { 8: 22000, 10: 27300 },
+};
+const SR_GRINCHEM_LABEL = {'4p':'박대 4P','3p':'박대 3P','2p+':'박대 2P+','p+':'박대 P+'};
 function srLoadGrinchem(file){
   if (!file) return;
   srGrinchemFileName = file.name;
@@ -17867,7 +17876,7 @@ function srLoadGrinchem(file){
       const wb = XLSX.read(e.target.result, {type:'array'});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''}).slice(1);
-      srGrinchemRows = rows.filter(r => String(r[3]||'').trim().toLowerCase() in SR_DINETTE_SPEC);
+      srGrinchemRows = rows.filter(r => String(r[3]||'').trim().toLowerCase() in SR_GRINCHEM_PRICE);
       const info = document.getElementById('srGrinchemInfo');
       const valid = srGrinchemRows.length;
       info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(file.name)} — ${valid}건 인식</span> <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">제거</button>`;
@@ -17898,16 +17907,18 @@ function srClearGrinchem(){
     srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
   }
 }
-// 일비 매입단가(그린켐용으로 매입/순이익에 등록해둔 unit) + 100원 — 규격별로 캐시해서 씀
-function srGrinchemUnitPrice(spec){
-  const db = (typeof srLoadPurchaseDB === 'function') ? srLoadPurchaseDB() : {};
-  const supplier = (typeof srGetB2BVendor === 'function') ? (srGetB2BVendor('그린켐') || '일비') : '일비';
-  const key = ['그로븐', supplier, '박대', String(spec||'').toUpperCase(), 'b2b:그린켐'].join('|');
-  const saved = db[key] || {};
-  return Number(saved.unit) || 0;
-}
+// 납품단가표에서 규격+수량으로 정확히 찾은 가격을 씀. 표에 없는 수량(예: 15개 등 변칙 수량)이
+// 들어오면, 그 규격의 가장 작은 기준 수량의 개당 단가로 비례 계산(근사치) — 실제로는 거의 항상
+// 표에 있는 수량으로만 주문이 들어오므로 fallback이 쓰일 일은 드묾
 function srGrinchemPrice(spec, qty){
-  return (srGrinchemUnitPrice(spec) + 100) * (Number(qty)||0);
+  const table = SR_GRINCHEM_PRICE[spec];
+  if (!table) return 0;
+  qty = Number(qty) || 0;
+  if (table[qty] != null) return table[qty];
+  const tiers = Object.keys(table).map(Number).sort((a,b)=>a-b);
+  const base = tiers[0];
+  const perUnit = table[base] / base;
+  return Math.round(perUnit * qty);
 }
 function srAggregateGrinchem(rows){
   if (!rows || !rows.length) return {count:0, sales:0, byCfg:{}};
@@ -17915,8 +17926,8 @@ function srAggregateGrinchem(rows){
   const byCfg = {};
   for (const r of rows) {
     const spec = String(r[3]||'').trim().toLowerCase();
-    if (!(spec in SR_DINETTE_SPEC)) continue;
-    const qty = parseInt(r[4]) || SR_DINETTE_UNIT[spec];
+    if (!(spec in SR_GRINCHEM_PRICE)) continue;
+    const qty = parseInt(r[4]) || Object.keys(SR_GRINCHEM_PRICE[spec]).map(Number)[0];
     const price = srGrinchemPrice(spec, qty);
     sales += price;
     if (!byCfg[spec]) byCfg[spec] = {count:0, sales:0, qty:0};
@@ -18760,8 +18771,8 @@ function _srBuildGrinchemProfitRows(db){
   for (let i = 0; i < srGrinchemRows.length; i++) {
     const r = srGrinchemRows[i];
     const spec = String(r[3]||'').trim().toLowerCase();
-    if (!(spec in SR_DINETTE_SPEC)) continue;
-    const qty = parseInt(r[4]) || SR_DINETTE_UNIT[spec];
+    if (!(spec in SR_GRINCHEM_PRICE)) continue;
+    const qty = parseInt(r[4]) || Object.keys(SR_GRINCHEM_PRICE[spec]).map(Number)[0];
     const price = (typeof srGrinchemPrice==='function') ? srGrinchemPrice(spec, qty) : 0;
     if (!bySpec[spec]) bySpec[spec] = { orders: [], totalSales: 0 };
     bySpec[spec].orders.push({
