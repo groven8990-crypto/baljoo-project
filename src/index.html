@@ -3019,7 +3019,37 @@ document.addEventListener('DOMContentLoaded',()=>{
     const gch = document.getElementById('gmarketCouponHalfChk');
     if (gch) gch.checked = _gmarketCouponHalfOn();
   } catch(e){}
+  try { _autoRestoreTodayUploads(); } catch(e){ console.warn('오늘 업로드 자동 복원 실패:', e); }
 });
+
+// 새로고침하면 업로드한 샵마인 주문(allOrders)이 브라우저 메모리에만 있어서 통째로 사라지던 문제 —
+// 페이지를 열었는데 현재 로드된 주문이 하나도 없으면, 오늘 날짜로 저장된 "샵마인 파일 업로드
+// 이력"(파일 본문까지 보관된 것만)을 업로드했던 순서 그대로 자동으로 다시 읽어들임.
+// (수기 입력 항목, 송장 입력 상태, 직접수정 등 업로드 이후에 했던 조작까지 복원되진 않음 —
+// 그건 이 이력에 안 남기 때문. 하지만 새로고침 때마다 가장 크게 아쉬운 "주문 자체가 사라지는" 건 막아줌)
+function _autoRestoreTodayUploads(){
+  if (Array.isArray(allOrders) && allOrders.length > 0) return;
+  const today = _localISO();
+  const hist = loadUploadHistory()
+    .filter(h => h.date === today && h.fileBytesB64)
+    .sort((a,b) => a.ts < b.ts ? -1 : (a.ts > b.ts ? 1 : 0));
+  if (!hist.length) return;
+  const toFile = h => {
+    const bin = atob(h.fileBytesB64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes.buffer], h.fileName, {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  };
+  const files = hist.map(toFile);
+  const finish = () => { try { _poShowToast(`🔄 새로고침 전 오늘 업로드했던 파일 ${files.length}개를 자동으로 복원했어요`); } catch(e){} };
+  if (files.length === 1) { handleFile(files[0], finish); return; }
+  let idx = 1;
+  const next = () => {
+    if (idx >= files.length) { finish(); return; }
+    handleFileAdd(files[idx++], next);
+  };
+  handleFile(files[0], next);
+}
 
 // 지마켓/옥션 주문금액에 "구매쿠폰적용금액"(정산추가정보 열)을 더할 때, 평소엔 플랫폼이 전액 부담하므로
 // 전액을 더하지만, 특정 행사 기간엔 우리와 반반 부담이라 절반만 더해야 함 — 파일만 봐서는 행사 여부를
@@ -12115,6 +12145,7 @@ function handleFileAdd(file, onDone){
         loadedFileNames.push(file.name+'(+'+res.added+'건'+(res.dupSkipped>0?',중복'+res.dupSkipped+'제외':'')+')');
         renderLoadedFiles();
         renderStep2();renderStep3();renderUnmatchedHints();renderOmPreview();
+        try { logUpload(file, fileBuf, allOrders); } catch(_){}
         return;
       }
       // 11번가 주문 파일 자동 감지 → 별도 파서로 라우팅 (추가 모드)
@@ -12128,6 +12159,7 @@ function handleFileAdd(file, onDone){
         loadedFileNames.push(file.name+'(+'+res.added+'건'+(res.dupSkipped>0?',중복'+res.dupSkipped+'제외':'')+')');
         renderLoadedFiles();
         renderStep2();renderStep3();renderUnmatchedHints();renderOmPreview();
+        try { logUpload(file, fileBuf, allOrders); } catch(_){}
         return;
       }
       // 식자재코리아 주문내역서 자동 감지 → 별도 파서로 라우팅 (추가 모드)
@@ -12141,6 +12173,7 @@ function handleFileAdd(file, onDone){
         loadedFileNames.push(file.name+'(+'+res.added+'건'+(res.dupSkipped>0?',중복'+res.dupSkipped+'제외':'')+')');
         renderLoadedFiles();
         renderStep2();renderStep3();renderUnmatchedHints();renderOmPreview();
+        try { logUpload(file, fileBuf, allOrders); } catch(_){}
         return;
       }
       let hr=-1;
@@ -12205,6 +12238,7 @@ function handleFileAdd(file, onDone){
       loadedFileNames.push(file.name+'(+'+added+'건'+(dupSkipped>0?',중복'+dupSkipped+'제외':'')+')');
       renderLoadedFiles();
       renderStep2();renderStep3();renderUnmatchedHints();renderOmPreview();
+      try { logUpload(file, fileBuf, allOrders); } catch(_){}
       // 송장입력 탭에도 합산 동기화 (첫 파일 업로드와 동일하게 추가 파일도 반영)
       try {
         if (invOrderData && added > 0) {
