@@ -16673,6 +16673,35 @@ const PRICE_TAB_IDS = ['sale','dm','b2bgwa','bakdae','b2bhae','b2bgwak'];
 const SALE_FIELDS = PRICE_TABS.sale.fields;
 const DM_FIELDS   = PRICE_TABS.dm.fields;
 
+// 매입단가표 → 매입/순이익 계산 연결. 매입/순이익 화면에서 그 발주처+품목의 매입단가가
+// 따로 입력 안 돼있을 때(빈 칸), 여기 매입단가표에서 발주처+제품명이 일치하는 행을 찾아
+// 그 원가를 대신 씀. 시트마다 원가 필드명이 달라서(대부분 '단가'=price, 박대 시트만
+// 별도 '단가' 칸이 없어 '공급단가'=supplyP를 씀) 시트별로 매핑해둠.
+// 매칭은 "발주처 정확히 일치 + 제품명 포함 관계"로만 함 — 규격(spec1/2)까지 맞추려 하면
+// 표기가 조금만 달라도 매칭이 안 돼서 오히려 못 찾는 경우가 늘어남. 못 찾으면 그냥 null
+// 반환하고 기존처럼 빈 칸(미입력 표시)으로 남김 — 잘못 짚어 맞추는 것보다 안전함.
+const PRICE_COST_FIELD = { sale:'price', dm:'price', b2bgwa:'price', bakdae:'supplyP', b2bhae:'price', b2bgwak:'price' };
+function priceLookupCost(vendorKey, itemName){
+  const vName = String(vendorKey||'').trim();
+  const iName = String(itemName||'').trim().replace(/\s+/g,'');
+  if (!iName) return null;
+  for (const id of PRICE_TAB_IDS) {
+    const cfg = PRICE_TABS[id];
+    if (cfg.hasVendor && !vName) continue;  // 발주처 있는 시트는 발주처를 모르면 매칭 안 함
+    const costField = PRICE_COST_FIELD[id];
+    const rows = priceLoadStorage(cfg.key);
+    for (const r of rows) {
+      if (cfg.hasVendor && String(r.vendor||'').trim() !== vName) continue;
+      const rName = String(r.name||'').trim().replace(/\s+/g,'');
+      if (!rName) continue;
+      if (!(rName.includes(iName) || iName.includes(rName))) continue;
+      const cost = parseFloat(String(r[costField]||'').replace(/,/g,''));
+      if (!isNaN(cost) && cost > 0) return cost;
+    }
+  }
+  return null;
+}
+
 function priceSwitchSub(sub){
   _pSub=sub; priceCloseForm();
   PRICE_TAB_IDS.forEach(s=>{
@@ -16707,13 +16736,10 @@ function priceRender(){
     if (s === '총매입가') return `<th style="padding:6px 8px;white-space:nowrap;border-bottom:2px solid #DC2626;text-align:right;background:#FEF2F2;font-size:11px;color:#DC2626;font-weight:700">${s}</th>`;
     return `<th style="padding:6px 8px;white-space:nowrap;border-bottom:2px solid var(--border);text-align:left;background:var(--bg);font-size:11px;color:var(--text2);font-weight:600">${s}</th>`;
   };
-  const TD=(s,r)=>`<td style="padding:5px 8px;border-bottom:1px solid var(--border);white-space:nowrap${r?';text-align:right':''}">${(s===''||s==null)?'—':s}</td>`;
-  const fN=v=>{if(v===''||v==null)return'—';const n=parseFloat(String(v).replace(/,/g,''));return isNaN(n)?String(v):n.toLocaleString('ko-KR');};
   const ACT=i=>`<td style="padding:5px 8px;border-bottom:1px solid var(--border)">
     <button class="btn btn-sm" style="padding:2px 7px;font-size:11px" onclick="priceOpenForm(${i})">✏️</button>
     <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:11px;margin-left:2px" onclick="priceDelete(${i})">✕</button>
   </td>`;
-  const taxBadge=t=>t?`<span style="background:${t==='면세'?'#e5e7eb':'#fef3c7'};color:${t==='면세'?'#374151':'#92400e'};border-radius:3px;padding:1px 5px;font-size:10px">${t}</span>`:'';
   const cfg = PRICE_TABS[_pSub] || PRICE_TABS.sale;
   let items = priceLoadStorage(cfg.key);
   let rows = items;
@@ -16725,28 +16751,26 @@ function priceRender(){
   const displayFields = cfg.fields;
   head.innerHTML = `<tr>${displayFields.map(f=>TH(f.label)).join('')}${TH('관리')}</tr>`;
   if (rows.length) {
+    // 칸을 눌러서(팝업 없이) 바로 고칠 수 있게, 필드마다 입력칸을 직접 그려줌 — 양이 많을 때
+    // 하나하나 팝업 열지 않고 표에서 바로바로 고칠 수 있게 하기 위함
     body.innerHTML = rows.map(r=>{
       const ri = items.indexOf(r);
       const cells = displayFields.map(f => {
-        const v = r[f.key];
-        // 총매입가 강조 — 빨간색 + 볼드 (눈에 잘 띄게)
-        if (f.key === 'total') {
-          return `<td style="padding:5px 8px;border-bottom:1px solid var(--border);white-space:nowrap;text-align:right;color:#DC2626;font-weight:700;font-size:14px;background:#FEF2F2">${fN(v)}</td>`;
+        const v = r[f.key]==null ? '' : r[f.key];
+        const isMoney = /단가|가격|매입가|판매가|배송비|마진액|네이버|쿠팡|공급단가/.test(f.label);
+        const isTotal = f.key === 'total';
+        const cellStyle = `padding:2px 3px;border-bottom:1px solid var(--border)${isTotal?';background:#FEF2F2':''}`;
+        if (f.key === 'tax') {
+          const opts = (f.options||['']).map(o=>`<option value="${escHtml(o)}" ${o===v?'selected':''}>${o||'(선택)'}</option>`).join('');
+          return `<td style="${cellStyle}"><select onchange="priceInlineEdit(${ri},'${f.key}',this.value)" style="width:100%;font-size:11px;padding:3px;border:1px solid transparent;background:transparent;border-radius:3px">${opts}</select></td>`;
         }
-        // 숫자 필드 자동 콤마
-        if (/단가|가격|매입가|판매가|배송비|마진액|네이버|쿠팡|공급단가/.test(f.label)) {
-          return TD(fN(v), true);
-        }
-        if (f.key==='marginR' && v) {
-          return TD(String(v).includes('%')?v:v+'%', true);
-        }
-        if (f.key==='tax') {
-          return `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap">${taxBadge(v)}</td>`;
-        }
-        if (f.key==='code') {
-          return `<td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:10px;font-family:monospace;color:var(--text3)">${escHtml(String(v||''))}</td>`;
-        }
-        return TD(escHtml(String(v||'')));
+        const inputStyle = `width:100%;min-width:${isMoney?'70px':'80px'};font-size:11px;padding:3px 5px;border:1px solid transparent;background:transparent;border-radius:3px;box-sizing:border-box;text-align:${isMoney?'right':'left'}${isTotal?';color:#DC2626;font-weight:700':''}${f.key==='code'?';font-family:monospace;color:var(--text3)':''}`;
+        return `<td style="${cellStyle}">
+          <input value="${escHtml(String(v))}"
+            style="${inputStyle}"
+            onfocus="this.style.border='1px solid var(--primary)';this.style.background='#fff'"
+            onblur="this.style.border='1px solid transparent';this.style.background='transparent';priceInlineEdit(${ri},'${f.key}',this.value)">
+        </td>`;
       }).join('');
       return `<tr>${cells}${ACT(ri)}</tr>`;
     }).join('');
@@ -16855,6 +16879,20 @@ function priceDelete(idx){
   priceSaveStorage(key,items);
   if(cfg.hasVendor)priceRebuildVendorFilter();
   priceRender();
+}
+// 표 칸을 클릭해서(팝업 없이) 바로 고치기 — 값이 안 바뀌었으면 저장도, 재렌더도 안 함
+function priceInlineEdit(idx, field, value){
+  const cfg = PRICE_TABS[_pSub] || PRICE_TABS.sale;
+  const items = priceLoadStorage(cfg.key);
+  if (!items[idx]) return;
+  const newVal = String(value==null?'':value).trim();
+  if ((items[idx][field]||'') === newVal) return;
+  items[idx][field] = newVal;
+  priceSaveStorage(cfg.key, items);
+  if (cfg.hasVendor && field === 'vendor') priceRebuildVendorFilter();
+  priceRender();
+  // 매입/순이익 화면이 열려있으면 바로 반영(발주처+품목명 자동 연결이 실시간으로 보이게)
+  try { if (typeof srRenderProfitPanel === 'function' && Array.isArray(allOrders) && allOrders.length) srRenderProfitPanel(allOrders); } catch(e){}
 }
 
 // ── 엑셀 가져오기 ──
@@ -19280,6 +19318,7 @@ function srBuildProfitRows(orders){
     const norm = srNormalizeForPurchase(o);
     if (!map[key]) {
       const saved = db[key] || {};
+      const tableCost = (!isManualB2B && !saved.unit) ? priceLookupCost(o.vendor_key, norm.item) : null;
       map[key] = {
         key,
         brand:    srBrandFromAlias(o.alias),
@@ -19296,7 +19335,10 @@ function srBuildProfitRows(orders){
         sales:      0,                              // 매출액 합계
         fee:        0,                              // 플랫폼 수수료 합계
         orderDetail: [],                            // [{recv_name, qty, units, salesAmt, isReview}] — 상세 보기용
-        unit:       Number(saved.unit)||0,
+        // 매입/순이익 화면에서 직접 입력 안 된 값이면, 매입단가표에서 발주처+품목명이
+        // 일치하는 원가를 자동으로 찾아 씀(둘 다 없으면 0으로 남아 미입력 표시가 그대로 뜸)
+        unit:       Number(saved.unit) || tableCost || 0,
+        unitFromTable: !!tableCost,
         reviewUnit: Number(saved.reviewUnit)||0,    // 리뷰 단가 (0이면 unit 과 동일하게 적용)
         // 구버전 호환: 예전엔 ship 한 컬럼만 있었어 → shipFee로 이전
         shipFee:    Number(saved.shipFee != null ? saved.shipFee : saved.ship)||0,
@@ -20011,8 +20053,9 @@ function _srBuildDetailRowHtml(r, i, firstOfGroup){
           <span style="font-size:9px;color:#6B7280;width:24px">${_showReview&&r.reviewQty>0?'일반':''}</span>
           <input type="number" min="0" step="1" value="${r.unit||''}" placeholder="1개 가격" title="옵션 1개당 매입단가 (일반 주문용)"
             data-key="${_srEsc(r.key)}" data-role="unit"
-            style="width:70px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums"
+            style="width:70px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid ${r.unitFromTable?'#93C5FD':'#D1D5DB'};${r.unitFromTable?'background:#EFF6FF;':''}border-radius:3px;font-variant-numeric:tabular-nums"
             oninput="srOnPurchaseInputChange(this)">
+          ${r.unitFromTable ? `<span style="font-size:9px;color:#2563EB;white-space:nowrap" title="매입단가표에서 자동으로 가져온 값이에요. 직접 고치면 그 값이 우선 적용돼요">📋자동</span>` : ''}
         </div>
         ${_showReview ? `<div style="display:flex;align-items:center;gap:3px" title="리뷰 주문 매입단가 — 미입력 시 일반 단가 사용">
           <span style="font-size:9px;color:#92400E;width:24px;font-weight:600">리뷰</span>
