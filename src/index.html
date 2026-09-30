@@ -15789,6 +15789,27 @@ function reconExportXlsx() {
       <div id="soList"></div>
     </div>
   </div>
+  <div class="card">
+    <div class="card-title" style="cursor:pointer;user-select:none" onclick="var b=document.getElementById('foBody');var t=document.getElementById('foToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';srRenderFeeOverride();}else{b.style.display='none';t.textContent='▼ 펼치기';}">
+      🧾 판매수수료 직접 지정 (톡딜/쿠팡 등 수수료율 보정)
+      <span id="foToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
+    </div>
+    <div id="foBody" style="display:none">
+      <div class="alert alert-info" style="margin-bottom:10px;font-size:12px">
+        매입/순이익 계산에 쓰는 <b>판매수수료율</b>은 보통 플랫폼별 기본값(일반 12% · 톡딜 3.3% · 네이버 7% 등)을 쓰는데, 특정 상품은 그 기본값이 실제랑 다를 때가 있어요. 특정 <b>판매자상품코드</b>(+선택적으로 별칭)의 수수료율을 직접 지정하면 그 기본값 대신 적용돼요.<br>
+        예: <code>푸드앤]간고등어/140g-13</code> · 별칭 <code>톡딜-자꾸가게</code> → <b>12%</b><br>
+        💡 별칭을 비우면 코드가 맞는 모든 주문에 적용돼요. 판매자상품코드는 <b>정확히 일치</b>해야 합니다.
+      </div>
+      <div style="display:grid;grid-template-columns:1.8fr 1fr 0.9fr auto;gap:8px;align-items:end;margin-bottom:10px">
+        <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">판매자상품코드 (정확히)</label><input class="inp" id="foCode" placeholder="예: 푸드앤]간고등어/140g-13" style="font-size:12px"></div>
+        <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">별칭 조건 (선택)</label><input class="inp" id="foAlias" placeholder="예: 톡딜-자꾸가게" style="font-size:12px"></div>
+        <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">수수료율(%)</label><input class="inp" id="foPct" type="number" step="0.1" placeholder="12" style="font-size:12px"></div>
+        <button class="btn btn-primary" onclick="srAddFeeOverride()" style="height:36px">+ 추가</button>
+      </div>
+      <div id="foErr" style="color:var(--danger);font-size:12px;margin-bottom:8px"></div>
+      <div id="foList"></div>
+    </div>
+  </div>
   <div id="srReport"></div>
   </div><!-- /srsub-sales -->
   <!-- 매입 보고 패널 -->
@@ -17565,6 +17586,71 @@ function srRemoveSalesOverride(i){
   try { if (typeof srRender === 'function' && Array.isArray(allOrders) && allOrders.length) srRender(); } catch(e){}
 }
 
+// ── 판매수수료 직접 지정 (판매자상품코드 + 선택 별칭 → 지정 수수료율) ──
+// srFee(plat)의 플랫폼별 기본값(일반 12%·톡딜 3.3%·네이버 7% 등)이 특정 상품엔 안 맞을 때
+// 쓰는 예외 규칙. 매출금액 직접 지정과 완전히 같은 구조(코드+별칭 매칭)라 그대로 미러링함.
+const LS_FEE_OVERRIDE = 'yb_fee_override';
+function srLoadFeeOverride(){ try{ return JSON.parse(localStorage.getItem(LS_FEE_OVERRIDE)||'[]'); }catch{ return []; } }
+function srSaveFeeOverride(a){ localStorage.setItem(LS_FEE_OVERRIDE, JSON.stringify(a)); _sbSaveKV('fee_override', a).catch(()=>{}); }
+// 한 주문의 판매수수료율 — 지정 규칙이 있으면 그 값, 없으면 플랫폼 기본값(srFee)
+function srFeeForOrder(o){
+  const list = srLoadFeeOverride();
+  if (list.length) {
+    const code = String(o.vendor_code||'').trim();
+    const aliasRaw = String(o.alias_raw||o.alias||'');
+    for (const ov of list) {
+      if (!ov || ov.pct==null || !ov.code) continue;
+      if (String(ov.code).trim() !== code) continue;
+      if (ov.alias && !aliasRaw.includes(ov.alias)) continue;
+      return Number(ov.pct)||0;
+    }
+  }
+  const plat = (typeof srPlatform==='function') ? srPlatform(o) : '';
+  return srFee(plat);
+}
+function srRenderFeeOverride(){
+  const el = document.getElementById('foList');
+  if (!el) return;
+  const list = srLoadFeeOverride();
+  if (!list.length){ el.innerHTML='<p style="font-size:12px;color:var(--text3)">지정된 수수료율이 없습니다.</p>'; return; }
+  el.innerHTML = list.map((ov,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12px;flex-wrap:wrap">
+      <span class="code-tag" style="font-size:11px;word-break:break-all">${escHtml(ov.code)}</span>
+      ${ov.alias?`<span style="font-size:10px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:10px;padding:1px 7px">별칭: ${escHtml(ov.alias)}</span>`:'<span style="font-size:10px;color:var(--text3)">모든 별칭</span>'}
+      <span style="color:var(--text3)">→</span>
+      <span style="font-weight:700;color:var(--accent)">${((Number(ov.pct)||0)*100).toFixed(1)}%</span>
+      <button class="btn btn-danger btn-sm" style="margin-left:auto;font-size:11px" onclick="srRemoveFeeOverride(${i})">삭제</button>
+    </div>`).join('');
+}
+function srAddFeeOverride(){
+  const code = (document.getElementById('foCode').value||'').trim();
+  const alias = (document.getElementById('foAlias').value||'').trim();
+  const pctRaw = parseFloat(document.getElementById('foPct').value);
+  const err = document.getElementById('foErr');
+  err.textContent = '';
+  if (!code) { err.textContent = '판매자상품코드를 입력하세요.'; return; }
+  if (isNaN(pctRaw)) { err.textContent = '수수료율을 숫자(%)로 입력하세요.'; return; }
+  const pct = pctRaw / 100;
+  let list = srLoadFeeOverride();
+  list = list.filter(ov => !(ov && String(ov.code).trim()===code && String(ov.alias||'')===alias));
+  list.push({code, alias, pct});
+  srSaveFeeOverride(list);
+  document.getElementById('foCode').value = '';
+  document.getElementById('foAlias').value = '';
+  document.getElementById('foPct').value = '';
+  srRenderFeeOverride();
+  try { if (typeof srRender === 'function' && Array.isArray(allOrders) && allOrders.length) srRender(); } catch(e){}
+  _poShowToast('✅ 판매수수료 지정 추가됨');
+}
+function srRemoveFeeOverride(i){
+  if (!confirm('이 판매수수료 지정을 삭제할까요?')) return;
+  const list = srLoadFeeOverride();
+  list.splice(i,1);
+  srSaveFeeOverride(list);
+  srRenderFeeOverride();
+  try { if (typeof srRender === 'function' && Array.isArray(allOrders) && allOrders.length) srRender(); } catch(e){}
+}
+
 // 표시 이름(그룹핑된 제품명) → 그걸 만들어낸 실제 원본 상품명 집합. srRender()가 매번 새로 채움
 let _srProdRawByLabel = {};
 // 매출액 칸을 클릭해서 직접 수정할 때 참조 — 행 키(브랜드섹션제목||plat/prod||이름) → {sales, items:[{code,alias,qty,amt}]}. srRender()가 매번 새로 채움
@@ -19243,8 +19329,7 @@ function srBuildProfitRows(orders){
       isReview
     });
     r.sales  += amt;
-    const plat = (typeof srPlatform==='function') ? srPlatform(o) : '';
-    r.fee += Math.round(amt * srFee(plat));
+    r.fee += Math.round(amt * srFeeForOrder(o));
   }
   // 디네트(B2B) 행 추가 — 박대를 디네트한테 판매, 발주처는 일비(기본).
   // 자꾸가게에서 들어온 일비 박대와 키가 같으면 같은 행에 병합 (매입처 동일하므로)
