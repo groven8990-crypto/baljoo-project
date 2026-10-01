@@ -15455,7 +15455,7 @@ function reconExportXlsx() {
         <span style="font-size:11px;color:var(--text3)">— 그 발주처로 등록된 모든 품목(모든 탭)의 배송비를 한 번에 바꿔요</span>
       </div>
       <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
-        <div style="flex:1;min-width:260px"><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">삭제할 제품명(쉼표 또는 줄바꿈으로 여러 개)</label><textarea class="inp" id="pBulkDeleteNames" rows="2" placeholder="예: 뉴질랜드 소, 마른오징어, 미나리" style="font-size:12px;width:100%"></textarea></div>
+        <div style="flex:1;min-width:260px"><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">삭제할 제품명(쉼표로 여러 개 · 발주처 한정하려면 줄바꿈 후 "발주처: 품목1, 품목2")</label><textarea class="inp" id="pBulkDeleteNames" rows="2" placeholder="뉴질랜드 소, 마른오징어, 미나리&#10;최고집: 자두, 대저토마토&#10;해담별: 양념먹태, 수입 포도" style="font-size:12px;width:100%"></textarea></div>
         <button class="btn btn-danger btn-sm" onclick="priceBulkDeleteByName()">찾아서 삭제</button>
       </div>
     </div>
@@ -17077,11 +17077,19 @@ function priceBulkUpdateShip(){
 }
 // 단종된 상품 정리용 — 제품명(또는 규격)이 일치하는 품목을 모든 탭에서 찾아 미리보기로
 // 보여주고, 확인 누르면 삭제. 품목명 전체가 아니라 핵심 단어만 입력해도 되게(규격1/2까지
-// 합쳐서) 포함 관계로 매칭함
+// 합쳐서) 포함 관계로 매칭함. 한 줄에 "발주처: 품목1, 품목2"로 적으면 그 발주처 품목만
+// 지우고, 발주처 없이 그냥 "품목1, 품목2"로 적으면(또는 여러 줄 걸쳐 콤마로 적으면) 발주처
+// 상관없이 다 찾음 — 예: "최고집: 자두, 대저토마토" + 줄바꿈 + "해담별: 양념먹태, 수입 포도"
 function priceBulkDeleteByName(){
   const raw = (document.getElementById('pBulkDeleteNames').value||'');
-  const names = raw.split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
-  if (!names.length) { alert('삭제할 제품명을 입력해주세요.'); return; }
+  const lines = raw.split('\n').map(s=>s.trim()).filter(Boolean);
+  if (!lines.length) { alert('삭제할 제품명을 입력해주세요.'); return; }
+  const groups = lines.map(line => {
+    const m = line.match(/^([^,:]{1,20}):\s*(.+)$/);
+    if (m) return { vendor: m[1].trim(), names: m[2].split(',').map(s=>s.trim()).filter(Boolean) };
+    return { vendor: null, names: line.split(',').map(s=>s.trim()).filter(Boolean) };
+  }).filter(g => g.names.length);
+  if (!groups.length) { alert('삭제할 제품명을 입력해주세요.'); return; }
   const matches = [];  // {tabId, idx, label}
   for (const id of PRICE_TAB_IDS) {
     const cfg = PRICE_TABS[id];
@@ -17089,8 +17097,15 @@ function priceBulkDeleteByName(){
     items.forEach((r, idx) => {
       const combined = [r.name, r.spec1||r.spec||'', r.spec2||''].join(' ').trim();
       if (!combined) return;
-      if (names.some(n => combined.includes(n) || n.includes(combined))) {
-        matches.push({ tabId:id, idx, label: `[${cfg.sheet}] ${combined}` });
+      for (const g of groups) {
+        if (g.vendor) {
+          if (!cfg.hasVendor) continue;  // 발주처를 지정했는데 그 시트엔 발주처 칸이 없으면 모호하니 건너뜀
+          if (String(r.vendor||'').trim() !== g.vendor) continue;
+        }
+        if (g.names.some(n => combined.includes(n) || n.includes(combined))) {
+          matches.push({ tabId:id, idx, label: `[${cfg.sheet}]${r.vendor?(' '+r.vendor):''} ${combined}` });
+          break;
+        }
       }
     });
   }
