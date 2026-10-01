@@ -15452,8 +15452,10 @@ function reconExportXlsx() {
       <button class="btn" id="pSubBtn-b2bhae"  onclick="priceSwitchSub('b2bhae')"  style="font-size:13px">⭐ B2B(해담별)</button>
       <button class="btn" id="pSubBtn-b2bgwak" onclick="priceSwitchSub('b2bgwak')" style="font-size:13px">🐝 B2B(곽위)</button>
       <div style="flex:1"></div>
-      <button class="btn btn-sm" onclick="priceImportExcel()" title="엑셀 파일에서 일괄 가져오기">📥 엑셀 가져오기</button>
+      <button class="btn btn-sm" onclick="priceImportExcel()" title="엑셀 파일에서 일괄 가져오기(옛 6시트 양식)">📥 엑셀 가져오기</button>
       <input type="file" id="priceImportInput" accept=".xlsx,.xls" style="display:none" onchange="priceImportFile(this.files[0]);this.value=''">
+      <button class="btn btn-sm" onclick="priceImportUnifiedExcel()" title="코드/업체/제품명/단가 열이 있는 통합 매입단가표 파일 가져오기 — 겹치는 상품은 단가만 갱신, 새 상품은 추가">📥 업체별 통합 단가표</button>
+      <input type="file" id="priceImportUnifiedInput" accept=".xlsx,.xls" style="display:none" onchange="priceImportUnifiedFile(this.files[0]);this.value=''">
       <button class="btn btn-danger btn-sm" onclick="priceClearAllConfirm()" title="현재 탭의 모든 품목 삭제">🗑 전체 삭제</button>
       <button class="btn btn-primary btn-sm" onclick="priceOpenForm(null)">＋ 품목 추가</button>
     </div>
@@ -16951,6 +16953,75 @@ function priceImportFile(file) {
       priceRebuildVendorFilter();
       priceRender();
       alert(`✅ 가져오기 완료!\n\n${summary.join('\n')}`);
+    } catch(err) {
+      alert('❌ 파일 읽기 오류: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function priceImportUnifiedExcel(){
+  document.getElementById('priceImportUnifiedInput').click();
+}
+// "업체별 매입 단가표" 통합 양식(코드/과세여부/업체/제품명/규격1/규격2/생산지/수량/단위/단가/
+// 배송비/총 매입가/택배사/비고 — 시트 이름이 "26.10.1"처럼 작성일자라 매번 바뀜) 가져오기.
+// 위 priceImportFile(옛 6시트 양식)과는 별도 — 이 양식은 "코드" 컬럼이 품목별 고유값이 아니라
+// 발주처 접두어라서(예: "생선상륙]"이 그 업체 품목마다 전부 똑같이 들어있음) code로 중복을
+// 가리면 서로 다른 품목이 전부 하나로 뭉개짐. 대신 업체+제품명+규격1+규격2+수량으로 매칭해서
+// 이미 있는 행이면 단가·배송비·총매입가 등 매입 관련 값만 최신으로 갱신(판매가 관련 입력은
+// 안 건드림), 없으면 새 행으로 추가.
+function priceImportUnifiedFile(file){
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      // 제목/작성일 같은 행이 위에 섞여 있을 수 있어, 처음 몇 행 중 머리글 행을 찾음
+      let hr = -1;
+      for (let i = 0; i < Math.min(6, rawRows.length); i++) {
+        const row = (rawRows[i]||[]).map(v=>String(v||'').trim());
+        if (row.includes('업체') && row.includes('제품명') && row.includes('단가')) { hr = i; break; }
+      }
+      if (hr < 0) { alert('❌ 이 파일 양식을 못 알아봤어요 — "업체" · "제품명" · "단가" 열 머리글을 못 찾았어요.'); return; }
+      const header = rawRows[hr].map(v=>String(v||'').trim());
+      const col = name => header.indexOf(name);
+      const C = { code:col('코드'), tax:col('과세여부'), vendor:col('업체'), name:col('제품명'), spec1:col('규격1'), spec2:col('규격2'), origin:col('생산지'), qty:col('수량'), unit:col('단위'), price:col('단가'), ship:col('배송비'), total:col('총 매입가'), carrier:col('택배사'), note:col('비고'), note2:col('비고2') };
+      if (C.vendor < 0 || C.name < 0 || C.price < 0) { alert('❌ "업체" · "제품명" · "단가" 열을 찾을 수 없어요.'); return; }
+      const dataRows = rawRows.slice(hr+1).filter(r => r.some(v => v !== ''));
+      const cfg = PRICE_TABS.sale;
+      const items = priceLoadStorage(cfg.key);
+      const normKey = x => [x.vendor,x.name,x.spec1,x.spec2,x.qty].map(v=>String(v||'').trim()).join('|');
+      const existingIdx = {};
+      items.forEach((it,i) => { existingIdx[normKey(it)] = i; });
+      let updated = 0, added = 0;
+      for (const r of dataRows) {
+        const g = idx => idx>=0 ? String(r[idx]==null?'':r[idx]).trim() : '';
+        const name = g(C.name);
+        if (!name) continue;
+        const item = {
+          code: g(C.code), tax: g(C.tax), vendor: g(C.vendor), name,
+          spec1: g(C.spec1), spec2: g(C.spec2), origin: g(C.origin),
+          qty: g(C.qty), unit: g(C.unit), price: g(C.price), ship: g(C.ship),
+          total: g(C.total), carrier: g(C.carrier),
+          note: [g(C.note), g(C.note2)].filter(Boolean).join(' / ')
+        };
+        const k = normKey(item);
+        if (k in existingIdx) {
+          // 겹치는 상품 — 매입 관련 값만 최신으로 덮어씀(판매가·네이버가·쿠팡가 등 기존 입력은 보존)
+          const prev = items[existingIdx[k]];
+          Object.assign(prev, { code:item.code, tax:item.tax, origin:item.origin, unit:item.unit, price:item.price, ship:item.ship, total:item.total, carrier:item.carrier, note: item.note || prev.note });
+          updated++;
+        } else {
+          items.push(Object.assign({ saleP:'', naver:'', coupang:'' }, item));
+          added++;
+        }
+      }
+      priceSaveStorage(cfg.key, items);
+      priceSwitchSub('sale');
+      alert(`✅ 업체별 통합 단가표 가져오기 완료!\n\n겹치는 상품 수정: ${updated}건\n새 상품 추가: ${added}건`);
+      try { if (typeof srRenderProfitPanel === 'function' && Array.isArray(allOrders) && allOrders.length) srRenderProfitPanel(allOrders); } catch(e){}
     } catch(err) {
       alert('❌ 파일 읽기 오류: ' + err.message);
     }
