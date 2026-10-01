@@ -15441,6 +15441,26 @@ function reconExportXlsx() {
 <div class="tab-content" id="tab-price">
 <div class="container" style="max-width:1500px">
 
+  <!-- 일괄 변경/삭제 -->
+  <div class="card" style="padding:10px 14px 14px;margin-bottom:14px">
+    <div class="card-title" style="cursor:pointer;user-select:none;font-size:13px" onclick="var b=document.getElementById('pBulkBody');var t=document.getElementById('pBulkToggle');if(b.style.display==='none'){b.style.display='';t.textContent='▲ 접기';}else{b.style.display='none';t.textContent='▼ 펼치기';}">
+      🛠 일괄 변경 / 삭제
+      <span id="pBulkToggle" style="font-size:12px;color:var(--text3);margin-left:8px;font-weight:400">▼ 펼치기</span>
+    </div>
+    <div id="pBulkBody" style="display:none;margin-top:10px">
+      <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed var(--border)">
+        <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">발주처(업체)</label><input class="inp" id="pBulkShipVendor" placeholder="예: 일비" style="font-size:12px;width:140px"></div>
+        <div><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">새 배송비(원)</label><input class="inp" id="pBulkShipValue" type="number" placeholder="4000" style="font-size:12px;width:110px"></div>
+        <button class="btn btn-primary btn-sm" onclick="priceBulkUpdateShip()">전체 탭에 일괄 적용</button>
+        <span style="font-size:11px;color:var(--text3)">— 그 발주처로 등록된 모든 품목(모든 탭)의 배송비를 한 번에 바꿔요</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+        <div style="flex:1;min-width:260px"><label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">삭제할 제품명(쉼표 또는 줄바꿈으로 여러 개)</label><textarea class="inp" id="pBulkDeleteNames" rows="2" placeholder="예: 뉴질랜드 소, 마른오징어, 미나리" style="font-size:12px;width:100%"></textarea></div>
+        <button class="btn btn-danger btn-sm" onclick="priceBulkDeleteByName()">찾아서 삭제</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 툴바 -->
   <div class="card" style="padding:14px 18px;margin-bottom:14px">
     <!-- 1행: 서브탭 + 액션 버튼 -->
@@ -15448,8 +15468,8 @@ function reconExportXlsx() {
       <button class="btn" id="pSubBtn-sale"    onclick="priceSwitchSub('sale')"    style="background:var(--text);color:#fff;font-size:13px">📦 판매가(10%)</button>
       <button class="btn" id="pSubBtn-dm"      onclick="priceSwitchSub('dm')"      style="font-size:13px">🛒 도매꾹</button>
       <button class="btn" id="pSubBtn-b2bgwa"  onclick="priceSwitchSub('b2bgwa')"  style="font-size:13px">🐟 디네트(과메기)</button>
-      <button class="btn" id="pSubBtn-b2bgwak" onclick="priceSwitchSub('b2bgwak')" style="font-size:13px">🐝 B2B(곽위)</button>
       <button class="btn" id="pSubBtn-b2bgc"   onclick="priceSwitchSub('b2bgc')"   style="font-size:13px">🌿 그린켐(또또상회)</button>
+      <button class="btn" id="pSubBtn-b2bgwak" onclick="priceSwitchSub('b2bgwak')" style="font-size:13px">🐝 B2B(곽위)</button>
       <div style="flex:1"></div>
       <button class="btn btn-sm" onclick="priceImportExcel()" title="엑셀 파일에서 일괄 가져오기(옛 6시트 양식)">📥 엑셀 가져오기</button>
       <input type="file" id="priceImportInput" accept=".xlsx,.xls" style="display:none" onchange="priceImportFile(this.files[0]);this.value=''">
@@ -16688,7 +16708,7 @@ const PRICE_TABS = {
 // 이미 "판매가(10%)" 시트의 통합 단가표에 들어가 있어서 중복), 기존에 입력해뒀을 수 있는
 // 데이터(baljoo_priceBakdae / baljoo_priceB2BHae)는 혹시 몰라 그대로 둠 — PRICE_TABS 설정
 // 자체는 안 지우고 이 목록에서만 뺀 것. 나중에 필요하면 이 배열에 다시 넣으면 복구됨.
-const PRICE_TAB_IDS = ['sale','dm','b2bgwa','b2bgwak','b2bgc'];
+const PRICE_TAB_IDS = ['sale','dm','b2bgwa','b2bgc','b2bgwak'];
 
 // Legacy: 기존 코드 호환용
 const SALE_FIELDS = PRICE_TABS.sale.fields;
@@ -17033,6 +17053,62 @@ function priceExportExcel(){
   XLSX.utils.book_append_sheet(wb, ws, cfg.sheet.slice(0,31));
   const today = _localISO().replace(/-/g,'');
   XLSX.writeFile(wb, `${today}-${cfg.sheet}-매입단가표.xlsx`);
+}
+// 발주처 단가/배송비 인상·인하처럼 공통으로 바뀌는 게 생겼을 때, 그 발주처로 등록된 모든
+// 품목(현재 탭만이 아니라 발주처 칸이 있는 모든 탭 전부)의 배송비를 한 번에 바꿈 —
+// 하나하나 칸 클릭해서 고치지 않아도 되게 함
+function priceBulkUpdateShip(){
+  const vendor = (document.getElementById('pBulkShipVendor').value||'').trim();
+  const val = (document.getElementById('pBulkShipValue').value||'').trim();
+  if (!vendor) { alert('발주처를 입력해주세요.'); return; }
+  if (!val) { alert('새 배송비를 입력해주세요.'); return; }
+  let total = 0;
+  for (const id of PRICE_TAB_IDS) {
+    const cfg = PRICE_TABS[id];
+    if (!cfg.hasVendor) continue;  // 발주처 칸이 없는 시트는 대상에서 제외
+    const items = priceLoadStorage(cfg.key);
+    let changed = 0;
+    items.forEach(r => { if (String(r.vendor||'').trim() === vendor) { r.ship = val; changed++; } });
+    if (changed) { priceSaveStorage(cfg.key, items); total += changed; }
+  }
+  if (!total) { alert(`'${vendor}' 발주처로 등록된 품목을 못 찾았어요.`); return; }
+  priceRender();
+  alert(`✅ '${vendor}' 발주처 ${total}개 품목의 배송비를 ${(Number(val)||0).toLocaleString()}원으로 바꿨어요.`);
+}
+// 단종된 상품 정리용 — 제품명(또는 규격)이 일치하는 품목을 모든 탭에서 찾아 미리보기로
+// 보여주고, 확인 누르면 삭제. 품목명 전체가 아니라 핵심 단어만 입력해도 되게(규격1/2까지
+// 합쳐서) 포함 관계로 매칭함
+function priceBulkDeleteByName(){
+  const raw = (document.getElementById('pBulkDeleteNames').value||'');
+  const names = raw.split(/[,\n]/).map(s=>s.trim()).filter(Boolean);
+  if (!names.length) { alert('삭제할 제품명을 입력해주세요.'); return; }
+  const matches = [];  // {tabId, idx, label}
+  for (const id of PRICE_TAB_IDS) {
+    const cfg = PRICE_TABS[id];
+    const items = priceLoadStorage(cfg.key);
+    items.forEach((r, idx) => {
+      const combined = [r.name, r.spec1||r.spec||'', r.spec2||''].join(' ').trim();
+      if (!combined) return;
+      if (names.some(n => combined.includes(n) || n.includes(combined))) {
+        matches.push({ tabId:id, idx, label: `[${cfg.sheet}] ${combined}` });
+      }
+    });
+  }
+  if (!matches.length) { alert('일치하는 품목을 못 찾았어요.'); return; }
+  const preview = matches.slice(0,20).map(m=>'· '+m.label).join('\n') + (matches.length>20?`\n... 외 ${matches.length-20}건`:'');
+  if (!confirm(`아래 ${matches.length}개 품목을 삭제할까요?\n\n${preview}`)) return;
+  const byTab = {};
+  matches.forEach(m => { (byTab[m.tabId] = byTab[m.tabId]||[]).push(m.idx); });
+  for (const [tabId, idxs] of Object.entries(byTab)) {
+    const cfg = PRICE_TABS[tabId];
+    const items = priceLoadStorage(cfg.key);
+    idxs.sort((a,b)=>b-a).forEach(i => items.splice(i,1));  // 큰 인덱스부터 지워야 밀리지 않음
+    priceSaveStorage(cfg.key, items);
+  }
+  document.getElementById('pBulkDeleteNames').value = '';
+  priceRebuildVendorFilter();
+  priceRender();
+  alert(`✅ ${matches.length}개 품목을 삭제했어요.`);
 }
 // "업체별 매입 단가표" 통합 양식(코드/과세여부/업체/제품명/규격1/규격2/생산지/수량/단위/단가/
 // 배송비/총 매입가/택배사/비고 — 시트 이름이 "26.10.1"처럼 작성일자라 매번 바뀜) 가져오기.
