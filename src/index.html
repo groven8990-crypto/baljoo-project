@@ -17099,11 +17099,33 @@ function priceImportUnifiedFile(file){
 }
 
 // 그린켐(또또상회) 납품단가표 — 사장님이 캡처로 준 "납품 단가표" 그대로 1회성 시드.
-// 매입단가(원가)는 이 표에 없어서(대부분 공란) price/total/마진 필드는 안 채움 —
-// 아는 값(공급단가=납품단가)만 정확히 넣고, 모르는 건 억지로 추정해서 채우지 않음.
+// 매입단가(원가)는 이 표에 원래 안 나와 있었는데, "일비에서 가져오는 가격이 우리 매입단가랑
+// 같다"고 확인해주셔서 — 사장님이 올려준 최신 단가표 파일(일비]박대/부세굴비 행)에 있던 실제
+// 단가를 박대 8종 + 굴비(부세) 2종에 채워넣음. 다만 총매입가/마진은 일부러 안 채움 — 이 표의
+// "배송비"(그린켐향 4,300원)가 일비 쪽 배송비(4,500~4,800원)랑 다른 별개 항목이라, 단순히
+// 더해서 마진을 계산하면 실제보다 훨씬 나쁘게(심지어 적자로) 잘못 나올 수 있어서. 배송비를
+// 어느 쪽에 어떻게 반영해야 하는지 확인되면 그때 총매입가/마진을 채우는 게 안전함.
+const PRICE_GC_ILBI_COST = {
+  '박대|4P|29cm이하|5': 5000, '박대|4P|29cm이하|10': 10000,
+  '박대|3P|29~31cm|5': 6500, '박대|3P|29~31cm|10': 13000,
+  '박대|2P+|33~35cm|8': 15200, '박대|2P+|33~35cm|10': 19000,
+  '박대|P+|37cm이상|8': 20800, '박대|P+|37cm이상|10': 26000,
+  '굴비|부세|23-26cm|3': 12000, '굴비|부세|23-26cm|5': 20000,
+};
 function _priceSeedGrinchemB2B(){
   const key = PRICE_TABS.b2bgc.key;
-  if (priceLoadStorage(key).length) return;  // 이미 데이터 있으면(직접 입력/수정 포함) 건드리지 않음
+  const gcKey = r => [r.name,r.spec1,r.spec2,r.qty].join('|');
+  if (priceLoadStorage(key).length) {
+    // 이미 시드된 적 있으면(이전 배포분 포함) 원가만 비어있는 걸 채워줌 — 사람이 직접
+    // 고친 값(price가 이미 있는 행)은 안 건드림
+    const items = priceLoadStorage(key);
+    let changed = false;
+    items.forEach(r => {
+      if (!r.price && PRICE_GC_ILBI_COST[gcKey(r)] != null) { r.price = String(PRICE_GC_ILBI_COST[gcKey(r)]); changed = true; }
+    });
+    if (changed) priceSaveStorage(key, items);
+    return;
+  }
   const shipNote1 = '배송비 : 4,300원 합포장 40팩까지 가능 / 선물용 부직포 포장시 3,000원 추가';
   const shipNote2 = '건당 배송비 2,500원 + 하계 드라이아이스 800원';
   const base = { origin:'', qty:'', unit:'', price:'', total:'', marginAmt:'', marginR:'', tax:'면세', note:'' };
@@ -17126,7 +17148,7 @@ function _priceSeedGrinchemB2B(){
     { name:'홍어회', spec1:'1kg', spec2:'', origin:'국내산', qty:'1', unit:'kg', ship:'무료배송', supplyP:'45200' },
     { name:'굴비', spec1:'법성포 영광 참굴비 (엮음)', spec2:'20미 1.5kg내외', origin:'국산', qty:'1', unit:'봉', ship:'무료배송', supplyP:'23600' },
     { name:'순살갈치', spec1:'순살갈치 (국산여수)', spec2:'260g내외', origin:'국산', qty:'10', unit:'팩', ship:'무료배송', supplyP:'34000' },
-  ].map(r => Object.assign({}, base, r));
+  ].map(r => Object.assign({}, base, r, { price: PRICE_GC_ILBI_COST[gcKey(r)] != null ? String(PRICE_GC_ILBI_COST[gcKey(r)]) : '' }));
   priceSaveStorage(key, rows);
 }
 _priceSeedGrinchemB2B();
