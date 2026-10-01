@@ -17865,6 +17865,28 @@ function srNormalize(name){
   }
   return n.slice(0,8) || '미분류';
 }
+// 자주 쓰는 상품명 별칭 기본값 — 짧은 키워드로 등록해 상품명이 조금씩 바뀌어도 계속 매칭되게 함.
+// 이미 같은 키워드가 등록돼 있으면(사용자가 직접 추가했든, 이전에 이 함수가 추가했든) 건드리지 않음.
+// '부세'는 생선상륙에서 넘어온 "부세굴비"로 표시되던 문제 때문에 추가 — srNormalize가 별칭을
+// 배열 뒤에서부터 검사하므로, 맨 뒤에 추가해두면 기존에 클릭수정으로 등록된(원본 전체 문자열
+// 기준) 낡은 별칭보다 이 항목이 먼저 매칭되어 "굴비"로 정상 표시됨.
+function _srSeedProductAliasDefaults(){
+  const aliases = loadProductAliases();
+  const defaults = [
+    { kw:'현미', label:'현미 뻥튀기' },
+    { kw:'깐마늘', label:'업소용깐마늘' },
+    { kw:'부세', label:'굴비' },
+  ];
+  let changed = false;
+  for (const d of defaults) {
+    if (!aliases.some(a => a && a.kw === d.kw)) {
+      aliases.push(d);
+      changed = true;
+    }
+  }
+  if (changed) saveProductAliases(aliases);
+}
+_srSeedProductAliasDefaults();
 // ── 매출금액 직접 지정 (판매자상품코드 + 선택 별칭 → 지정 매출금액) ──
 const LS_SALES_OVERRIDE = 'yb_sales_amt_override';
 function srLoadSalesOverride(){ try{ return JSON.parse(localStorage.getItem(LS_SALES_OVERRIDE)||'[]'); }catch{ return []; } }
