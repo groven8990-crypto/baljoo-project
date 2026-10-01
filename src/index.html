@@ -15447,10 +15447,11 @@ function reconExportXlsx() {
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <button class="btn" id="pSubBtn-sale"    onclick="priceSwitchSub('sale')"    style="background:var(--text);color:#fff;font-size:13px">📦 판매가(10%)</button>
       <button class="btn" id="pSubBtn-dm"      onclick="priceSwitchSub('dm')"      style="font-size:13px">🛒 도매꾹</button>
-      <button class="btn" id="pSubBtn-b2bgwa"  onclick="priceSwitchSub('b2bgwa')"  style="font-size:13px">🐟 B2B(과메기)</button>
+      <button class="btn" id="pSubBtn-b2bgwa"  onclick="priceSwitchSub('b2bgwa')"  style="font-size:13px">🐟 디네트(과메기)</button>
       <button class="btn" id="pSubBtn-bakdae"  onclick="priceSwitchSub('bakdae')"  style="font-size:13px">🐟 박대공급</button>
       <button class="btn" id="pSubBtn-b2bhae"  onclick="priceSwitchSub('b2bhae')"  style="font-size:13px">⭐ B2B(해담별)</button>
       <button class="btn" id="pSubBtn-b2bgwak" onclick="priceSwitchSub('b2bgwak')" style="font-size:13px">🐝 B2B(곽위)</button>
+      <button class="btn" id="pSubBtn-b2bgc"   onclick="priceSwitchSub('b2bgc')"   style="font-size:13px">🌿 그린켐(또또상회)</button>
       <div style="flex:1"></div>
       <button class="btn btn-sm" onclick="priceImportExcel()" title="엑셀 파일에서 일괄 가져오기(옛 6시트 양식)">📥 엑셀 가져오기</button>
       <input type="file" id="priceImportInput" accept=".xlsx,.xls" style="display:none" onchange="priceImportFile(this.files[0]);this.value=''">
@@ -16668,8 +16669,24 @@ const PRICE_TABS = {
       {key:'note',label:'비고',type:'text'}
     ]
   },
+  b2bgc: {
+    sheet: 'B2B단가(그린켐)', key: 'baljoo_priceB2BGc', headerRow: 2,
+    hasVendor: false,
+    parseCols: { tax:0, name:1, spec1:2, spec2:3, origin:4, qty:5, unit:6, ship:7, price:8, total:9, supplyP:10, marginAmt:11, marginR:12, note:13 },
+    fields: [
+      {key:'name',label:'제품명',req:true,type:'text'},
+      {key:'spec1',label:'규격1',type:'text'},{key:'spec2',label:'규격2',type:'text'},
+      {key:'origin',label:'생산지',type:'text'},{key:'qty',label:'수량',type:'text'},
+      {key:'unit',label:'단위',type:'text'},{key:'price',label:'단가',type:'text'},
+      {key:'ship',label:'배송비',type:'text'},{key:'total',label:'총매입가',type:'text'},
+      {key:'supplyP',label:'납품단가',type:'text'},{key:'marginAmt',label:'마진액',type:'text'},
+      {key:'marginR',label:'마진율(%)',type:'text'},
+      {key:'tax',label:'과세여부',type:'select',options:['','과세','면세']},
+      {key:'note',label:'비고',type:'text'}
+    ]
+  },
 };
-const PRICE_TAB_IDS = ['sale','dm','b2bgwa','bakdae','b2bhae','b2bgwak'];
+const PRICE_TAB_IDS = ['sale','dm','b2bgwa','bakdae','b2bhae','b2bgwak','b2bgc'];
 
 // Legacy: 기존 코드 호환용
 const SALE_FIELDS = PRICE_TABS.sale.fields;
@@ -16682,7 +16699,7 @@ const DM_FIELDS   = PRICE_TABS.dm.fields;
 // 매칭은 "발주처 정확히 일치 + 제품명 포함 관계"로만 함 — 규격(spec1/2)까지 맞추려 하면
 // 표기가 조금만 달라도 매칭이 안 돼서 오히려 못 찾는 경우가 늘어남. 못 찾으면 그냥 null
 // 반환하고 기존처럼 빈 칸(미입력 표시)으로 남김 — 잘못 짚어 맞추는 것보다 안전함.
-const PRICE_COST_FIELD = { sale:'price', dm:'price', b2bgwa:'price', bakdae:'supplyP', b2bhae:'price', b2bgwak:'price' };
+const PRICE_COST_FIELD = { sale:'price', dm:'price', b2bgwa:'price', bakdae:'supplyP', b2bhae:'price', b2bgwak:'price', b2bgc:'price' };
 function priceLookupCost(vendorKey, itemName){
   const vName = String(vendorKey||'').trim();
   const iName = String(itemName||'').trim().replace(/\s+/g,'');
@@ -17080,6 +17097,39 @@ function priceImportUnifiedFile(file){
   };
   reader.readAsArrayBuffer(file);
 }
+
+// 그린켐(또또상회) 납품단가표 — 사장님이 캡처로 준 "납품 단가표" 그대로 1회성 시드.
+// 매입단가(원가)는 이 표에 없어서(대부분 공란) price/total/마진 필드는 안 채움 —
+// 아는 값(공급단가=납품단가)만 정확히 넣고, 모르는 건 억지로 추정해서 채우지 않음.
+function _priceSeedGrinchemB2B(){
+  const key = PRICE_TABS.b2bgc.key;
+  if (priceLoadStorage(key).length) return;  // 이미 데이터 있으면(직접 입력/수정 포함) 건드리지 않음
+  const shipNote1 = '배송비 : 4,300원 합포장 40팩까지 가능 / 선물용 부직포 포장시 3,000원 추가';
+  const shipNote2 = '건당 배송비 2,500원 + 하계 드라이아이스 800원';
+  const base = { origin:'', qty:'', unit:'', price:'', total:'', marginAmt:'', marginR:'', tax:'면세', note:'' };
+  const rows = [
+    { name:'박대', spec1:'4P', spec2:'29cm이하', origin:'세네갈', qty:'5', unit:'미', ship:'4300', supplyP:'5500', note:shipNote1 },
+    { name:'박대', spec1:'4P', spec2:'29cm이하', origin:'세네갈', qty:'10', unit:'미', ship:'4300', supplyP:'10500', note:shipNote1 },
+    { name:'박대', spec1:'3P', spec2:'29~31cm', origin:'세네갈', qty:'5', unit:'미', ship:'4300', supplyP:'7000', note:shipNote1 },
+    { name:'박대', spec1:'3P', spec2:'29~31cm', origin:'세네갈', qty:'10', unit:'미', ship:'4300', supplyP:'14000', note:shipNote1 },
+    { name:'박대', spec1:'2P+', spec2:'33~35cm', origin:'세네갈', qty:'8', unit:'미', ship:'4300', supplyP:'16000', note:shipNote1 },
+    { name:'박대', spec1:'2P+', spec2:'33~35cm', origin:'세네갈', qty:'10', unit:'미', ship:'4300', supplyP:'20000', note:shipNote1 },
+    { name:'박대', spec1:'P+', spec2:'37cm이상', origin:'세네갈', qty:'8', unit:'미', ship:'4300', supplyP:'22000', note:shipNote1 },
+    { name:'박대', spec1:'P+', spec2:'37cm이상', origin:'세네갈', qty:'10', unit:'미', ship:'4300', supplyP:'27300', note:shipNote1 },
+    { name:'굴비', spec1:'부세', spec2:'23-26cm', origin:'중국산', qty:'3', unit:'미', ship:'4300', supplyP:'12600' },
+    { name:'굴비', spec1:'부세', spec2:'23-26cm', origin:'중국산', qty:'5', unit:'미', ship:'4300', supplyP:'21000' },
+    { name:'안동간고등어', spec1:'80g', spec2:'', qty:'10', unit:'팩', ship:'3300', supplyP:'12100', note:shipNote2 },
+    { name:'안동간고등어', spec1:'100g', spec2:'', qty:'10', unit:'팩', ship:'3300', supplyP:'14200', note:shipNote2 },
+    { name:'안동간고등어', spec1:'120g', spec2:'', qty:'10', unit:'팩', ship:'3300', supplyP:'16000', note:shipNote2 },
+    { name:'안동간고등어', spec1:'140g', spec2:'', qty:'10', unit:'팩', ship:'3300', supplyP:'19000', note:shipNote2 },
+    { name:'홍어회', spec1:'500g', spec2:'', origin:'국내산', qty:'500', unit:'g', ship:'무료배송', supplyP:'23500' },
+    { name:'홍어회', spec1:'1kg', spec2:'', origin:'국내산', qty:'1', unit:'kg', ship:'무료배송', supplyP:'45200' },
+    { name:'굴비', spec1:'법성포 영광 참굴비 (엮음)', spec2:'20미 1.5kg내외', origin:'국산', qty:'1', unit:'봉', ship:'무료배송', supplyP:'23600' },
+    { name:'순살갈치', spec1:'순살갈치 (국산여수)', spec2:'260g내외', origin:'국산', qty:'10', unit:'팩', ship:'무료배송', supplyP:'34000' },
+  ].map(r => Object.assign({}, base, r));
+  priceSaveStorage(key, rows);
+}
+_priceSeedGrinchemB2B();
 
 (function initPrice(){priceRebuildVendorFilter();priceRender();})();
 // ══════════════════════════════════════════════════════════
