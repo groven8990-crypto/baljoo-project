@@ -15439,7 +15439,7 @@ function reconExportXlsx() {
      TAB 6: 매입단가표  (직접 등록/관리)
 ══════════════════════════════════════════════════════════ -->
 <div class="tab-content" id="tab-price">
-<div class="container">
+<div class="container" style="max-width:1500px">
 
   <!-- 툴바 -->
   <div class="card" style="padding:14px 18px;margin-bottom:14px">
@@ -15456,16 +15456,16 @@ function reconExportXlsx() {
       <input type="file" id="priceImportInput" accept=".xlsx,.xls" style="display:none" onchange="priceImportFile(this.files[0]);this.value=''">
       <button class="btn btn-sm" onclick="priceImportUnifiedExcel()" title="코드/업체/제품명/단가 열이 있는 통합 매입단가표 파일 가져오기 — 겹치는 상품은 단가만 갱신, 새 상품은 추가">📥 업체별 통합 단가표</button>
       <input type="file" id="priceImportUnifiedInput" accept=".xlsx,.xls" style="display:none" onchange="priceImportUnifiedFile(this.files[0]);this.value=''">
+      <button class="btn btn-sm" onclick="priceExportExcel()" title="지금 화면에 보이는 표(발주처·검색 필터 반영) 그대로 엑셀로 저장">⬇️ 엑셀로 저장</button>
       <button class="btn btn-danger btn-sm" onclick="priceClearAllConfirm()" title="현재 탭의 모든 품목 삭제">🗑 전체 삭제</button>
       <button class="btn btn-primary btn-sm" onclick="priceOpenForm(null)">＋ 품목 추가</button>
     </div>
     <!-- 2행: 발주처 필터 + 검색 -->
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <div id="pVendorWrap" style="display:flex;align-items:center;gap:5px">
+      <div id="pVendorWrap" style="display:flex;align-items:center;gap:5px;position:relative">
         <label style="font-size:12px;color:var(--text2);white-space:nowrap">발주처</label>
-        <select id="pVendorFilter" class="inp" style="min-width:130px;font-size:12px" onchange="priceRender()">
-          <option value="전체">전체</option>
-        </select>
+        <button type="button" id="pVendorFilterBtn" class="btn btn-sm" onclick="priceToggleVendorDropdown()" style="min-width:130px;font-size:12px;text-align:left;background:#fff">전체 ▾</button>
+        <div id="pVendorDropdown" style="display:none;position:absolute;top:100%;left:60px;z-index:50;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.12);padding:8px;max-height:300px;overflow-y:auto;min-width:180px"></div>
       </div>
       <input id="pSearch" class="inp" style="flex:1;min-width:180px;font-size:12px" placeholder="🔍 품목명·코드·규격 검색" oninput="priceRender()">
       <span id="pCount" style="font-size:12px;color:var(--text3);white-space:nowrap"></span>
@@ -16706,6 +16706,7 @@ function priceLookupCost(vendorKey, itemName){
 
 function priceSwitchSub(sub){
   _pSub=sub; priceCloseForm();
+  _pVendorSelected.clear();  // 시트마다 발주처 목록이 다르니 탭 바꾸면 선택 초기화
   PRICE_TAB_IDS.forEach(s=>{
     const b=document.getElementById('pSubBtn-'+s);
     if(b){b.style.background=s===sub?'var(--text)':'';b.style.color=s===sub?'#fff':'';}
@@ -16713,23 +16714,59 @@ function priceSwitchSub(sub){
   const vw=document.getElementById('pVendorWrap');
   const cfg = PRICE_TABS[sub];
   if(vw)vw.style.display=cfg && cfg.hasVendor?'flex':'none';
+  priceRebuildVendorFilter();
   priceRender();
 }
 
+// 발주처 여러 개를 동시에 체크해서 볼 수 있는 드롭다운 — 선택이 하나도 없으면 "전체"로 취급.
+// 예전엔 <select> 단일선택이었고, "전체" 옵션이 가나다순 정렬에 섞여서 중간 어딘가에 박혀있어
+// 찾기 어려웠음(그래서 "다시 전체보기가 안 된다"는 피드백이 나옴) — 전체는 항상 맨 위 체크박스로
+// 고정해서 바로 보이게 함.
+let _pVendorSelected = new Set();
+function priceToggleVendorDropdown(){
+  const dd = document.getElementById('pVendorDropdown');
+  if (!dd) return;
+  dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
 function priceRebuildVendorFilter(){
   const cfg = PRICE_TABS[_pSub] || PRICE_TABS.sale;
   const items = cfg.hasVendor ? priceLoadStorage(cfg.key) : [];
-  const vendors=['전체',...new Set(items.map(r=>r.vendor).filter(Boolean))].sort((a,b)=>a==='전체'?-1:a.localeCompare(b,'ko'));
-  const sel=document.getElementById('pVendorFilter');
-  if(!sel)return;
-  const cur=sel.value;
-  sel.innerHTML=vendors.map(v=>`<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
-  if(vendors.includes(cur))sel.value=cur;
+  const vendors = [...new Set(items.map(r=>r.vendor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+  // 더 이상 존재하지 않는 발주처가 선택돼있으면 정리
+  _pVendorSelected = new Set([..._pVendorSelected].filter(v => vendors.includes(v)));
+  const dd = document.getElementById('pVendorDropdown');
+  if (dd) {
+    const allChecked = _pVendorSelected.size === 0;
+    let html = `<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:12px;font-weight:700;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:4px;white-space:nowrap">
+      <input type="checkbox" ${allChecked?'checked':''} onchange="priceVendorSelectAll()"> 전체
+    </label>`;
+    html += vendors.map(v => `<label style="display:flex;align-items:center;gap:6px;padding:3px 6px;font-size:12px;cursor:pointer;white-space:nowrap">
+      <input type="checkbox" ${_pVendorSelected.has(v)?'checked':''} onchange="priceVendorToggle('${esc(v)}',this.checked)"> ${escHtml(v)}
+    </label>`).join('');
+    dd.innerHTML = html;
+  }
+  priceUpdateVendorBtnLabel();
+}
+function priceVendorSelectAll(){
+  _pVendorSelected.clear();
+  priceRebuildVendorFilter();
+  priceRender();
+}
+function priceVendorToggle(v, checked){
+  if (checked) _pVendorSelected.add(v); else _pVendorSelected.delete(v);
+  priceRebuildVendorFilter();
+  priceRender();
+}
+function priceUpdateVendorBtnLabel(){
+  const btn = document.getElementById('pVendorFilterBtn');
+  if (!btn) return;
+  if (_pVendorSelected.size === 0) btn.textContent = '전체 ▾';
+  else if (_pVendorSelected.size === 1) btn.textContent = [..._pVendorSelected][0] + ' ▾';
+  else btn.textContent = [..._pVendorSelected][0] + ` 외 ${_pVendorSelected.size-1}곳 ▾`;
 }
 
 function priceRender(){
   const search=(document.getElementById('pSearch')?.value||'').toLowerCase();
-  const vendor=document.getElementById('pVendorFilter')?.value||'전체';
   const head=document.getElementById('pHead');
   const body=document.getElementById('pBody');
   if(!head||!body)return;
@@ -16745,7 +16782,7 @@ function priceRender(){
   const cfg = PRICE_TABS[_pSub] || PRICE_TABS.sale;
   let items = priceLoadStorage(cfg.key);
   let rows = items;
-  if (cfg.hasVendor && vendor !== '전체') rows = rows.filter(r=>r.vendor===vendor);
+  if (cfg.hasVendor && _pVendorSelected.size > 0) rows = rows.filter(r=>_pVendorSelected.has(r.vendor));
   if (search) rows = rows.filter(r => {
     return cfg.fields.some(f => String(r[f.key]||'').toLowerCase().includes(search));
   });
@@ -16962,6 +16999,21 @@ function priceImportFile(file) {
 
 function priceImportUnifiedExcel(){
   document.getElementById('priceImportUnifiedInput').click();
+}
+// 지금 화면에 보이는 표(발주처 선택·검색 필터가 반영된 상태) 그대로 엑셀로 저장
+function priceExportExcel(){
+  const cfg = PRICE_TABS[_pSub] || PRICE_TABS.sale;
+  const search = (document.getElementById('pSearch')?.value||'').toLowerCase();
+  let rows = priceLoadStorage(cfg.key);
+  if (cfg.hasVendor && _pVendorSelected.size > 0) rows = rows.filter(r=>_pVendorSelected.has(r.vendor));
+  if (search) rows = rows.filter(r => cfg.fields.some(f => String(r[f.key]||'').toLowerCase().includes(search)));
+  if (!rows.length) { alert('내보낼 품목이 없어요.'); return; }
+  const aoa = [cfg.fields.map(f=>f.label), ...rows.map(r => cfg.fields.map(f => r[f.key]||''))];
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  XLSX.utils.book_append_sheet(wb, ws, cfg.sheet.slice(0,31));
+  const today = _localISO().replace(/-/g,'');
+  XLSX.writeFile(wb, `${today}-${cfg.sheet}-매입단가표.xlsx`);
 }
 // "업체별 매입 단가표" 통합 양식(코드/과세여부/업체/제품명/규격1/규격2/생산지/수량/단위/단가/
 // 배송비/총 매입가/택배사/비고 — 시트 이름이 "26.10.1"처럼 작성일자라 매번 바뀜) 가져오기.
