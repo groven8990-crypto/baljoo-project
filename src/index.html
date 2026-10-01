@@ -196,9 +196,14 @@
       </div>
       <input type="file" id="fileInput" accept=".xlsx,.xls" multiple style="display:none">
       <div id="status"></div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-top:10px;cursor:pointer">
-        <input type="checkbox" id="gmarketCouponHalfChk" onchange="onGmarketCouponHalfChange(this)" style="width:14px;height:14px">
-        🎟️ 지마켓/옥션 구매쿠폰 반반부담 행사 중 (체크: 정산추가정보의 구매쿠폰적용금액 <b>절반</b>만 주문금액에 반영 · 평소엔 전액 반영 · 지금 업로드하는 파일부터 적용 — 이미 업로드한 파일은 다시 업로드해야 반영돼요)
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-top:10px">
+        🎟️ 지마켓/옥션 구매쿠폰적용금액을 매출에:
+        <select id="gmarketCouponModeSel" class="inp" style="font-size:12px;padding:3px 6px" onchange="onGmarketCouponModeChange(this)">
+          <option value="none">반영 안 함 (기본 — 쿠폰 반반/전액부담 행사 안 할 때)</option>
+          <option value="full">전액 반영 (플랫폼이 쿠폰 전액 부담하는 행사 중)</option>
+          <option value="half">절반만 반영 (플랫폼·우리가 반반 부담하는 행사 중)</option>
+        </select>
+        <span style="color:var(--text3)">— 지금 업로드하는 파일부터 적용, 이미 올린 파일은 다시 업로드해야 반영돼요</span>
       </label>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
         <span style="font-size:12px;color:var(--text2);white-space:nowrap">📁 자동 가져오기 폴더</span>
@@ -3016,8 +3021,8 @@ document.addEventListener('DOMContentLoaded',()=>{
     if (Array.isArray(remote) && remote.length) localStorage.setItem(LS_STAFF_LIST, JSON.stringify(remote));
   }).catch(()=>{});
   try {
-    const gch = document.getElementById('gmarketCouponHalfChk');
-    if (gch) gch.checked = _gmarketCouponHalfOn();
+    const gcs = document.getElementById('gmarketCouponModeSel');
+    if (gcs) gcs.value = _gmarketCouponMode();
   } catch(e){}
   try { _autoRestoreTodayUploads(); } catch(e){ console.warn('오늘 업로드 자동 복원 실패:', e); }
 });
@@ -3051,12 +3056,20 @@ function _autoRestoreTodayUploads(){
   handleFile(files[0], next);
 }
 
-// 지마켓/옥션 주문금액에 "구매쿠폰적용금액"(정산추가정보 열)을 더할 때, 평소엔 플랫폼이 전액 부담하므로
-// 전액을 더하지만, 특정 행사 기간엔 우리와 반반 부담이라 절반만 더해야 함 — 파일만 봐서는 행사 여부를
-// 구분할 수 없어서(사용자가 그때그때 알고 있어야 함), 업로드 화면 체크박스로 켜고 끄게 함.
-const LS_GMARKET_COUPON_HALF = 'yb_gmarket_coupon_half';
-function _gmarketCouponHalfOn(){ return localStorage.getItem(LS_GMARKET_COUPON_HALF) === '1'; }
-function onGmarketCouponHalfChange(chk){ localStorage.setItem(LS_GMARKET_COUPON_HALF, chk.checked ? '1' : '0'); }
+// 지마켓/옥션 주문금액에 "구매쿠폰적용금액"(정산추가정보 열)을 더할지 — 쿠폰을 플랫폼이 전액/
+// 반반 부담하는 행사 중일 때만 그 금액을 매출에 반영해야 함. 그런 행사를 안 하면(기본값) 이
+// 금액은 우리 매출이 아니라서 아예 안 더해야 함 — 예전엔 "반반부담 체크박스"만 있어서 행사가
+// 없을 때도 기본값이 "전액 반영"이었는데, 그게 실제로 행사 안 할 때도 매출을 부풀리는 원인이었음
+// (예: 2026-09-30 지마켓 주문 — 구매쿠폰적용금액 6,000원이 실제로는 아무 행사도 없는데 매출에
+// 섞여 들어가 33,700원이어야 할 매출이 36,026원으로 찍힘). 파일만 봐서는 행사 여부를 구분할 수
+// 없어서(사용자가 그때그때 알고 있어야 함), 업로드 화면에서 3단계로 직접 고르게 함 — 기본은
+// "반영 안 함".
+const LS_GMARKET_COUPON_MODE = 'yb_gmarket_coupon_mode';  // 'none' | 'full' | 'half'
+function _gmarketCouponMode(){
+  const v = localStorage.getItem(LS_GMARKET_COUPON_MODE);
+  return (v === 'full' || v === 'half') ? v : 'none';
+}
+function onGmarketCouponModeChange(sel){ localStorage.setItem(LS_GMARKET_COUPON_MODE, sel.value); }
 function setSt(msg,err){const el=document.getElementById('status');el.textContent=msg;el.className=err?'error':'';}
 
 // 당근 주문 파일 감지 — 헤더에 '주문자명' + '배송주소' + '당근 닉네임' 있으면 당근
@@ -3794,7 +3807,8 @@ function handleFile(file, onDone) {
           const _aliasRaw=C.al>=0?String(r[C.al]||'').trim():'';
           const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw+' '+_aliasRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
           const _bcAmt=_bcM?parseInt(_bcM[1].replace(/,/g,'')):0;
-          const _bcAdj=_bcM?Math.round(_gmarketCouponHalfOn()?_bcAmt/2:_bcAmt):0;
+          const _bcMode=_gmarketCouponMode();
+          const _bcAdj=_bcM?Math.round(_bcMode==='full'?_bcAmt:(_bcMode==='half'?_bcAmt/2:0)):0;
           const _order_amt_full=Math.round(_ab - _ai + _ah + _bcAdj);
           // 한 주문이 여러 행으로 나뉜 경우(도매꾹 옵션 분리) 주문금액을 행 수만큼 중복 계상하지 않도록 나눠 배분
           const order_amt = _optionList.length > 1
@@ -12216,7 +12230,8 @@ function handleFileAdd(file, onDone){
           const _aliasRaw=C.al>=0?String(r[C.al]||'').trim():'';
           const _bcM=/지마켓|g마켓|gmarket|옥션|auction/i.test(_smRaw+' '+_aliasRaw)?_siRaw.match(/구매쿠폰적용금액[:\s]*([0-9,]+)/):null;
           const _bcAmt=_bcM?parseInt(_bcM[1].replace(/,/g,'')):0;
-          const _bcAdj=_bcM?Math.round(_gmarketCouponHalfOn()?_bcAmt/2:_bcAmt):0;
+          const _bcMode=_gmarketCouponMode();
+          const _bcAdj=_bcM?Math.round(_bcMode==='full'?_bcAmt:(_bcMode==='half'?_bcAmt/2:0)):0;
           const _order_amt_full=Math.round(_ab - _ai + _ah + _bcAdj);
           // 한 주문이 여러 행으로 나뉜 경우(도매꾹 옵션 분리) 주문금액을 행 수만큼 중복 계상하지 않도록 나눠 배분
           const order_amt = _optionList.length > 1
