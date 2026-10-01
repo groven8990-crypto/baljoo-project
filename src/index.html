@@ -15448,7 +15448,6 @@ function reconExportXlsx() {
       <button class="btn" id="pSubBtn-sale"    onclick="priceSwitchSub('sale')"    style="background:var(--text);color:#fff;font-size:13px">📦 판매가(10%)</button>
       <button class="btn" id="pSubBtn-dm"      onclick="priceSwitchSub('dm')"      style="font-size:13px">🛒 도매꾹</button>
       <button class="btn" id="pSubBtn-b2bgwa"  onclick="priceSwitchSub('b2bgwa')"  style="font-size:13px">🐟 디네트(과메기)</button>
-      <button class="btn" id="pSubBtn-bakdae"  onclick="priceSwitchSub('bakdae')"  style="font-size:13px">🐟 박대공급</button>
       <button class="btn" id="pSubBtn-b2bhae"  onclick="priceSwitchSub('b2bhae')"  style="font-size:13px">⭐ B2B(해담별)</button>
       <button class="btn" id="pSubBtn-b2bgwak" onclick="priceSwitchSub('b2bgwak')" style="font-size:13px">🐝 B2B(곽위)</button>
       <button class="btn" id="pSubBtn-b2bgc"   onclick="priceSwitchSub('b2bgc')"   style="font-size:13px">🌿 그린켐(또또상회)</button>
@@ -16686,7 +16685,10 @@ const PRICE_TABS = {
     ]
   },
 };
-const PRICE_TAB_IDS = ['sale','dm','b2bgwa','bakdae','b2bhae','b2bgwak','b2bgc'];
+// 박대공급(bakdae) 탭은 화면에서 없앴지만(사용자 요청), 기존에 입력해뒀을 수 있는 데이터
+// (baljoo_priceBakdae)는 혹시 몰라 그대로 둠 — PRICE_TABS.bakdae 설정 자체는 안 지우고
+// 이 목록에서만 뺀 것. 나중에 필요하면 이 배열에 'bakdae'만 다시 넣으면 복구됨.
+const PRICE_TAB_IDS = ['sale','dm','b2bgwa','b2bhae','b2bgwak','b2bgc'];
 
 // Legacy: 기존 코드 호환용
 const SALE_FIELDS = PRICE_TABS.sale.fields;
