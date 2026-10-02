@@ -4983,6 +4983,27 @@ function loadVendorDelivery(){
   } catch { return {}; }
 }
 function saveVendorDelivery(map){ try{ localStorage.setItem(LS_VENDOR_DELIVERY, JSON.stringify(map)); }catch(e){} }
+// 발주처별 이메일/전달방식 기본값 — 우리뜰 발주를 이메일로도 넣기로 해서 등록.
+// 이미 등록된 값이 있으면 건드리지 않음(사용자가 직접 바꿨을 수 있으므로). 이거 하나로
+// 발주서 카드에 "📧 자동발송" 버튼이 뜨고, 눌렀을 때 chammatthe@gmail.com 으로 바로 감.
+function _seedVendorEmailDefaults(){
+  const defaults = { '우리뜰': 'chammatthe@gmail.com' };
+  const emails = loadVendorEmails();
+  let emailsChanged = false;
+  for (const [v, email] of Object.entries(defaults)) {
+    if (!emails[v]) { emails[v] = email; emailsChanged = true; }
+  }
+  if (emailsChanged) saveVendorEmails(emails);
+
+  const delivery = loadVendorDelivery();
+  let deliveryChanged = false;
+  for (const v of Object.keys(defaults)) {
+    const cur = Array.isArray(delivery[v]) ? delivery[v] : [];
+    if (!cur.includes('email')) { delivery[v] = [...cur, 'email']; deliveryChanged = true; }
+  }
+  if (deliveryChanged) saveVendorDelivery(delivery);
+}
+_seedVendorEmailDefaults();
 function toggleVendorDelivery(vendor, mode){
   const m = loadVendorDelivery();
   const cur = Array.isArray(m[vendor]) ? m[vendor].slice() : [];
