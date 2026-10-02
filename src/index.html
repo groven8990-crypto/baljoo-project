@@ -5022,6 +5022,19 @@ function _seedVendorEmailDefaults(){
     if (!cur.includes('email')) { delivery[v] = [...cur, 'email']; deliveryChanged = true; }
   }
   if (deliveryChanged) saveVendorDelivery(delivery);
+
+  // 1회성 정정 v2: 참맛더드림은 이제 카톡으로 안 보내고 이메일로만 보냄 — 카톡 전달방식 제거.
+  // 한 번만 실행해서, 이후 사용자가 다시 카톡을 켜도 이 로직이 다시 꺼버리지 않도록 함.
+  try{
+    if (!localStorage.getItem('yb_vendor_email_fix_v2')) {
+      const delivery3 = loadVendorDelivery();
+      const cur3 = Array.isArray(delivery3['참맛더드림']) ? delivery3['참맛더드림'] : [];
+      const fixed3 = cur3.filter(m => m !== 'kakao');
+      if (fixed3.length) delivery3['참맛더드림'] = fixed3; else delete delivery3['참맛더드림'];
+      saveVendorDelivery(delivery3);
+      localStorage.setItem('yb_vendor_email_fix_v2', '1');
+    }
+  }catch(e){}
 }
 _seedVendorEmailDefaults();
 function toggleVendorDelivery(vendor, mode){
