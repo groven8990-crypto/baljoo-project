@@ -6074,7 +6074,7 @@ function renderGmailSettingsArea(){
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:12px;font-weight:600;margin-bottom:6px">📎 거래처 발주서 자동첨부</div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
-          디네트·그린켐처럼 거래처가 이메일로 보내온 발주서를, 그 발주처(예: 일비)에 자동발송할 때 <b>같이 첨부</b>해요.<br>
+          디네트·또또컴퍼니처럼 거래처가 이메일로 보내온 발주서를, 그 발주처(예: 일비)에 자동발송할 때 <b>같이 첨부</b>해요.<br>
           (발신자·메일 제목·파일명 중 어디에든 키워드가 있으면 그 거래처가 보낸 발주서로 인식 · 여러 규칙이 같은 발주처를 가리키면 한 번에 다 첨부됨)
         </div>
         <div id="b2bAttachRuleList">${_renderB2bAttachRuleRows()}</div>
@@ -15550,7 +15550,7 @@ function reconExportXlsx() {
       <button class="btn" id="pSubBtn-sale"    onclick="priceSwitchSub('sale')"    style="background:var(--text);color:#fff;font-size:13px">📦 판매가(10%)</button>
       <button class="btn" id="pSubBtn-dm"      onclick="priceSwitchSub('dm')"      style="font-size:13px">🛒 도매꾹</button>
       <button class="btn" id="pSubBtn-b2bgwa"  onclick="priceSwitchSub('b2bgwa')"  style="font-size:13px">🐟 디네트(과메기)</button>
-      <button class="btn" id="pSubBtn-b2bgc"   onclick="priceSwitchSub('b2bgc')"   style="font-size:13px">🌿 그린켐(또또상회)</button>
+      <button class="btn" id="pSubBtn-b2bgc"   onclick="priceSwitchSub('b2bgc')"   style="font-size:13px">🌿 또또컴퍼니</button>
       <button class="btn" id="pSubBtn-b2bgwak" onclick="priceSwitchSub('b2bgwak')" style="font-size:13px">🐝 B2B(곽위)</button>
       <div style="flex:1"></div>
       <button class="btn btn-sm" onclick="priceImportExcel()" title="엑셀 파일에서 일괄 가져오기(옛 6시트 양식)">📥 엑셀 가져오기</button>
@@ -15749,15 +15749,15 @@ function reconExportXlsx() {
     </details>
   </div>
   <div class="card">
-    <div class="card-title">🌿 그린켐 발주서 업로드 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택</span></div>
-    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">그린켐 주문은 일비 발주서랑 같은 형식(받는분성명/전화번호/주소/품목명/수량 등)이에요. <b>품목명 문장을 그대로 읽어서</b>, 처음 보는 품목이면 매입단가(우리가 사입하는 원가)와 판매단가(그린켐에게 받는 금액)를 한 번 등록해두면 다음부터 같은 문구는 자동으로 그 단가로 순마진까지 계산해요(코드 관리에서 미확인 코드 등록하는 것과 같은 방식).</div>
+    <div class="card-title">🌿 또또컴퍼니 발주서 업로드 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택</span></div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">또또컴퍼니 주문은 일비 발주서랑 같은 형식(받는분성명/전화번호/주소/품목명/수량 등)이에요. <b>품목명 문장을 그대로 읽어서</b>, 처음 보는 품목이면 매입단가(우리가 사입하는 원가)와 판매단가(또또컴퍼니에게 받는 금액)를 한 번 등록해두면 다음부터 같은 문구는 자동으로 그 단가로 순마진까지 계산해요(코드 관리에서 미확인 코드 등록하는 것과 같은 방식).</div>
     <div class="upload-zone" id="srGrinchemZone" onclick="document.getElementById('srGrinchemFile').click()"
          style="padding:10px 16px;display:flex;align-items:center;gap:8px;text-align:left"
          ondragover="event.preventDefault();this.classList.add('dragover')"
          ondragleave="this.classList.remove('dragover')"
          ondrop="srDropGrinchem(event)">
       <span style="font-size:16px;flex-shrink:0">🌿</span>
-      <span style="font-size:12.5px;color:var(--text2)">그린켐 발주 엑셀 끌어다 놓거나 클릭 <span style="color:var(--text3)">— 없으면 그린켐 없이 보고서 만들어요</span></span>
+      <span style="font-size:12.5px;color:var(--text2)">또또컴퍼니 발주 엑셀 끌어다 놓거나 클릭 <span style="color:var(--text3)">— 없으면 또또컴퍼니 없이 보고서 만들어요</span></span>
       <input type="file" id="srGrinchemFile" accept=".xls,.xlsx" style="display:none" onchange="srLoadGrinchem(this.files[0]); this.value='';">
     </div>
     <div id="srGrinchemInfo" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
@@ -16770,7 +16770,7 @@ const PRICE_TABS = {
     ]
   },
   b2bgc: {
-    sheet: 'B2B단가(그린켐)', key: 'baljoo_priceB2BGc', headerRow: 2,
+    sheet: 'B2B단가(또또컴퍼니)', key: 'baljoo_priceB2BGc', headerRow: 2,
     hasVendor: false,
     parseCols: { tax:0, name:1, spec1:2, spec2:3, origin:4, qty:5, unit:6, ship:7, price:8, total:9, supplyP:10, marginAmt:11, marginR:12, note:13 },
     fields: [
@@ -17273,7 +17273,7 @@ function priceImportUnifiedFile(file){
   reader.readAsArrayBuffer(file);
 }
 
-// 그린켐(또또상회) 납품단가표 — 사장님이 캡처로 준 "납품 단가표" 그대로 1회성 시드.
+// 또또컴퍼니 납품단가표 — 사장님이 캡처로 준 "납품 단가표" 그대로 1회성 시드.
 // 매입단가(원가)는 이 표에 원래 안 나와 있었는데, "일비에서 가져오는 가격이 우리 매입단가랑
 // 같다"고 확인해주셔서 — 사장님이 올려준 최신 단가표 파일(일비]박대/부세굴비 행)에 있던 실제
 // 단가를 박대 8종 + 굴비(부세) 2종에 채워넣음. 다만 총매입가/마진은 일부러 안 채움 — 이 표의
@@ -18226,6 +18226,10 @@ function srRenderProductAliases(){
 }
 function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회'))return 'grobn';if(a.includes('자꾸가게'))return 'yb';return 'other';}
 function _srIsManualB2B(o){ return /^B2B-/.test(String((o&&o.shop_mall)||'')); }
+// 내부 데이터(shop_mall/order_no/매입단가 키/B2B 발주처 매핑)는 전부 '그린켐'을 그대로 쓰지만
+// (Gmail 자동첨부 매칭·매입단가 연동이 걸려있어 바꾸면 깨짐), 화면에 보여줄 때만 이 함수를 거쳐
+// "또또컴퍼니"로 바꿔서 표시함 — 실제 거래처명이 그린켐이 아니라 또또컴퍼니라서 이름만 정정.
+function _b2bDisplayName(name){ return String(name||'').replace(/그린켐/g, '또또컴퍼니'); }
 function srAggregate(orders){
   const platMap={},prodMap={};let totalSales=0;
   // B2B(문자주문 등)로 등록된 주문 — 일반 플랫폼/제품 표에서 빼고 별도 집계 (디네트처럼 구분 표시)
@@ -18409,7 +18413,7 @@ function srB2BDetailHtml(agg){
     const margin = v.sales - purchase;
     return `
     <tr style="background:${i%2===0?'#FFF7ED':'#FFEFDC'}">
-      <td style="padding:8px 14px;border-bottom:1px solid #F5DEC0;color:#7B4B00">${escHtml(name)}</td>
+      <td style="padding:8px 14px;border-bottom:1px solid #F5DEC0;color:#7B4B00">${escHtml(_b2bDisplayName(name))}</td>
       <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #F5DEC0;color:#7B4B00">${v.count.toLocaleString()}건</td>
       <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #F5DEC0;color:#7B4B00">${v.sales.toLocaleString()}원</td>
       <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #F5DEC0;color:${margin<0?'#DC2626':'#166534'};font-weight:600">${margin.toLocaleString()}원</td>
@@ -18869,7 +18873,7 @@ function registerGrinchemItemPrice(i){
   const costInput = document.getElementById('grinchemCostInput_'+i);
   const price = Math.max(0, parseInt(priceInput?.value||'0')||0);
   const cost = Math.max(0, parseInt(costInput?.value||'0')||0);
-  if (!price) { alert('판매단가(그린켐에게 받는 금액)를 입력해주세요.'); return; }
+  if (!price) { alert('판매단가(또또컴퍼니에게 받는 금액)를 입력해주세요.'); return; }
   if (!cost) { alert('매입단가(우리가 사입하는 원가)를 입력해주세요 — 순마진 계산에 필요해요.'); return; }
   const prices = loadGrinchemItemPrices();
   prices[u.key] = { price, cost, registeredAt: Date.now() };
@@ -19878,7 +19882,7 @@ function _srBuildB2BMappingUI(){
   const b2bs = [hasDinette && '디네트', hasGrinchem && '그린켐'].filter(Boolean);
   const rows = b2bs.map(b => `<div style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;font-size:11px">
     <span style="color:#6B7280">B2B</span>
-    <b style="color:#7B4B00">${escHtml(b)}</b>
+    <b style="color:#7B4B00">${escHtml(_b2bDisplayName(b))}</b>
     <span style="color:#9CA3AF">→ 발주처</span>
     <input type="text" value="${escHtml(map[b]||'')}" placeholder="예: 일비" data-b2b="${escHtml(b)}" oninput="srOnB2BVendorChange(this)" style="width:80px;padding:2px 6px;font-size:11px;border:1px solid #D1D5DB;border-radius:3px">
   </div>`).join('');
@@ -21412,7 +21416,7 @@ function wrRender(){
   const platTableRows = platSorted.map(([p,v],i)=>{
     const pct = platTotal>0 ? (v/platTotal*100).toFixed(1) : '0.0';
     return `<tr style="background:${i%2===0?'#fff':'#FAFBFC'}">
-      <td style="padding:6px 10px;border-bottom:1px solid #eee"><span style="display:inline-block;width:10px;height:10px;background:${PASTEL[i%PASTEL.length]};border-radius:2px;margin-right:6px;vertical-align:middle"></span>${escHtml(p)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee"><span style="display:inline-block;width:10px;height:10px;background:${PASTEL[i%PASTEL.length]};border-radius:2px;margin-right:6px;vertical-align:middle"></span>${escHtml(_b2bDisplayName(p))}</td>
       <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #eee;font-variant-numeric:tabular-nums">${v.toLocaleString()}원</td>
       <td style="padding:6px 10px;text-align:right;border-bottom:1px solid #eee;color:#64748B;font-variant-numeric:tabular-nums">${pct}%</td>
     </tr>`;
@@ -21666,7 +21670,7 @@ function wrRenderCharts(byDate, grAgg, ybAgg, dnAgg, pur){
     addPlat(ybAgg.b2bMap);
     if (dnAgg.sales > 0) platCombined['디네트(B2B)'] = (platCombined['디네트(B2B)']||0) + dnAgg.sales;
     const sorted = Object.entries(platCombined).sort((a,b)=>b[1]-a[1]);
-    const labels = sorted.map(([p])=>p);
+    const labels = sorted.map(([p])=>_b2bDisplayName(p));
     const data   = sorted.map(([,v])=>v);
     const palette = ['#5B8FD9','#E89090','#F5A977','#9F87E0','#6FCE9F','#F5C547','#76C4E8','#E588B8','#B5A8E5','#8FD68F','#E89B9B','#C49EE0'];
     const bg = labels.map((_,i)=>palette[i%palette.length]);
