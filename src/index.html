@@ -4983,11 +4983,31 @@ function loadVendorDelivery(){
   } catch { return {}; }
 }
 function saveVendorDelivery(map){ try{ localStorage.setItem(LS_VENDOR_DELIVERY, JSON.stringify(map)); }catch(e){} }
-// 발주처별 이메일/전달방식 기본값 — 우리뜰 발주를 이메일로도 넣기로 해서 등록.
+// 발주처별 이메일/전달방식 기본값 — 참맛더드림 발주를 이메일로도 넣기로 해서 등록.
 // 이미 등록된 값이 있으면 건드리지 않음(사용자가 직접 바꿨을 수 있으므로). 이거 하나로
 // 발주서 카드에 "📧 자동발송" 버튼이 뜨고, 눌렀을 때 chammatthe@gmail.com 으로 바로 감.
 function _seedVendorEmailDefaults(){
-  const defaults = { '우리뜰': 'chammatthe@gmail.com' };
+  // 1회성 정정: 처음엔 우리뜰로 잘못 등록했었음 — 우리뜰은 원래 카톡으로 발주하는 거래처라
+  // 그때 넣은 이메일 등록은 지우고 카톡으로 복구함. 한 번만 실행해서, 이후 사용자가
+  // 전달방식을 직접 바꿔도 이 로직이 다시 덮어쓰지 않도록 함.
+  try{
+    if (!localStorage.getItem('yb_vendor_email_fix_v1')) {
+      const emails2 = loadVendorEmails();
+      if (emails2['우리뜰'] === 'chammatthe@gmail.com') {
+        delete emails2['우리뜰'];
+        saveVendorEmails(emails2);
+      }
+      const delivery2 = loadVendorDelivery();
+      const cur2 = Array.isArray(delivery2['우리뜰']) ? delivery2['우리뜰'] : [];
+      const fixed2 = cur2.filter(m => m !== 'email');
+      if (!fixed2.includes('kakao')) fixed2.push('kakao');
+      delivery2['우리뜰'] = fixed2;
+      saveVendorDelivery(delivery2);
+      localStorage.setItem('yb_vendor_email_fix_v1', '1');
+    }
+  }catch(e){}
+
+  const defaults = { '참맛더드림': 'chammatthe@gmail.com' };
   const emails = loadVendorEmails();
   let emailsChanged = false;
   for (const [v, email] of Object.entries(defaults)) {
