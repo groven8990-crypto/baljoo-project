@@ -3025,6 +3025,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     if (gcs) gcs.value = _gmarketCouponMode();
   } catch(e){}
   try { _autoRestoreTodayUploads(); } catch(e){ console.warn('오늘 업로드 자동 복원 실패:', e); }
+  try { _autoRestoreGrinchemUpload(); } catch(e){ console.warn('또또컴퍼니 업로드 자동 복원 실패:', e); }
 });
 
 // 새로고침하면 업로드한 샵마인 주문(allOrders)이 브라우저 메모리에만 있어서 통째로 사라지던 문제 —
@@ -18715,6 +18716,31 @@ const LS_GRINCHEM_ITEM_PRICE = 'yb_grinchem_item_price';
 function loadGrinchemItemPrices(){ try{ return JSON.parse(localStorage.getItem(LS_GRINCHEM_ITEM_PRICE)||'{}'); }catch{ return {}; } }
 function saveGrinchemItemPrices(m){ try{ localStorage.setItem(LS_GRINCHEM_ITEM_PRICE, JSON.stringify(m||{})); }catch(e){} }
 function _grinchemNormItem(name){ return String(name||'').trim().replace(/\s+/g,' '); }
+// 또또컴퍼니 발주서도 샵마인 파일처럼 새로고침하면 브라우저 메모리(srGrinchemStagedRows)에만
+// 있던 게 통째로 사라지던 문제 — 샵마인 업로드 이력과 같은 방식으로 오늘 날짜 파일을 저장해뒀다가
+// 페이지를 열면 자동으로 다시 읽어들임(_autoRestoreGrinchemUpload, DOMContentLoaded에서 호출)
+const LS_GRINCHEM_UPLOAD = 'yb_grinchem_upload_today';
+function _saveGrinchemUploadForRestore(file, arrayBuffer){
+  try {
+    const b = new Uint8Array(arrayBuffer); let s = '';
+    for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+    const b64 = btoa(s);
+    localStorage.setItem(LS_GRINCHEM_UPLOAD, JSON.stringify({ date: _localISO(), fileName: file.name, fileBytesB64: b64, ts: Date.now() }));
+  } catch(e){}
+}
+function _autoRestoreGrinchemUpload(){
+  if (srGrinchemStagedRows.length > 0) return;
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem(LS_GRINCHEM_UPLOAD) || 'null'); } catch(e){ return; }
+  if (!saved || saved.date !== _localISO() || !saved.fileBytesB64) return;
+  try {
+    const bin = atob(saved.fileBytesB64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const file = new File([bytes.buffer], saved.fileName || '또또컴퍼니.xlsx', {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    srLoadGrinchem(file);
+  } catch(e){ console.warn('또또컴퍼니 업로드 자동 복원 실패:', e); }
+}
 // 또또컴퍼니가 보내는 발주 파일은 일비 발주서랑 똑같은 양식(받는분성명/전화번호/주소/품목명/수량)이라
 // 발주처 컬럼이 따로 없음 — 그런데 실제로는 박대/굴비(부세)는 일비, 순살갈치·법성포굴비는 생선상륙,
 // 안동간고등어는 푸드엔드베스트, 홍어회는 일해수산 등 품목마다 실제 공급처가 다 다름(사장님 확인).
@@ -18912,6 +18938,7 @@ function srLoadGrinchem(file){
         qty: parseInt(r[4]) || 1,
         memo: String(r[5]||'').trim(),
       }));
+      _saveGrinchemUploadForRestore(file, e.target.result);
       _srProcessGrinchemStaged();
       const info = document.getElementById('srGrinchemInfo');
       const unregCount = srGrinchemUnregistered.reduce((s,u)=>s+u.count,0);
@@ -18940,6 +18967,7 @@ function srClearGrinchem(){
   totalCount = allOrders.length;
   rematchAllOrders();
   srGrinchemStagedRows = []; srGrinchemUnregistered = []; srGrinchemFileName = '';
+  try { localStorage.removeItem(LS_GRINCHEM_UPLOAD); } catch(e){}
   document.getElementById('srGrinchemInfo').innerHTML = '';
   renderGrinchemUnregisteredList();
   const rpt = document.getElementById('srReport');
