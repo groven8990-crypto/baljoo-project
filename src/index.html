@@ -15775,6 +15775,7 @@ function reconExportXlsx() {
     </div>
     <div id="srGrinchemInfo" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
     <div id="grinchemUnregList" style="margin-top:8px"></div>
+    <div id="grinchemRegList" style="margin-top:8px"></div>
   </div>
   <div class="card">
     <div class="card-title">✍️ 기타 B2B 거래처 수기 입력 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 엑셀 없이 직접 입력</span></div>
@@ -18737,6 +18738,39 @@ function _grinchemResolveVendor(itemText){
   }
   return null;
 }
+// 품목명 문장에서 매입단가표(또또컴퍼니 b2bgc 시트)·PRICE_GC_ILBI_COST와 "박스규격/수량까지
+// 정확히 일치하는" 조합만 찾아 매입단가·판매단가를 자동으로 알려줌 — 수량이 표와 안 맞는 경우
+// (예: 매입단가표는 10팩 기준인데 실제 주문은 5팩)는 단가를 잘못 계산할 수 있어 일부러 매칭시키지
+// 않고 사람이 직접 확인하게 둠. 지금은 박대(전 규격) · 굴비(부세, 3미/5미)만 원가까지 확실해서
+// 자동 처리하고, 나머지(안동간고등어/순살갈치/홍어회/법성포굴비)는 수량 단위가 불명확해서 보류.
+const GRINCHEM_BAKDAE_SPEC_BY_RANGE = [
+  { re:/29\s*cm\s*이하/, spec2:'29cm이하', spec1:'4P' },
+  { re:/29\s*[-~]\s*31\s*cm/, spec2:'29~31cm', spec1:'3P' },
+  { re:/33\s*[-~]\s*35\s*cm/, spec2:'33~35cm', spec1:'2P+' },
+  { re:/37\s*cm\s*이상/, spec2:'37cm이상', spec1:'P+' },
+];
+function _grinchemKnownPriceFor(itemText){
+  const t = String(itemText||'');
+  const qtyM = t.match(/(\d+)\s*미/);
+  const qty = qtyM ? qtyM[1] : null;
+  if (!qty) return null;
+  const b2bgcRows = (typeof priceLoadStorage === 'function') ? priceLoadStorage(PRICE_TABS.b2bgc.key) : [];
+  if (t.includes('박대')) {
+    const specHit = GRINCHEM_BAKDAE_SPEC_BY_RANGE.find(s => s.re.test(t));
+    if (!specHit) return null;
+    const cost = PRICE_GC_ILBI_COST[`박대|${specHit.spec1}|${specHit.spec2}|${qty}`];
+    const row = b2bgcRows.find(r => r.name==='박대' && r.spec1===specHit.spec1 && r.spec2===specHit.spec2 && String(r.qty)===qty);
+    if (cost != null && row && row.supplyP) return { price: Number(row.supplyP), cost };
+    return null;
+  }
+  if ((t.includes('조기') || t.includes('부세')) && (qty === '3' || qty === '5')) {
+    const cost = PRICE_GC_ILBI_COST[`굴비|부세|23-26cm|${qty}`];
+    const row = b2bgcRows.find(r => r.name==='굴비' && r.spec1==='부세' && String(r.qty)===qty);
+    if (cost != null && row && row.supplyP) return { price: Number(row.supplyP), cost };
+    return null;
+  }
+  return null;
+}
 // 굴비(부세조기) 실제 매입/납품단가 — 사용자가 준 "납품 단가표"(부세 23-26cm 3미=12,600원/
 // 5미=21,000원) + "우리는 1미에 4천원으로 받아온다"는 매입단가를 그대로 기본값으로 등록해둠
 // (사용자가 직접 등록한 값이 있으면 덮어쓰지 않음). 다른 품목명(예: 박대)은 아직 없으므로
@@ -18777,13 +18811,24 @@ function _srProcessGrinchemStaged(){
     if (/^그린켐/.test(allOrders[i].order_no||'')) allOrders.splice(i, 1);
   }
   const prices = loadGrinchemItemPrices();
+  let pricesChanged = false;
   const unregMap = {};
   let idx = 0;
   const newOrders = [];  // rematchAllOrders 이후 vendor_key로 매입단가(cost)를 등록해야 하니 잠시 보관
   for (const r of srGrinchemStagedRows) {
     const key = _grinchemNormItem(r.item);
     if (!key) continue;
-    const saved = prices[key];
+    let saved = prices[key];
+    // 아직 등록 안 된 품목이면, 매입단가표(또또컴퍼니 납품단가)에서 규격·수량까지 정확히 일치하는
+    // 값을 찾아 자동으로 채워줌 — 사람이 직접 하나하나 다시 입력할 필요 없게
+    if (!saved || !saved.price) {
+      const known = _grinchemKnownPriceFor(r.item);
+      if (known) {
+        prices[key] = { price: known.price, cost: known.cost, registeredAt: Date.now(), auto: true };
+        saved = prices[key];
+        pricesChanged = true;
+      }
+    }
     if (!saved || !saved.price) {
       if (!unregMap[key]) unregMap[key] = { key, item: r.item, count:0, qtySum:0 };
       unregMap[key].count++;
@@ -18826,6 +18871,7 @@ function _srProcessGrinchemStaged(){
     allOrders.push(order);
     newOrders.push({ order, cost: Number(saved.cost)||0 });
   }
+  if (pricesChanged) saveGrinchemItemPrices(prices);
   srGrinchemUnregistered = Object.values(unregMap);
   totalCount = allOrders.length;
   rematchAllOrders();  // order.vendor_key 등이 이 자리에서 채워짐(같은 객체 참조라 newOrders에서도 바로 보임)
@@ -18903,6 +18949,7 @@ function srClearGrinchem(){
 // 처음 보는 품목명 — 판매단가 입력창을 보여주고, 등록하면 대기 중이던 행들을 그 자리에서
 // 바로 주문으로 변환(재업로드 필요 없음)
 function renderGrinchemUnregisteredList(){
+  renderGrinchemRegisteredList();
   const el = document.getElementById('grinchemUnregList');
   if (!el) return;
   if (!srGrinchemUnregistered.length) { el.innerHTML = ''; return; }
@@ -18914,6 +18961,57 @@ function renderGrinchemUnregisteredList(){
       <button class="btn btn-sm btn-primary" onclick="registerGrinchemItemPrice(${i})">등록</button>
     </div>`).join('');
   el.innerHTML = `<div style="font-size:11px;color:#92400E;font-weight:600;margin-bottom:4px">⚠ 처음 보는 품목 — 매입단가·판매단가 등록 필요 (${srGrinchemUnregistered.length}개, 둘 다 있어야 순마진이 계산돼요)</div>${rows}`;
+}
+// 매입단가표에서 규격·수량이 정확히 일치해 자동으로 채워졌거나, 사람이 이미 등록해둔 단가를
+// 보여주고 틀렸으면 고쳐서 다시 저장할 수 있게 함 — 지금 올라온 파일에 있는 품목만(전체 등록
+// 이력을 다 보여주면 너무 길어짐)
+function renderGrinchemRegisteredList(){
+  const el = document.getElementById('grinchemRegList');
+  if (!el) return;
+  if (!srGrinchemStagedRows.length) { el.innerHTML = ''; return; }
+  const prices = loadGrinchemItemPrices();
+  const seen = new Set();
+  const items = [];
+  for (const r of srGrinchemStagedRows) {
+    const key = _grinchemNormItem(r.item);
+    if (!key || seen.has(key)) continue;
+    const saved = prices[key];
+    if (!saved || !saved.price) continue;
+    seen.add(key);
+    items.push({ key, item: r.item, saved });
+  }
+  if (!items.length) { el.innerHTML = ''; return; }
+  const rows = items.map(({key,item,saved}) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #BBF7D0;background:#F0FDF4;border-radius:6px;margin-bottom:4px;font-size:12px">
+      <span style="flex:1;color:#166534">${escHtml(item)}${saved.auto?' <span style="font-size:10px;background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:8px;padding:0 6px">📋자동(매입단가표)</span>':''}</span>
+      <input type="number" min="0" value="${saved.cost||''}" id="grinchemRegCost_${ekey(key)}" placeholder="매입단가" style="width:110px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
+      <input type="number" min="0" value="${saved.price||''}" id="grinchemRegPrice_${ekey(key)}" placeholder="판매단가" style="width:110px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
+      <button class="btn btn-sm" onclick="updateGrinchemItemPrice('${esc(key)}')">저장</button>
+    </div>`).join('');
+  el.innerHTML = `<div style="font-size:11px;color:#166534;font-weight:600;margin-bottom:4px">✅ 등록된 단가 — 틀렸으면 고쳐서 저장하세요 (${items.length}개)</div>${rows}`;
+}
+function updateGrinchemItemPrice(key){
+  const costEl = document.getElementById('grinchemRegCost_'+ekey(key));
+  const priceEl = document.getElementById('grinchemRegPrice_'+ekey(key));
+  const cost = Math.max(0, parseInt(costEl?.value||'0')||0);
+  const price = Math.max(0, parseInt(priceEl?.value||'0')||0);
+  if (!price) { alert('판매단가(또또컴퍼니에게 받는 금액)를 입력해주세요.'); return; }
+  if (!cost) { alert('매입단가(우리가 사입하는 원가)를 입력해주세요 — 순마진 계산에 필요해요.'); return; }
+  const prices = loadGrinchemItemPrices();
+  prices[key] = { price, cost, registeredAt: Date.now() };  // 사람이 직접 고친 값이니 자동 표시는 지움
+  saveGrinchemItemPrices(prices);
+  _srProcessGrinchemStaged();
+  const info = document.getElementById('srGrinchemInfo');
+  if (info) {
+    const unregCount = srGrinchemUnregistered.reduce((s,x)=>s+x.count,0);
+    const converted = srGrinchemStagedRows.length - unregCount;
+    info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(srGrinchemFileName)} — ${srGrinchemStagedRows.length}건 중 ${converted}건 반영</span>${srGrinchemUnregistered.length ? ` <span style="color:var(--warn)">· 품목 ${srGrinchemUnregistered.length}개 단가 미등록(아래에서 등록)</span>` : ''} <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">제거</button>`;
+  }
+  renderGrinchemUnregisteredList();
+  if (typeof _poShowToast === 'function') _poShowToast('✅ 단가 저장됨');
+  const rpt = document.getElementById('srReport');
+  if (rpt && rpt.innerHTML.trim()) srRender();
+  else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
 }
 function registerGrinchemItemPrice(i){
   const u = srGrinchemUnregistered[i];
