@@ -19147,13 +19147,16 @@ function grinchemMatchTrackingFile(file){
   };
   reader.readAsArrayBuffer(file);
 }
+// 카톡으로 운송장을 주는 발주처 — 회신파일이 없어서 자동 매칭이 안 되니, 아래 목록에서
+// 이 발주처들만 눈에 띄게 구분해서 "여긴 직접 입력해야 함"을 바로 알 수 있게 함
+const GRINCHEM_KAKAO_TRACKING_VENDORS = ['생선상륙'];
 function renderGrinchemTrackingList(){
   const el = document.getElementById('grinchemTrackList');
   if (!el) return;
   if (!srGrinchemStagedRows.length) { el.innerHTML = '<p style="font-size:12px;color:var(--text3)">또또컴퍼니 주문이 없어요 — "매출 보고용" 탭에서 먼저 발주서를 업로드하세요.</p>'; return; }
   const tracking = loadGrinchemTracking();
   const COURIERS = ['우체국택배','CJ대한통운','롯데택배','한진택배','로젠택배','경동택배'];
-  const rows = srGrinchemStagedRows.map((r,i) => {
+  const rowHtml = (r, i) => {
     const t = tracking[_grinchemTrackKey(r)] || {};
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;font-size:12px;flex-wrap:wrap">
       <span style="min-width:64px;font-weight:600">${escHtml(r.recv_name)}</span>
@@ -19165,9 +19168,22 @@ function renderGrinchemTrackingList(){
       <input type="text" id="grinchemTrackNo_${i}" value="${escHtml(t.no||'')}" placeholder="운송장번호" style="width:140px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
       <button class="btn btn-sm" onclick="saveGrinchemTrackRow(${i})">저장</button>
     </div>`;
+  };
+  // 발주처별로 묶어서, 카톡으로 오는 발주처는 "직접 입력" 섹션으로 눈에 띄게 분리
+  const byVendor = {};
+  srGrinchemStagedRows.forEach((r,i) => {
+    const vendor = _grinchemResolveVendor(r.item) || '미확인';
+    (byVendor[vendor] || (byVendor[vendor] = [])).push({r, i});
+  });
+  const sections = Object.entries(byVendor).map(([vendor, items]) => {
+    const isKakao = GRINCHEM_KAKAO_TRACKING_VENDORS.includes(vendor);
+    const badge = isKakao
+      ? `<span style="font-size:10px;background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;border-radius:8px;padding:0 6px">💬 카톡 — 직접 입력</span>`
+      : `<span style="font-size:10px;background:#DBEAFE;color:#1E40AF;border:1px solid #93C5FD;border-radius:8px;padding:0 6px">📬 회신파일 업로드하면 자동으로 채워짐</span>`;
+    return `<div style="margin-top:8px;margin-bottom:4px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px">🏭 ${escHtml(vendor)} ${badge}</div>${items.map(({r,i}) => rowHtml(r,i)).join('')}`;
   }).join('');
   const filledCount = srGrinchemStagedRows.filter(r => (tracking[_grinchemTrackKey(r)]||{}).no).length;
-  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">${filledCount} / ${srGrinchemStagedRows.length}건 운송장 입력됨 — 생선상륙처럼 카톡으로 온 건 여기서 직접 입력</div>${rows}`;
+  el.innerHTML = `<div style="font-size:11px;color:var(--text3)">${filledCount} / ${srGrinchemStagedRows.length}건 운송장 입력됨</div>${sections}`;
 }
 function saveGrinchemTrackRow(i){
   const r = srGrinchemStagedRows[i];
