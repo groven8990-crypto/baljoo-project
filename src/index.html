@@ -6140,12 +6140,25 @@ function loadB2bAttachRules(){
   // 발주서를 받아 일비에 전달)라 기본 규칙으로 추가해둠
   const seeded = [
     { id:'dinette',  senderKw: dinetteGetSenderKw(), targetVendor:'일비', on:true },
-    { id:'grinchem', senderKw: '그린켐',              targetVendor:'일비', on:true },
+    { id:'grinchem', senderKw: '그린켐',              targetVendor:'일비', on:false },
   ];
   try { localStorage.setItem(LS_B2B_ATTACH_RULES, JSON.stringify(seeded)); } catch(e){}
   return seeded;
 }
 function saveB2bAttachRules(rules){ try{ localStorage.setItem(LS_B2B_ATTACH_RULES, JSON.stringify(rules||[])); }catch(e){} }
+// 1회성 정정: 일비 발주서 보낼 때 또또컴퍼니(그린켐) 발주서를 자동으로 같이 첨부하던 규칙을 끔.
+// 한 번만 실행해서, 이후 사용자가 "📎 거래처 발주서 자동첨부" 카드에서 다시 켜도 이 로직이
+// 재실행되며 다시 꺼버리지 않도록 함.
+function _fixDisableGrinchemAttachRule(){
+  try{
+    if (localStorage.getItem('yb_b2b_attach_grinchem_fix_v1')) return;
+    const rules = loadB2bAttachRules();
+    const r = rules.find(x => x && x.id === 'grinchem');
+    if (r && r.on !== false) { r.on = false; saveB2bAttachRules(rules); }
+    localStorage.setItem('yb_b2b_attach_grinchem_fix_v1', '1');
+  }catch(e){}
+}
+_fixDisableGrinchemAttachRule();
 function addB2bAttachRule(){
   const kw = (document.getElementById('b2bAttachKwInput').value||'').trim();
   const target = (document.getElementById('b2bAttachTargetInput').value||'').trim();
