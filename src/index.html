@@ -7284,19 +7284,33 @@ function logUpload(file, arrayBuffer, orders){
   // 같은 (날짜+파일명) 중복 제거
   hist = hist.filter(h => !(h.fileName === file.name && h.date === entry.date));
   hist.unshift(entry);
-  // 메타는 최대 N개, 본문은 최근 K개만
+  // 메타는 최대 N개까지만 보관
   while (hist.length > UPHIST_MAX_ENTRIES) hist.pop();
-  for (let i = UPHIST_BYTES_KEEP; i < hist.length; i++) hist[i].fileBytesB64 = '';
+  // 본문(원본 바이트)은 "오늘 날짜 전체" + "그 외엔 최근 K개"만 유지 — 새로고침 자동복원은
+  // 항상 오늘 업로드분만 쓰기 때문에, 하루에 거래처 파일을 여러 개(10개 넘게) 올리면
+  // 먼저 올린 것부터 본문이 지워져서 새로고침 후 그 주문만 통째로 사라지는 문제가 있었음.
+  // 오늘자는 개수와 상관없이 전부 살려두고, 지난 날짜 것만 용량 절약용으로 줄임.
+  const today = _localISO();
+  let keptOthers = 0;
+  for (const h of hist) {
+    if (h.date === today) continue;
+    keptOthers++;
+    if (keptOthers > UPHIST_BYTES_KEEP) h.fileBytesB64 = '';
+  }
   if (!_saveUploadHistory(hist)) {
-    // 용량 초과: 본문 더 줄여 재시도
-    for (let keep = UPHIST_BYTES_KEEP - 1; keep >= 1; keep--) {
-      for (let i = keep; i < hist.length; i++) hist[i].fileBytesB64 = '';
+    // 용량 초과: 오늘자가 아닌 것부터 더 줄여 재시도 (오늘자는 최대한 지켜봄)
+    const others = hist.filter(h => h.date !== today);
+    for (let keep = Math.max(0, UPHIST_BYTES_KEEP - 1); keep >= 0; keep--) {
+      others.forEach((h,i) => { if (i >= keep) h.fileBytesB64 = ''; });
       if (_saveUploadHistory(hist)) break;
     }
-    // 그래도 실패하면 가장 최근 1개만 본문 보유
+    // 그래도 실패하면(오늘자만으로도 용량 초과) 오늘자 중 가장 최근 것부터 순서대로 줄임
     if (!localStorage.getItem(LS_UPHIST)) {
-      hist = hist.slice(0,1).concat(hist.slice(1).map(h => ({...h, fileBytesB64:''})));
-      _saveUploadHistory(hist);
+      const todays = hist.filter(h => h.date === today);
+      for (let keep = todays.length - 1; keep >= 1; keep--) {
+        todays.forEach((h,i) => { if (i >= keep) h.fileBytesB64 = ''; });
+        if (_saveUploadHistory(hist)) break;
+      }
     }
   }
   renderUploadHistory();
