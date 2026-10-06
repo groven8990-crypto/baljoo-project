@@ -15662,6 +15662,9 @@ function reconExportXlsx() {
       <label style="font-size:12px;color:var(--text2)">보고일자
         <input type="date" id="srReportDate" class="inp" style="width:160px;font-size:12px;margin-left:6px">
       </label>
+      <label style="font-size:12px;color:var(--text2)" title="며칠치 매출을 한 번에 몰아서 보고할 때만 채우세요 — 제목에 '시작일~보고일자'로만 표시되고, 실제로 집계되는 주문은 그대로 보고일자 기준이에요">시작일(선택)
+        <input type="date" id="srReportDateFrom" class="inp" style="width:160px;font-size:12px;margin-left:6px">
+      </label>
       <button class="btn btn-primary" onclick="srRender()" id="srBuildBtn">📊 보고서 생성</button>
       <button class="btn" onclick="srSaveCurrentSnapshot()" id="srSaveBtn" disabled>💾 이력에 저장</button>
       <button class="btn btn-green" onclick="srExportImage()" id="srImageBtn" disabled>🖼 이미지(PNG) 저장</button>
@@ -19718,7 +19721,13 @@ function srRender(){
     if(!dateStr)dateStr=_localISO();
     document.getElementById('srReportDate').value=dateStr;
   }
-  const titleDate=dateStr.replace(/-/g,'.');
+  // 며칠치를 몰아서 한 번에 보고할 때(예: 10/2~10/6 밀린 걸 오늘 한 번에) "시작일(선택)"을
+  // 채워두면 제목만 "10.02~10.06"처럼 범위로 보여줌 — 실제 집계 기준(allOrders/스냅샷 저장 키)은
+  // 그대로 보고일자(dateStr) 하나라서 주간 보고 합산 로직은 안 건드림
+  const dateFromRaw = document.getElementById('srReportDateFrom')?.value || '';
+  const titleDate = (dateFromRaw && dateFromRaw !== dateStr)
+    ? `${dateFromRaw.replace(/-/g,'.')}~${dateStr.replace(/-/g,'.')}`
+    : dateStr.replace(/-/g,'.');
   const html=`
     <div id="srReportContent" class="card" style="background:#fff;padding:22px;max-width:680px;margin:14px auto;font-family:'맑은 고딕','Noto Sans KR',sans-serif">
       <div id="srReportHeader">
