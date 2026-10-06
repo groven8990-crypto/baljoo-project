@@ -3042,6 +3042,9 @@ document.addEventListener('DOMContentLoaded',()=>{
   } catch(e){}
   try { _autoRestoreTodayUploads(); } catch(e){ console.warn('오늘 업로드 자동 복원 실패:', e); }
   try { _autoRestoreGrinchemUpload(); } catch(e){ console.warn('또또컴퍼니 업로드 자동 복원 실패:', e); }
+  // 복원할 또또컴퍼니 주문이 없는 완전 빈 상태에서도 "주문이 없어요" 안내문이라도 보이게 —
+  // 안 해주면 처음 보는 사람 눈엔 카드 안이 그냥 텅 비어 보여서 뭘 해야 하는지 알 수 없음
+  try { renderGrinchemTrackingList(); } catch(e){}
 });
 
 // 새로고침하면 업로드한 샵마인 주문(allOrders)이 브라우저 메모리에만 있어서 통째로 사라지던 문제 —
