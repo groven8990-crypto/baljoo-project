@@ -18870,15 +18870,15 @@ function _srProcessGrinchemStaged(){
     const prefixes = resolvedVendor
       ? (VENDOR_PREFIXES[resolvedVendor] || (loadCustomVendors()[resolvedVendor]||{}).prefixes || [resolvedVendor+']'])
       : ['또또컴퍼니-미확인]'];
-    // alias를 '로또상회(또또컴퍼니)'처럼 구분되게 지어서, 같은 발주처(예: 일비)로 가는
+    // alias를 '자꾸가게(또또컴퍼니)'처럼 구분되게 지어서, 같은 발주처(예: 일비)로 가는
     // 정규 주문과 또또컴퍼니발 주문이 그룹핑 키(vendor_key+alias)에서부터 갈라지게 함 —
     // 그래야 발주서 생성 탭에서 발주처당 카드가 2개로 나뉘어서 "다운로드"/"자동발송" 할 때
     // 서로 다른 엑셀 파일로 각각 만들어져서 나감(일비가 각각 다른 파일로 운송장을 회신해줄 수 있게).
-    // alias에 '로또상회'가 그대로 포함돼 있어서 보내는사람 정보·사업자 귀속 로직(.includes 기반)은
-    // 그대로 정상 동작함
+    // 또또컴퍼니 발주는 자꾸가게(옐로우브릿지) 사업자로 내보내기로 함 — alias에 '자꾸가게'가
+    // 그대로 포함돼 있어서 보내는사람 정보·사업자 귀속 로직(.includes 기반)은 그대로 정상 동작함
     const order = {
       vendor_code: prefixes[0] + r.item, vendor_opt: '', vendor_key: null,
-      alias: '로또상회(또또컴퍼니)', alias_raw: '로또상회(또또컴퍼니)',
+      alias: '자꾸가게(또또컴퍼니)', alias_raw: '자꾸가게(또또컴퍼니)',
       shop_mall: 'B2B-그린켐',
       item_name: r.item, option_name: '',
       opt_mapped:false, opt_needs_check:false, mapped_code:'', unmatched:false,
