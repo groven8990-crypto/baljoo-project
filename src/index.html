@@ -18714,6 +18714,29 @@ const LS_GRINCHEM_ITEM_PRICE = 'yb_grinchem_item_price';
 function loadGrinchemItemPrices(){ try{ return JSON.parse(localStorage.getItem(LS_GRINCHEM_ITEM_PRICE)||'{}'); }catch{ return {}; } }
 function saveGrinchemItemPrices(m){ try{ localStorage.setItem(LS_GRINCHEM_ITEM_PRICE, JSON.stringify(m||{})); }catch(e){} }
 function _grinchemNormItem(name){ return String(name||'').trim().replace(/\s+/g,' '); }
+// 또또컴퍼니가 보내는 발주 파일은 일비 발주서랑 똑같은 양식(받는분성명/전화번호/주소/품목명/수량)이라
+// 발주처 컬럼이 따로 없음 — 그런데 실제로는 박대/굴비(부세)는 일비, 순살갈치·법성포굴비는 생선상륙,
+// 안동간고등어는 푸드엔드베스트, 홍어회는 일해수산 등 품목마다 실제 공급처가 다 다름(사장님 확인).
+// 그래서 전부 일비로 몰아서 보내면 안 되고, 품목명 키워드로 실제 공급 발주처를 찾아서 그 발주처의
+// 발주서로만 가게 분리해야 함. 애매한 키워드(예: 수식어 없는 '굴비'만으로는 일비의 부세굴비인지
+// 생선상륙의 법성포굴비인지 구분이 안 됨)는 일부러 매칭시키지 않음 — 엉뚱한 발주처로 잘못 들어가는
+// 것보다, 미매칭으로 남겨서 사람이 직접 확인하게 하는 게 안전함.
+const GRINCHEM_ITEM_VENDOR_KEYWORDS = [
+  { kw:'박대', vendor:'일비' },
+  { kw:'부세', vendor:'일비' },
+  { kw:'조기', vendor:'일비' },
+  { kw:'간고등어', vendor:'푸드엔드베스트' },
+  { kw:'순살갈치', vendor:'생선상륙' },
+  { kw:'법성포', vendor:'생선상륙' },
+  { kw:'홍어', vendor:'일해수산' },
+];
+function _grinchemResolveVendor(itemText){
+  const t = String(itemText||'');
+  for (const {kw, vendor} of GRINCHEM_ITEM_VENDOR_KEYWORDS) {
+    if (t.includes(kw)) return vendor;
+  }
+  return null;
+}
 // 굴비(부세조기) 실제 매입/납품단가 — 사용자가 준 "납품 단가표"(부세 23-26cm 3미=12,600원/
 // 5미=21,000원) + "우리는 1미에 4천원으로 받아온다"는 매입단가를 그대로 기본값으로 등록해둠
 // (사용자가 직접 등록한 값이 있으면 덮어쓰지 않음). 다른 품목명(예: 박대)은 아직 없으므로
@@ -18755,8 +18778,6 @@ function _srProcessGrinchemStaged(){
   }
   const prices = loadGrinchemItemPrices();
   const unregMap = {};
-  const vendor = (typeof srGetB2BVendor === 'function' ? srGetB2BVendor('그린켐') : '') || '일비';
-  const prefixes = VENDOR_PREFIXES[vendor] || (loadCustomVendors()[vendor]||{}).prefixes || [vendor+']'];
   let idx = 0;
   const newOrders = [];  // rematchAllOrders 이후 vendor_key로 매입단가(cost)를 등록해야 하니 잠시 보관
   for (const r of srGrinchemStagedRows) {
@@ -18769,6 +18790,15 @@ function _srProcessGrinchemStaged(){
       unregMap[key].qtySum += r.qty;
       continue;
     }
+    // 품목명 키워드로 실제 공급 발주처를 찾음(박대/굴비→일비, 순살갈치→생선상륙 등). 못 찾으면
+    // 수동 지정값(있으면)을 쓰고, 그것도 없으면 알 수 없는 접두어를 써서 rematchAllOrders가
+    // "미매칭"으로 잡게 함 — 엉뚱한 발주처로 잘못 들어가지 않도록 함
+    const resolvedVendor = _grinchemResolveVendor(r.item)
+      || (typeof srGetB2BVendor === 'function' ? srGetB2BVendor('그린켐') : '')
+      || null;
+    const prefixes = resolvedVendor
+      ? (VENDOR_PREFIXES[resolvedVendor] || (loadCustomVendors()[resolvedVendor]||{}).prefixes || [resolvedVendor+']'])
+      : ['또또컴퍼니-미확인]'];
     const order = {
       vendor_code: prefixes[0] + r.item, vendor_opt: '', vendor_key: null,
       alias: '로또상회', alias_raw: '로또상회',
@@ -19641,8 +19671,12 @@ function _srBuildAdCostUI(biz){
 // B2B 업체 → 발주처(공급처) 매핑 — 사용자가 수정 가능
 const LS_B2B_VENDOR_MAP = 'yb_b2b_vendor_map';
 function srLoadB2BVendorMap(){
-  try { const m = JSON.parse(localStorage.getItem(LS_B2B_VENDOR_MAP)||'{}'); return Object.assign({'디네트':'일비','그린켐':'일비'}, m); }
-  catch { return {'디네트':'일비','그린켐':'일비'}; }
+  // '그린켐'(또또컴퍼니)은 품목마다 실제 공급 발주처가 달라서(박대/굴비→일비, 순살갈치/법성포굴비→
+  // 생선상륙, 안동간고등어→푸드엔드베스트, 홍어회→일해수산 등) 기본값으로 묶어버리면 안 됨 —
+  // GRINCHEM_ITEM_VENDOR_KEYWORDS로 품목명 키워드 매칭이 우선이고, 여기 값은 그 매칭이 실패했을
+  // 때만 쓰이는 수동 보조값(사용자가 직접 지정한 경우에만 사용, 기본값 없음)
+  try { const m = JSON.parse(localStorage.getItem(LS_B2B_VENDOR_MAP)||'{}'); return Object.assign({'디네트':'일비'}, m); }
+  catch { return {'디네트':'일비'}; }
 }
 function srSaveB2BVendorMap(m){
   try { localStorage.setItem(LS_B2B_VENDOR_MAP, JSON.stringify(m||{})); } catch(e){}
