@@ -18890,6 +18890,9 @@ function _srProcessGrinchemStaged(){
     }
     if (dbChanged) srSavePurchaseDB(db);
   } catch(e) { console.warn('그린켐 매입단가 자동등록 실패:', e); }
+  // "📋 발주서 생성" 탭 카드 목록을 갱신 — 안 해주면 여기서 allOrders/groupedOrders가 바뀌어도
+  // 그 탭 화면은 예전 그대로라, 또또컴퍼니발 주문 카드가 안 보이고 자동발송도 안 보임
+  if (typeof renderStep3 === 'function') renderStep3();
 }
 function srLoadGrinchem(file){
   if (!file) return;
@@ -18945,6 +18948,7 @@ function srClearGrinchem(){
   } else {
     srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
   }
+  if (typeof renderStep3 === 'function') renderStep3();
 }
 // 처음 보는 품목명 — 판매단가 입력창을 보여주고, 등록하면 대기 중이던 행들을 그 자리에서
 // 바로 주문으로 변환(재업로드 필요 없음)
