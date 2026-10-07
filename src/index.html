@@ -5122,6 +5122,9 @@ function _collectKnownVendors(){
   Object.keys(loadVendorEmails()||{}).forEach(v => v && set.add(v));
   Object.keys(loadVendorDelivery()||{}).forEach(v => v && set.add(v));
   (loadDlHistory()||[]).forEach(h => { if (h.vendor) set.add(h.vendor); });
+  // '직접발송'은 외부로 보낼 발주처가 없어서 이메일/카톡/사이트 전달방식 자체가 필요 없음 —
+  // 빼놓지 않으면 항상 "미지정"으로 잡혀서 "📇 발주처 전달방식 등록" 패널이 매번 저절로 펼쳐짐
+  set.delete('직접발송');
   return [...set].sort((a,b)=>a.localeCompare(b,'ko'));
 }
 function onVendorEmailInput(input){
