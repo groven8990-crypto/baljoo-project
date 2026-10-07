@@ -19255,6 +19255,7 @@ async function grinchemSendTrackingToVendor(){
     emails['또또컴퍼니'] = to;
     saveVendorEmails(emails);
   }
+  _grinchemEnsureVendorEmailDelivery();
   // 또또컴퍼니가 원래 쓰는 발주서 양식(받는분성명/전화번호/주소/품목명/수량/배송메세지/택배사/
   // 보내는분성명/주소/전화번호)에 운송장번호 칸만 추가한 형태로 맞춤 — 보내는분성명은 항상
   // "또또상회"로 고정(실제 발주처는 절대 안 드러나게), 보내는분주소/전화번호는 또또컴퍼니가
@@ -19282,6 +19283,22 @@ function grinchemRenderVendorEmailDisplay(){
   const email = (loadVendorEmails()||{})['또또컴퍼니'];
   el.textContent = email || '미등록';
 }
+// 또또컴퍼니는 이메일만 등록하고 "전달방식"(이메일/카톡/발주사이트) 체크는 따로 안 해줘서
+// "📇 발주처 전달방식 등록" 패널에 계속 "미지정"으로 잡혀 매번 저절로 펼쳐지는 문제가 있었음 —
+// 이메일을 저장할 때마다 전달방식에도 "이메일"을 같이 켜둬서 미지정 상태로 안 남게 함
+function _grinchemEnsureVendorEmailDelivery(){
+  const delivery = loadVendorDelivery();
+  const cur = Array.isArray(delivery['또또컴퍼니']) ? delivery['또또컴퍼니'] : [];
+  if (!cur.includes('email')) {
+    delivery['또또컴퍼니'] = [...cur, 'email'];
+    saveVendorDelivery(delivery);
+  }
+}
+// 1회성 백필: 이 고침 전에 이미 이메일만 등록돼있던 기존 설치는 전달방식이 계속 "미지정"으로
+// 남아있을 테니, 페이지 열 때 한 번 확인해서 채워줌(이메일이 등록돼 있을 때만)
+try {
+  if ((loadVendorEmails()||{})['또또컴퍼니']) _grinchemEnsureVendorEmailDelivery();
+} catch(e){}
 function grinchemEditVendorEmail(){
   const emails = loadVendorEmails();
   const cur = emails['또또컴퍼니'] || 'ttotto0723@daum.net';
@@ -19291,6 +19308,7 @@ function grinchemEditVendorEmail(){
   if (!v || !/.+@.+\..+/.test(v)) { alert('이메일 형식이 맞지 않아요: '+v); return; }
   emails['또또컴퍼니'] = v;
   saveVendorEmails(emails);
+  _grinchemEnsureVendorEmailDelivery();
   grinchemRenderVendorEmailDisplay();
   if (typeof _poShowToast === 'function') _poShowToast('✅ 또또컴퍼니 이메일 주소 저장됨');
 }
