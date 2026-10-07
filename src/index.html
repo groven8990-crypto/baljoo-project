@@ -751,7 +751,7 @@
     </div>
     <div class="alert alert-info" style="font-size:12px">
       ℹ <b>베이스 양식</b>이란 발주서 컬럼 구조예요. 같은 베이스를 쓰는 발주처들은 똑같은 컬럼/순서로 엑셀이 만들어져요. 기존 발주처와 컬럼 구조가 다르면 위 "🧩 새 양식 만들기"로 직접 만들 수 있어요.<br>
-      <b>내장 발주처(별도 등록 불필요):</b> 일비 · 최고집 · 늘푸른우리 · 거풍푸드 · 생선상륙 · 일해수산 · 충남마른김수협 · 푸드엔드베스트 · 한마당식품 · 남부파머스 · 해담별 · 공덕농협 · 도매꾹 · 동일 · 그린캠 · 우리뜰 · 렉스팜 · 참맛더드림 · 숲속양봉원 · MAC컴퍼니 · <b>에이팩</b>(코드 prefix: 에이팩] 또는 사무실]) · <b>직접발송</b>(코드 prefix: 재고] — 외부 발주처 없이 우리가 재고로 직접 포장·발송하는 상품)
+      <b>내장 발주처(별도 등록 불필요):</b> 일비 · 최고집 · 늘푸른우리 · 거풍푸드 · 생선상륙 · 일해수산 · 충남마른김수협 · 푸드엔드베스트 · 한마당식품 · 남부파머스 · 해담별 · 공덕농협 · 도매꾹 · 동일 · 그린캠 · 우리뜰 · 렉스팜 · 참맛더드림 · 숲속양봉원 · MAC컴퍼니 · <b>에이팩</b>(코드 prefix: 에이팩] 또는 사무실]) · <b>직접발송</b>(코드 prefix: 재고] — 외부 발주처 없이 우리가 재고로 직접 포장·발송하는 상품. 카드/매입비중 차트엔 "직접발송"이 아니라 상품명 맨 앞 단어로 떠요)
     </div>
   </div>
 
@@ -2669,6 +2669,15 @@ function detectVendor(vc, productName, selectOpt) {
   }
   // 3) 판매자상품코드 접두사로 발주처 추정
   if (c) {
+    // "직접발송"(재고] 접두사)은 실제 발주처가 아니라 우리가 재고로 직접 포장·발송하는 상품이라,
+    // "직접발송"이라는 고정 이름 대신 실제 상품명으로 카드를 구분해서 보여줌 — 상품명 맨 앞
+    // 단어(보통 브랜드/제품명이 먼저 나옴, 예: "동일전선 국산 CAT5e...")를 그대로 써서 상품마다
+    // 자기 이름으로 된 카드가 따로 생기게 함(매입 비중 차트 거래처 이름에도 그대로 반영됨)
+    const directShipPrefixes = VENDOR_PREFIXES['직접발송'] || [];
+    if (directShipPrefixes.some(p => c.toLowerCase().startsWith(p.toLowerCase()))) {
+      const firstWord = String(productName||'').trim().split(/\s+/)[0];
+      return firstWord || '직접발송';
+    }
     for (const [v, prefixes] of Object.entries(VENDOR_PREFIXES))
       for (const p of prefixes)
         if (c.toLowerCase().startsWith(p.toLowerCase())) return v;
@@ -5122,8 +5131,20 @@ function _collectKnownVendors(){
   Object.keys(loadVendorEmails()||{}).forEach(v => v && set.add(v));
   Object.keys(loadVendorDelivery()||{}).forEach(v => v && set.add(v));
   (loadDlHistory()||[]).forEach(h => { if (h.vendor) set.add(h.vendor); });
-  // '직접발송'은 외부로 보낼 발주처가 없어서 이메일/카톡/사이트 전달방식 자체가 필요 없음 —
-  // 빼놓지 않으면 항상 "미지정"으로 잡혀서 "📇 발주처 전달방식 등록" 패널이 매번 저절로 펼쳐짐
+  // 직접 포장·발송하는 상품(재고] 코드)은 외부로 보낼 발주처가 없어서 이메일/카톡/사이트
+  // 전달방식 자체가 필요 없음 — 빼놓지 않으면 "미지정"으로 잡혀서 "📇 발주처 전달방식 등록"
+  // 패널이 매번 저절로 펼쳐짐. 카드 이름이 이제 상품명으로 동적으로 바뀌어서(detectVendor 참고)
+  // "직접발송"이라는 고정 문자열로는 못 찾으니, 실제 주문의 판매자상품코드를 보고 재고] 접두사인
+  // 것들의 vendor_key를 찾아서 뺌
+  const directShipPrefixes = VENDOR_PREFIXES['직접발송'] || [];
+  if (directShipPrefixes.length) {
+    (allOrders||[]).forEach(o => {
+      const code = String(o.vendor_code||'');
+      if (o.vendor_key && directShipPrefixes.some(p => code.toLowerCase().startsWith(p.toLowerCase()))) {
+        set.delete(o.vendor_key);
+      }
+    });
+  }
   set.delete('직접발송');
   return [...set].sort((a,b)=>a.localeCompare(b,'ko'));
 }
