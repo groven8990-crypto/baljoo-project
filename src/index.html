@@ -15885,8 +15885,8 @@ function reconExportXlsx() {
          ondragleave="this.classList.remove('dragover')"
          ondrop="srDropGrinchem(event)">
       <span style="font-size:16px;flex-shrink:0">🌿</span>
-      <span style="font-size:12.5px;color:var(--text2)">또또컴퍼니 발주 엑셀 끌어다 놓거나 클릭 <span style="color:var(--text3)">— 없으면 또또컴퍼니 없이 보고서 만들어요</span></span>
-      <input type="file" id="srGrinchemFile" accept=".xls,.xlsx" style="display:none" onchange="srLoadGrinchem(this.files[0]); this.value='';">
+      <span style="font-size:12.5px;color:var(--text2)">또또컴퍼니 발주 엑셀 끌어다 놓거나 클릭 <span style="color:var(--text3)">(여러 개 동시 가능 — 하루에 여러 번 나눠 보내도 안 덮이고 합쳐져요)</span> <span style="color:var(--text3)">— 없으면 또또컴퍼니 없이 보고서 만들어요</span></span>
+      <input type="file" id="srGrinchemFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadGrinchemFiles(this.files); this.value='';">
     </div>
     <div id="srGrinchemInfo" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
     <div id="grinchemUnregList" style="margin-top:8px"></div>
@@ -18834,25 +18834,39 @@ function _grinchemNormItem(name){ return String(name||'').trim().replace(/\s+/g,
 // 있던 게 통째로 사라지던 문제 — 샵마인 업로드 이력과 같은 방식으로 오늘 날짜 파일을 저장해뒀다가
 // 페이지를 열면 자동으로 다시 읽어들임(_autoRestoreGrinchemUpload, DOMContentLoaded에서 호출)
 const LS_GRINCHEM_UPLOAD = 'yb_grinchem_upload_today';
+// 오늘 올린 또또컴퍼니 파일들을 전부 보관함(하루 여러 번 나눠 보내는 경우 대응) — 같은
+// 파일명이면 그 자리에서 교체(재전송 대응), 아니면 새로 추가
 function _saveGrinchemUploadForRestore(file, arrayBuffer){
   try {
     const b = new Uint8Array(arrayBuffer); let s = '';
     for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
     const b64 = btoa(s);
-    localStorage.setItem(LS_GRINCHEM_UPLOAD, JSON.stringify({ date: _localISO(), fileName: file.name, fileBytesB64: b64, ts: Date.now() }));
+    const today = _localISO();
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem(LS_GRINCHEM_UPLOAD) || 'null'); } catch(e){ saved = null; }
+    const files = (saved && saved.date === today && Array.isArray(saved.files)) ? saved.files.slice() : [];
+    const idx = files.findIndex(f => f.fileName === file.name);
+    const entry = { fileName: file.name, fileBytesB64: b64, ts: Date.now() };
+    if (idx >= 0) files[idx] = entry; else files.push(entry);
+    localStorage.setItem(LS_GRINCHEM_UPLOAD, JSON.stringify({ date: today, files }));
   } catch(e){}
 }
 function _autoRestoreGrinchemUpload(){
   if (srGrinchemStagedRows.length > 0) return;
   let saved;
   try { saved = JSON.parse(localStorage.getItem(LS_GRINCHEM_UPLOAD) || 'null'); } catch(e){ return; }
-  if (!saved || saved.date !== _localISO() || !saved.fileBytesB64) return;
+  if (!saved || saved.date !== _localISO()) return;
+  // 예전 버전(파일 1개만 저장)에서 남은 데이터도 그대로 복원되게 호환 처리
+  const entries = Array.isArray(saved.files) ? saved.files : (saved.fileBytesB64 ? [saved] : []);
+  if (!entries.length) return;
   try {
-    const bin = atob(saved.fileBytesB64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const file = new File([bytes.buffer], saved.fileName || '또또컴퍼니.xlsx', {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    srLoadGrinchem(file);
+    const files = entries.map(ent => {
+      const bin = atob(ent.fileBytesB64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new File([bytes.buffer], ent.fileName || '또또컴퍼니.xlsx', {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    });
+    srLoadGrinchemFiles(files);
   } catch(e){ console.warn('또또컴퍼니 업로드 자동 복원 실패:', e); }
 }
 // 또또컴퍼니가 보내는 발주 파일은 일비 발주서랑 똑같은 양식(받는분성명/전화번호/주소/품목명/수량)이라
@@ -18938,14 +18952,25 @@ function _srSeedGrinchemDefaultPrices(){
   if (changed) saveGrinchemItemPrices(prices);
 }
 _srSeedGrinchemDefaultPrices();
-let srGrinchemStagedRows = [];    // 파일에서 읽은 원본 행 전체(재처리에 계속 씀) — {recv_name,recv_phone,addr,item,qty,memo}
+let srGrinchemStagedRows = [];    // 파일에서 읽은 원본 행 전체(재처리에 계속 씀) — {recv_name,recv_phone,addr,item,qty,memo,_srcFile}
 let srGrinchemUnregistered = [];  // 판매단가가 아직 등록 안 된 품목 [{key,item,count,qtySum}]
-let srGrinchemFileName = '';
+// 또또컴퍼니가 하루에 여러 번(10시발주/12시발주 등) 나눠서 보낼 수 있어서, 파일 이름을
+// 여러 개 누적해서 보관함 — srLoadGrinchem이 파일마다 덮어쓰지 않고 이어붙이는 것과 짝
+let srGrinchemFileNames = [];
 function srDropGrinchem(e){
   e.preventDefault();
   e.currentTarget.classList.remove('dragover');
-  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-  if (f) srLoadGrinchem(f);
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (files && files.length) srLoadGrinchemFiles(files);
+}
+// 파일 선택창에서 여러 개를 한꺼번에 고르거나, 자동 복원 시 오늘 쌓인 파일들을 순서대로
+// 다시 불러올 때 씀 — FileReader가 비동기라 겹치지 않게 하나씩 순서대로 처리
+function srLoadGrinchemFiles(fileList){
+  const files = Array.from(fileList||[]).filter(f => f);
+  if (!files.length) return;
+  let idx = 0;
+  const next = () => { if (idx < files.length) srLoadGrinchem(files[idx++], next); };
+  next();
 }
 // 그린켐 주문(allOrders에 이미 반영된 것 포함)을 전부 지우고, 현재 등록된 판매단가 사전
 // 기준으로 srGrinchemStagedRows를 처음부터 다시 주문으로 변환 — 새 품목 단가를 등록한
@@ -19040,9 +19065,21 @@ function _srProcessGrinchemStaged(){
   // 그 탭 화면은 예전 그대로라, 또또컴퍼니발 주문 카드가 안 보이고 자동발송도 안 보임
   if (typeof renderStep3 === 'function') renderStep3();
 }
-function srLoadGrinchem(file){
-  if (!file) return;
-  srGrinchemFileName = file.name;
+// 업로드 결과 안내 배너 — srLoadGrinchem/단가 등록 두 곳에서 똑같은 모양으로 씀
+function _renderGrinchemUploadInfo(){
+  const info = document.getElementById('srGrinchemInfo');
+  if (!info) return;
+  if (!srGrinchemFileNames.length) { info.innerHTML = ''; return; }
+  const unregCount = srGrinchemUnregistered.reduce((s,u)=>s+u.count,0);
+  const converted = srGrinchemStagedRows.length - unregCount;
+  info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(srGrinchemFileNames.join(', '))} — ${srGrinchemStagedRows.length}건 중 ${converted}건 반영</span>${srGrinchemUnregistered.length ? ` <span style="color:var(--warn)">· 품목 ${srGrinchemUnregistered.length}개 단가 미등록(아래에서 등록)</span>` : ''} <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">전체 제거</button>`;
+}
+// file: 또또컴퍼니 발주 엑셀 1개. cb: 처리 끝나면(성공/실패 모두) 호출 — 여러 파일을 순서대로
+// 처리할 때 씀(srLoadGrinchemFiles). 같은 날 여러 번 올려도 기존 파일들을 지우지 않고
+// 이어붙임(하루에 10시발주/12시발주처럼 나눠 보내는 경우 대응) — 단, 같은 파일명을 다시
+// 올리면 그 파일 몫만 새 내용으로 교체(오타 고쳐서 재전송 등 대응, 중복 누적 방지)
+function srLoadGrinchem(file, cb){
+  if (!file) { if (typeof cb === 'function') cb(); return; }
   const reader = new FileReader();
   reader.onload = e => {
     try {
@@ -19050,20 +19087,20 @@ function srLoadGrinchem(file){
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''}).slice(1);
       // 일비 발주서와 같은 열 순서: A받는분성명 B전화번호 C주소 D품목명 E수량 F배송메세지
-      srGrinchemStagedRows = rows.filter(r => String(r[3]||'').trim()).map(r => ({
+      const newRows = rows.filter(r => String(r[3]||'').trim()).map(r => ({
         recv_name: String(r[0]||'').trim(),
         recv_phone: String(r[1]||'').trim(),
         addr: String(r[2]||'').trim(),
         item: String(r[3]||'').trim(),
         qty: parseInt(r[4]) || 1,
         memo: String(r[5]||'').trim(),
+        _srcFile: file.name,
       }));
+      srGrinchemStagedRows = srGrinchemStagedRows.filter(r => r._srcFile !== file.name).concat(newRows);
+      if (!srGrinchemFileNames.includes(file.name)) srGrinchemFileNames.push(file.name);
       _saveGrinchemUploadForRestore(file, e.target.result);
       _srProcessGrinchemStaged();
-      const info = document.getElementById('srGrinchemInfo');
-      const unregCount = srGrinchemUnregistered.reduce((s,u)=>s+u.count,0);
-      const converted = srGrinchemStagedRows.length - unregCount;
-      info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(file.name)} — ${srGrinchemStagedRows.length}건 중 ${converted}건 반영</span>${srGrinchemUnregistered.length ? ` <span style="color:var(--warn)">· 품목 ${srGrinchemUnregistered.length}개 단가 미등록(아래에서 등록)</span>` : ''} <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">제거</button>`;
+      _renderGrinchemUploadInfo();
       renderGrinchemUnregisteredList();
       const rpt = document.getElementById('srReport');
       if (rpt && rpt.innerHTML.trim()) {
@@ -19076,6 +19113,8 @@ function srLoadGrinchem(file){
       }
     } catch(err) {
       document.getElementById('srGrinchemInfo').innerHTML = '<span style="color:var(--danger)">❌ '+escHtml(err.message)+'</span>';
+    } finally {
+      if (typeof cb === 'function') cb();
     }
   };
   reader.readAsArrayBuffer(file);
@@ -19086,7 +19125,7 @@ function srClearGrinchem(){
   }
   totalCount = allOrders.length;
   rematchAllOrders();
-  srGrinchemStagedRows = []; srGrinchemUnregistered = []; srGrinchemFileName = '';
+  srGrinchemStagedRows = []; srGrinchemUnregistered = []; srGrinchemFileNames = [];
   try { localStorage.removeItem(LS_GRINCHEM_UPLOAD); } catch(e){}
   document.getElementById('srGrinchemInfo').innerHTML = '';
   renderGrinchemUnregisteredList();
@@ -19154,12 +19193,7 @@ function updateGrinchemItemPrice(key){
   prices[key] = { price, cost, registeredAt: Date.now() };  // 사람이 직접 고친 값이니 자동 표시는 지움
   saveGrinchemItemPrices(prices);
   _srProcessGrinchemStaged();
-  const info = document.getElementById('srGrinchemInfo');
-  if (info) {
-    const unregCount = srGrinchemUnregistered.reduce((s,x)=>s+x.count,0);
-    const converted = srGrinchemStagedRows.length - unregCount;
-    info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(srGrinchemFileName)} — ${srGrinchemStagedRows.length}건 중 ${converted}건 반영</span>${srGrinchemUnregistered.length ? ` <span style="color:var(--warn)">· 품목 ${srGrinchemUnregistered.length}개 단가 미등록(아래에서 등록)</span>` : ''} <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">제거</button>`;
-  }
+  _renderGrinchemUploadInfo();
   renderGrinchemUnregisteredList();
   if (typeof _poShowToast === 'function') _poShowToast('✅ 단가 저장됨');
   const rpt = document.getElementById('srReport');
@@ -19179,12 +19213,7 @@ function registerGrinchemItemPrice(i){
   prices[u.key] = { price, cost, registeredAt: Date.now() };
   saveGrinchemItemPrices(prices);
   _srProcessGrinchemStaged();
-  const info = document.getElementById('srGrinchemInfo');
-  if (info) {
-    const unregCount = srGrinchemUnregistered.reduce((s,x)=>s+x.count,0);
-    const converted = srGrinchemStagedRows.length - unregCount;
-    info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(srGrinchemFileName)} — ${srGrinchemStagedRows.length}건 중 ${converted}건 반영</span>${srGrinchemUnregistered.length ? ` <span style="color:var(--warn)">· 품목 ${srGrinchemUnregistered.length}개 단가 미등록(아래에서 등록)</span>` : ''} <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">제거</button>`;
-  }
+  _renderGrinchemUploadInfo();
   renderGrinchemUnregisteredList();
   const rpt = document.getElementById('srReport');
   if (rpt && rpt.innerHTML.trim()) srRender();
