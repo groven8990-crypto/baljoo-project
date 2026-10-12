@@ -5243,6 +5243,22 @@ function toggleInstantPayVendor(v){
   renderInstantPayRegistry();
   if (typeof renderStep3 === 'function') renderStep3();
 }
+// MAC컴퍼니도 발주 즉시 결제하는 거래처라 "즉시결제 거래처 설정"에 기본으로 체크해둠 —
+// 발주서 목록 카드에 "💳 지출결의서 입력" 버튼이 바로 뜨도록. 한 번만 실행해서, 이후
+// 사용자가 직접 체크를 꺼도 이 로직이 다시 켜지 않도록 함.
+function _seedMacInstantPayVendor(){
+  try{
+    if (!localStorage.getItem('yb_instant_pay_mac_seed_v1')) {
+      const arr = loadInstantPayVendors();
+      if (!arr.includes('MAC컴퍼니')) {
+        arr.push('MAC컴퍼니');
+        saveInstantPayVendors(arr);
+      }
+      localStorage.setItem('yb_instant_pay_mac_seed_v1', '1');
+    }
+  }catch(e){}
+}
+_seedMacInstantPayVendor();
 function renderInstantPayRegistry(){
   const el = document.getElementById('instantPayRegistryArea');
   if (!el) return;
