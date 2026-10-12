@@ -12612,6 +12612,23 @@ let curExpCo = '옐로우브릿지';
 
 function loadBankInfo() { try{ return JSON.parse(localStorage.getItem(LS_BANK)||'[]'); }catch{ return []; } }
 function saveBankInfo(a){ localStorage.setItem(LS_BANK, JSON.stringify(a)); _sbSaveKV('bank_info', a).catch(()=>{}); }
+
+// MAC컴퍼니 지출결의서 작성 시 거래처 자동완성에 뜨도록 계좌 목록에 미리 등록해둠.
+// 계좌번호를 몰라서 은행/계좌/예금주는 빈 값으로 두고, 나중에 알게 되면
+// 지출결의서 탭 → 🏦 계좌 관리에서 "수정"으로 채우면 됨. 한 번만 실행.
+function _seedMacCompanyBankEntry(){
+  try{
+    if (!localStorage.getItem('yb_bank_mac_seed_v1')) {
+      const banks = loadBankInfo();
+      if (!banks.some(b => b.name === 'MAC컴퍼니')) {
+        banks.push({name:'MAC컴퍼니', bank:'', acct:'', holder:'', tmemo:'', tnote:'', tpayType:'즉시결제', tev1:false,tev2:false,tev3:false,tev4:false,tev5:false,tev6:false});
+        saveBankInfo(banks);
+      }
+      localStorage.setItem('yb_bank_mac_seed_v1', '1');
+    }
+  }catch(e){}
+}
+_seedMacCompanyBankEntry();
 function loadExpHist() { try{ return JSON.parse(localStorage.getItem(LS_EXPHIST)||'[]'); }catch{ return []; } }
 function saveExpHist(a){
   let arr = a.slice(0, 100); // 최대 100개 유지
