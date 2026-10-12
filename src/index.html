@@ -9629,6 +9629,11 @@ function invLoadTracks(files, vendorHint, onEach) {
         invRenderTrackList();
         invRenderVendorCard();
         invCheckReady();
+        // 이 파일이 또또컴퍼니 몫 운송장도 같이 담고 있을 수 있어서(일비·푸드엔드베스트 등은
+        // 정규 주문과 또또컴퍼니 주문 운송장을 한 회신파일에 섞어서 보냄), 업로드 경로에 상관없이
+        // (Gmail 자동가져오기·수동 업로드·자동가져오기 폴더 등) 항상 또또컴퍼니 매칭도 같이 시도함.
+        // 매칭되는 게 없으면 조용히 넘어가서 무관한 파일 업로드 때 불필요한 알림이 안 뜨게 함.
+        if (typeof grinchemMatchTrackingFile === 'function') grinchemMatchTrackingFile(file, {silent:true});
         if (typeof onEach === 'function') onEach(true);
       } catch(err) {
         invShowTrackError(file.name, err.message);
@@ -19195,8 +19200,11 @@ const LS_GRINCHEM_TRACKING = 'yb_grinchem_tracking';
 function loadGrinchemTracking(){ try{ return JSON.parse(localStorage.getItem(LS_GRINCHEM_TRACKING)||'{}'); }catch{ return {}; } }
 function saveGrinchemTracking(m){ try{ localStorage.setItem(LS_GRINCHEM_TRACKING, JSON.stringify(m||{})); }catch(e){} }
 function _grinchemTrackKey(r){ return [r.recv_name, r.recv_phone, r.item].join('|'); }
-function grinchemMatchTrackingFile(file){
+function grinchemMatchTrackingFile(file, opts){
   if (!file) return;
+  const silent = !!(opts && opts.silent);
+  // 자동 호출(silent) 경로에선 또또컴퍼니 주문이 아예 없으면 파일을 읽을 필요도 없음
+  if (silent && (!srGrinchemStagedRows || srGrinchemStagedRows.length === 0)) return;
   const reader = new FileReader();
   reader.onload = e => {
     try {
@@ -19210,7 +19218,7 @@ function grinchemMatchTrackingFile(file){
       }
       const {trackIdx, nameIdx, courierIdx, hdrRow} = det;
       if (trackIdx < 0 || nameIdx < 0) {
-        alert(`'${file.name}'에서 운송장번호/받는분 컬럼을 찾지 못했어요.`);
+        if (!silent) alert(`'${file.name}'에서 운송장번호/받는분 컬럼을 찾지 못했어요.`);
         return;
       }
       const _normName = s => String(s||'').replace(/\s+/g,'');
@@ -19237,11 +19245,14 @@ function grinchemMatchTrackingFile(file){
         usedIdx[nm] = idx + 1;
         matched++;
       }
+      // 자동 호출(silent) 경로에서 매칭된 게 하나도 없으면 — 또또컴퍼니랑 무관한 파일일 뿐이니
+      // 조용히 넘어감 (저장할 것도, 알릴 것도 없음)
+      if (matched === 0 && silent) return;
       saveGrinchemTracking(tracking);
       renderGrinchemTrackingList();
       if (typeof _poShowToast === 'function') _poShowToast(`✅ ${file.name} — 또또컴퍼니 주문 ${matched}건 운송장 매칭됨`);
     } catch(err) {
-      alert('회신파일 처리 중 오류: ' + err.message);
+      if (!silent) alert('회신파일 처리 중 오류: ' + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
