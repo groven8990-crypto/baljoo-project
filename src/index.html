@@ -5045,7 +5045,14 @@ function _seedVendorEmailDefaults(){
     }
   }catch(e){}
 
-  const defaults = { '참맛더드림': 'chammatthe@gmail.com', '우리뜰': 'edgehouse2025@naver.com' };
+  // MAC컴퍼니는 발주 메일을 한 군데가 아니라 세 주소로 전부 받아야 해서, 이메일 값 자체를
+  // 쉼표로 구분된 여러 주소로 등록해둠 — gmailSendOne이 'to' 값을 그대로 메일 헤더에 넣기
+  // 때문에 쉼표로 구분된 여러 주소를 그대로 지원함(별도 코드 수정 불필요)
+  const defaults = {
+    '참맛더드림': 'chammatthe@gmail.com',
+    '우리뜰': 'edgehouse2025@naver.com',
+    'MAC컴퍼니': 'macfoodsystem@naver.com, rudrms5010@gmail.com, mac.fsm.company@gmail.com',
+  };
   const emails = loadVendorEmails();
   let emailsChanged = false;
   for (const [v, email] of Object.entries(defaults)) {
