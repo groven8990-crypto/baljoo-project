@@ -19182,8 +19182,24 @@ function renderGrinchemRegisteredList(){
       <input type="number" min="0" value="${saved.cost||''}" id="grinchemRegCost_${ekey(key)}" placeholder="매입단가" style="width:110px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
       <input type="number" min="0" value="${saved.price||''}" id="grinchemRegPrice_${ekey(key)}" placeholder="판매단가" style="width:110px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
       <button class="btn btn-sm" onclick="updateGrinchemItemPrice('${esc(key)}')">저장</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteGrinchemItemPrice('${esc(key)}')" title="단가 등록 취소 — 처음 보는 품목 목록으로 다시 돌아가요">삭제</button>
     </div>`).join('');
   el.innerHTML = `<div style="font-size:11px;color:#166534;font-weight:600;margin-bottom:4px">✅ 등록된 단가 — 틀렸으면 고쳐서 저장하세요 (${items.length}개)</div>${rows}`;
+}
+// 등록된 단가를 통째로 지움 — 그 품목은 "처음 보는 품목" 목록으로 다시 돌아가서 재등록해야
+// 주문에 반영됨(가격을 모르는데 임의 금액으로 남겨두면 안 되니까)
+function deleteGrinchemItemPrice(key){
+  if (!confirm('이 품목 단가를 삭제할까요? 삭제하면 다시 "처음 보는 품목"으로 돌아가서, 단가를 새로 등록해야 발주서에 반영돼요.')) return;
+  const prices = loadGrinchemItemPrices();
+  delete prices[key];
+  saveGrinchemItemPrices(prices);
+  _srProcessGrinchemStaged();
+  _renderGrinchemUploadInfo();
+  renderGrinchemUnregisteredList();
+  if (typeof _poShowToast === 'function') _poShowToast('🗑 단가 삭제됨 — 처음 보는 품목으로 돌아갔어요');
+  const rpt = document.getElementById('srReport');
+  if (rpt && rpt.innerHTML.trim()) srRender();
+  else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
 }
 function updateGrinchemItemPrice(key){
   const costEl = document.getElementById('grinchemRegCost_'+ekey(key));
