@@ -1652,6 +1652,9 @@ const VENDOR_PREFIXES = {
   '참맛더드림':    ['참맛더드림]','참맛더드림-','참맛더드림_'],
   '숲속양봉원':    ['숲속양봉원]','숲속양봉원-','숲속양봉원_'],
   'MAC컴퍼니':     ['MAC컴퍼니]','MAC컴퍼니-','MAC컴퍼니_'],
+  // 마그네슘(자사 OEM) 실제 제조·공급처 — 안 등록해뒀으면 이 코드 주문이 전부 미매칭으로
+  // 빠져서 매입/순이익 화면에 행 자체가 안 생기고 발주서 생성 탭에도 카드가 안 뜸
+  '보부상':        ['보부상]','보부상-','보부상_'],
   // 외부 발주처한테 보내는 게 아니라 우리가 재고 갖고 직접 포장·발송하는 상품(예: 동일전선
   // 랜케이블) — 판매자상품코드가 "재고]"로 시작하면 여기로 잡혀서 발주서 생성 탭에 별도
   // 카드로 뜸. 보낼 발주처가 없으니 이메일/카카오 등록은 안 해도 되고, 그냥 이 카드 보고
@@ -15980,8 +15983,8 @@ function reconExportXlsx() {
       <div>
         <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">💊 마그네슘 <span style="font-size:10px;font-weight:400;color:var(--text3)">— 리뷰 주문만 따로 담긴 엑셀 업로드</span></div>
         <div style="display:flex;gap:8px;margin-bottom:4px;font-size:11px">
-          <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="radio" name="mgReviewCo" value="grobn" checked onchange="srMagnesiumReviewCoChange()"> 그로븐</label>
-          <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="radio" name="mgReviewCo" value="yb" onchange="srMagnesiumReviewCoChange()"> 옐로우브릿지</label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="radio" name="mgReviewCo" value="grobn" onchange="srMagnesiumReviewCoChange()"> 그로븐</label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="radio" name="mgReviewCo" value="yb" checked onchange="srMagnesiumReviewCoChange()"> 옐로우브릿지</label>
         </div>
         <div class="upload-zone" id="srMagnesiumZone" onclick="document.getElementById('srMagnesiumFile').click()"
              ondragover="event.preventDefault();this.classList.add('dragover')"
@@ -15995,6 +15998,7 @@ function reconExportXlsx() {
         <div style="font-size:10px;color:var(--text3);margin:6px 0 2px">아래에서 등록된 리뷰 고객을 확인·수정할 수 있어요</div>
         <textarea id="srMagnesiumNames" placeholder="리뷰 고객 이름(받는사람) — 줄바꿈 또는 쉼표로 구분&#10;예: 배효승, 이관용" style="width:100%;min-height:60px;font-size:12px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:4px;resize:vertical;box-sizing:border-box;font-family:inherit"></textarea>
         <button class="btn btn-sm btn-primary" style="margin-top:6px" onclick="srSaveMagnesiumReviewNames()">직접 수정한 목록 저장</button>
+        <button class="btn btn-sm btn-danger" style="margin-top:6px" onclick="srClearMagnesiumReviewNames()" title="위에서 선택한 사업자의 리뷰 고객 명단을 전부 지워요(예: 잘못된 사업자로 등록했을 때)">선택한 사업자 명단 지우기</button>
         <div id="srMagnesiumInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
       </div>
     </div>
@@ -19891,6 +19895,28 @@ function srSaveMagnesiumReviewNames(){
   if (rpt && rpt.innerHTML.trim()) srRender();
   const _pp = document.getElementById('srProfitPanel');
   if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
+    srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+  }
+}
+// 위에서 선택한 사업자의 리뷰 고객 명단을 통째로 지움 — 라디오 기본값을 깜빡하고 안 바꾼 채
+// 올려서 엉뚱한 사업자(예: 마그네슘을 안 파는 그로븐)에 등록돼버렸을 때 치우는 용도
+function srClearMagnesiumReviewNames(){
+  const co = document.querySelector('input[name="mgReviewCo"]:checked')?.value || 'grobn';
+  const store = loadMagnesiumReviewNames();
+  const prevCount = (store[co]||[]).length;
+  if (!prevCount) { if (typeof _poShowToast === 'function') _poShowToast('지울 명단이 없어요'); return; }
+  if (!confirm(`${co==='grobn'?'그로븐':'옐로우브릿지'} 리뷰 고객 ${prevCount}명을 전부 지울까요?`)) return;
+  store[co] = [];
+  saveMagnesiumReviewNamesStore(store);
+  _rebuildMagnesiumReviewSetFromStore();
+  const el = document.getElementById('srMagnesiumNames');
+  if (el) el.value = '';
+  srRenderMagnesiumInfo();
+  if (typeof _poShowToast === 'function') _poShowToast(`🗑 ${co==='grobn'?'그로븐':'옐로우브릿지'} 리뷰 고객 ${prevCount}명 지움`);
+  const rpt = document.getElementById('srReport');
+  if (rpt && rpt.innerHTML.trim()) srRender();
+  const _pp2 = document.getElementById('srProfitPanel');
+  if (_pp2 && _pp2.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
     srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
   }
 }
