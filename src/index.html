@@ -18389,6 +18389,9 @@ function srAggregate(orders){
   let regCount=0, regSales=0;
   // 깐마늘 전용 상세: 플랫폼(쿠팡/스마트스토어 등) × 옵션 단위 집계
   const garlicMap = {};  // key = platformLabel + '||' + option
+  // 마그네슘 전용 상세: 플랫폼별 집계(옵션 구분 없음) — 리뷰주문은 제품만 안 보내고
+  // 결제금액은 그대로 들어오는 주문이라, 매출은 똑같이 잡히고 매입원가만 리뷰단가로 따로 계산함
+  const magnesiumMap = {};  // key = platformLabel
   for(const o of orders){
     const amt=(typeof _srSalesAmt==='function')?_srSalesAmt(o):(Number(o.order_amt)||0);totalSales+=amt;
     if (_srIsManualB2B(o)) {
@@ -18465,8 +18468,29 @@ function srAggregate(orders){
         garlicMap[k].realSales += amt;
       }
     }
+    // 마그네슘 (자사 OEM, 쿠팡 판매)
+    const isMagnesium = (o.item_name||'').includes('마그네슘')
+                      || n === '마그네슘'
+                      || (o.product||'').includes('마그네슘');
+    if (isMagnesium) {
+      const platLabel = srPlatform(o);
+      if (!magnesiumMap[platLabel]) magnesiumMap[platLabel] = {platform:platLabel, count:0, sales:0, realCount:0, realSales:0, reviewCount:0, reviewSales:0};
+      magnesiumMap[platLabel].count++;
+      magnesiumMap[platLabel].sales += amt;
+      // 리뷰주문 여부 — "리뷰 주문만 담긴 파일"로 등록해둔 받는사람 매칭
+      const mgBrand = srBrand(o.alias);
+      const mgRname = String(o.recv_name||'').trim();
+      const mgIsReview = mgRname && typeof srMagnesiumReviewSet !== 'undefined' && srMagnesiumReviewSet && srMagnesiumReviewSet.has(mgBrand + '||' + mgRname);
+      if (mgIsReview) {
+        magnesiumMap[platLabel].reviewCount++;
+        magnesiumMap[platLabel].reviewSales += amt;
+      } else {
+        magnesiumMap[platLabel].realCount++;
+        magnesiumMap[platLabel].realSales += amt;
+      }
+    }
   }
-  return {totalSales,count:orders.length,platMap,prodMap,garlicMap,b2bMap,regCount,regSales};
+  return {totalSales,count:orders.length,platMap,prodMap,garlicMap,magnesiumMap,b2bMap,regCount,regSales};
 }
 function srBrandSection(title, color, agg, opts){
   if(agg.count===0) return '';
@@ -18550,7 +18574,8 @@ function srBrandSection(title, color, agg, opts){
       </tr></tfoot>
     </table>
     ${srB2BDetailHtml(agg)}
-    ${srGarlicDetailHtml(agg, color)}`;
+    ${srGarlicDetailHtml(agg, color)}
+    ${srMagnesiumDetailHtml(agg)}`;
 }
 // B2B(문자주문 등으로 등록된) 매출 — 일반 플랫폼 표와 분리해서 거래처별로 표시, 순마진(매출-매입)도 같이 보여줌
 function srB2BDetailHtml(agg){
@@ -18659,7 +18684,101 @@ function srGarlicDetailHtml(agg, color){
         <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalSales.toLocaleString()}원</td>
       </tr></tfoot>
     </table>`;
-  return block1;
+  // Block 2 — 실주문/리뷰주문 분리 (플랫폼별). 리뷰로 잡힌 주문이 하나라도 있을 때만 표시 —
+  // 평소엔 깐마늘 발주서를 안 올려서(리뷰 분리 안 쓸 때) 전부 0건인 빈 표가 뜨는 걸 막음
+  const block2 = hasReview ? `
+    <div style="background:#F5F1E8;color:#6B5840;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #C9B68A">🧄 깐마늘 실주문 / 리뷰주문 분리 (플랫폼별)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FAF8F2">
+      <colgroup><col style="width:24%"><col style="width:19%"><col style="width:19%"><col style="width:19%"><col style="width:19%"></colgroup>
+      <thead><tr style="background:#EDE7D8">
+        <th style="padding:8px 14px;text-align:left;color:#6B5840;font-weight:700">플랫폼</th>
+        <th style="padding:8px 14px;text-align:right;color:#6B5840;font-weight:700">실주문 건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#166534;font-weight:700">실주문 매출</th>
+        <th style="padding:8px 14px;text-align:right;color:#92400E;font-weight:700">리뷰 건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#92400E;font-weight:700">리뷰 매출</th>
+      </tr></thead>
+      <tbody>${platOrder.map(plat => {
+        const s = platSplit[plat];
+        return `<tr>
+          <td style="padding:8px 14px;border-bottom:1px solid #EDE7D8;color:#6B5840">${escHtml(plat)}</td>
+          <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#6B5840">${s.realCount.toLocaleString()}건</td>
+          <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#166534;font-weight:700">${s.realSales.toLocaleString()}원</td>
+          <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#92400E">${s.reviewCount.toLocaleString()}건</td>
+          <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #EDE7D8;color:#92400E;font-weight:700">${s.reviewSales.toLocaleString()}원</td>
+        </tr>`;
+      }).join('')}</tbody>
+      <tfoot><tr style="background:#E1D9C4;font-weight:700">
+        <td style="padding:8px 14px;color:#5B4A33">합계</td>
+        <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalRealCnt.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;color:#166534">${totalRealSales.toLocaleString()}원</td>
+        <td style="padding:8px 14px;text-align:right;color:#5B4A33">${totalReviewCnt.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;color:#92400E">${totalReviewSales.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>` : '';
+  return block1 + block2;
+}
+// 마그네슘 상세 — 플랫폼별 집계 + 실주문/리뷰주문 분리(리뷰 주문은 제품은 안 보내고
+// 결제금액만 그대로 들어오는 주문이라, 매출은 real/review 둘 다 동일하게 잡히고 매입원가
+// 계산에서만 구분됨 — 매입/순이익 패널의 "리뷰가" 입력란이 그 구분을 반영함)
+function srMagnesiumDetailHtml(agg){
+  const map = agg.magnesiumMap || {};
+  const entries = Object.values(map);
+  if (entries.length === 0) return '';
+  const plats = entries.slice().sort((a,b)=>b.sales-a.sales);
+  let totalCnt=0, totalSales=0, totalRealCnt=0, totalRealSales=0, totalReviewCnt=0, totalReviewSales=0;
+  plats.forEach(p => {
+    totalCnt += p.count; totalSales += p.sales;
+    totalRealCnt += p.realCount; totalRealSales += p.realSales;
+    totalReviewCnt += p.reviewCount; totalReviewSales += p.reviewSales;
+  });
+  const hasReview = totalReviewCnt > 0;
+  const block1 = `
+    <div style="background:#EEF2FF;color:#3730A3;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #A5B4FC">💊 마그네슘 상세 (플랫폼별)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#F5F6FF">
+      <colgroup><col style="width:50%"><col style="width:25%"><col style="width:25%"></colgroup>
+      <thead><tr style="background:#E0E7FF">
+        <th style="padding:8px 14px;text-align:left;color:#3730A3;font-weight:700">플랫폼</th>
+        <th style="padding:8px 14px;text-align:right;color:#3730A3;font-weight:700">건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#3730A3;font-weight:700">매출액</th>
+      </tr></thead>
+      <tbody>${plats.map(p => `<tr>
+        <td style="padding:8px 14px;border-bottom:1px solid #E0E7FF;color:#3730A3">${escHtml(p.platform)}</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #E0E7FF;color:#3730A3">${p.count.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #E0E7FF;color:#3730A3">${p.sales.toLocaleString()}원</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr style="background:#C7D2FE;font-weight:700">
+        <td style="padding:8px 14px;color:#312E81">합계</td>
+        <td style="padding:8px 14px;text-align:right;color:#312E81">${totalCnt.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;color:#312E81">${totalSales.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>`;
+  const block2 = hasReview ? `
+    <div style="background:#EEF2FF;color:#3730A3;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #A5B4FC">💊 마그네슘 실주문 / 리뷰주문 분리 (플랫폼별)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#F5F6FF">
+      <colgroup><col style="width:24%"><col style="width:19%"><col style="width:19%"><col style="width:19%"><col style="width:19%"></colgroup>
+      <thead><tr style="background:#E0E7FF">
+        <th style="padding:8px 14px;text-align:left;color:#3730A3;font-weight:700">플랫폼</th>
+        <th style="padding:8px 14px;text-align:right;color:#3730A3;font-weight:700">실주문 건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#166534;font-weight:700">실주문 매출</th>
+        <th style="padding:8px 14px;text-align:right;color:#92400E;font-weight:700">리뷰 건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#92400E;font-weight:700">리뷰 매출</th>
+      </tr></thead>
+      <tbody>${plats.map(p => `<tr>
+        <td style="padding:8px 14px;border-bottom:1px solid #E0E7FF;color:#3730A3">${escHtml(p.platform)}</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #E0E7FF;color:#3730A3">${p.realCount.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #E0E7FF;color:#166534;font-weight:700">${p.realSales.toLocaleString()}원</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #E0E7FF;color:#92400E">${p.reviewCount.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #E0E7FF;color:#92400E;font-weight:700">${p.reviewSales.toLocaleString()}원</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr style="background:#C7D2FE;font-weight:700">
+        <td style="padding:8px 14px;color:#312E81">합계</td>
+        <td style="padding:8px 14px;text-align:right;color:#312E81">${totalRealCnt.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;color:#166534">${totalRealSales.toLocaleString()}원</td>
+        <td style="padding:8px 14px;text-align:right;color:#312E81">${totalReviewCnt.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;color:#92400E">${totalReviewSales.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>` : '';
+  return block1 + block2;
 }
 // ─ 디네트 박대 ─
 // 평시(기본) 단가
