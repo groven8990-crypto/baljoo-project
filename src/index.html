@@ -15978,13 +15978,23 @@ function reconExportXlsx() {
       </div>
       <!-- 마그네슘 (자사 OEM, 쿠팡) -->
       <div>
-        <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">💊 마그네슘 <span style="font-size:10px;font-weight:400;color:var(--text3)">— 리뷰 고객 이름 직접 입력</span></div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">💊 마그네슘 <span style="font-size:10px;font-weight:400;color:var(--text3)">— 리뷰 주문만 따로 담긴 엑셀 업로드</span></div>
         <div style="display:flex;gap:8px;margin-bottom:4px;font-size:11px">
           <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="radio" name="mgReviewCo" value="grobn" checked onchange="srMagnesiumReviewCoChange()"> 그로븐</label>
           <label style="display:flex;align-items:center;gap:3px;cursor:pointer"><input type="radio" name="mgReviewCo" value="yb" onchange="srMagnesiumReviewCoChange()"> 옐로우브릿지</label>
         </div>
-        <textarea id="srMagnesiumNames" placeholder="리뷰 고객 이름(받는사람) — 줄바꿈 또는 쉼표로 구분&#10;예: 배효승, 이관용" style="width:100%;min-height:70px;font-size:12px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:4px;resize:vertical;box-sizing:border-box;font-family:inherit"></textarea>
-        <button class="btn btn-sm btn-primary" style="margin-top:6px" onclick="srSaveMagnesiumReviewNames()">저장</button>
+        <div class="upload-zone" id="srMagnesiumZone" onclick="document.getElementById('srMagnesiumFile').click()"
+             ondragover="event.preventDefault();this.classList.add('dragover')"
+             ondragleave="this.classList.remove('dragover')"
+             ondrop="srDropMagnesiumFile(event)"
+             style="padding:10px 8px;min-height:56px;justify-content:center">
+          <div style="font-size:11px;font-weight:600;color:var(--text1)">💊 리뷰 주문만 담긴 파일 클릭/드롭</div>
+          <div style="font-size:10px;color:var(--text3)">위에서 사업자 먼저 선택 — 노란색 칠할 필요 없음, 파일 안의 모든 주문 = 리뷰</div>
+          <input type="file" id="srMagnesiumFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadMagnesiumReviewFile(this.files); this.value='';">
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin:6px 0 2px">아래에서 등록된 리뷰 고객을 확인·수정할 수 있어요</div>
+        <textarea id="srMagnesiumNames" placeholder="리뷰 고객 이름(받는사람) — 줄바꿈 또는 쉼표로 구분&#10;예: 배효승, 이관용" style="width:100%;min-height:60px;font-size:12px;padding:6px 8px;border:1px solid #D1D5DB;border-radius:4px;resize:vertical;box-sizing:border-box;font-family:inherit"></textarea>
+        <button class="btn btn-sm btn-primary" style="margin-top:6px" onclick="srSaveMagnesiumReviewNames()">직접 수정한 목록 저장</button>
         <div id="srMagnesiumInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
       </div>
     </div>
@@ -19724,10 +19734,12 @@ function srClearGrincam(){
     srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
   }
 }
-// ─ 마그네슘 리뷰주문 (자사 OEM, 쿠팡 판매) ─ 노란색 칠하기 방식 대신 이름 직접 입력.
-// 마그네슘 발주서(샵마인 내보내기)는 양식 자체가 셀 전체가 기본으로 노란 배경이라
-// 노란색=리뷰 구분이 안 먹혀서(깐마늘/그린캠과 달리) 받는사람 이름을 텍스트로 직접
-// 입력하는 방식으로 뺌. 그로븐/옐로우브릿지 사업자별로 따로 저장.
+// ─ 마그네슘 리뷰주문 (자사 OEM, 쿠팡 판매) ─ 노란색 칠하기 방식 대신 "리뷰 주문만 따로
+// 담은 엑셀 파일 업로드". 마그네슘 발주서(샵마인 내보내기)는 양식 자체가 셀 전체가
+// 기본으로 노란 배경이라 노란색=리뷰 구분이 안 먹힘(깐마늘/그린캠과 다름). 사장님이
+// 리뷰 주문만 따로 걸러서 엑셀로 주면, 그 파일에 있는 주문은 전부 리뷰로 처리 — 파일
+// 안에서 노란 줄을 따로 찾지 않음. 받는사람 이름만 뽑아서 그로븐/옐로우브릿지 사업자별로
+// 저장하고(텍스트 입력으로 직접 보거나 고칠 수도 있음), localStorage에 영구 저장.
 const LS_MAGNESIUM_REVIEW_NAMES = 'yb_magnesium_review_names';  // {grobn:[...], yb:[...]}
 const srMagnesiumReviewSet = new Set();  // 'grobn||홍길동' / 'yb||홍길동' — 런타임 조회용 캐시
 function loadMagnesiumReviewNames(){ try{ return JSON.parse(localStorage.getItem(LS_MAGNESIUM_REVIEW_NAMES)||'{}'); }catch{ return {}; } }
@@ -19773,6 +19785,67 @@ function srRenderMagnesiumInfo(){
   info.innerHTML = `등록됨 — 그로븐 <b>${grobnCount}명</b> · 옐로우브릿지 <b>${ybCount}명</b>`;
 }
 _rebuildMagnesiumReviewSetFromStore();
+function srDropMagnesiumFile(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (files && files.length) srLoadMagnesiumReviewFile(files);
+}
+// 리뷰 주문만 따로 담긴 엑셀 파일을 올리면, 그 안의 모든 주문의 받는사람을 리뷰 고객으로
+// 등록함 — 색칠 여부는 안 보고, 샵마인 표준 발송대기 양식(수령자 등 컬럼명)을 그대로
+// 재사용해서 받는사람 컬럼을 찾음. 이미 등록된 이름과 합쳐짐(중복은 자동으로 걸러짐)
+function srLoadMagnesiumReviewFile(files){
+  if (!files || !files.length) return;
+  const arr = Array.from(files);
+  const co = document.querySelector('input[name="mgReviewCo"]:checked')?.value || 'grobn';
+  let done = 0, totalAdded = 0;
+  const errs = [];
+  arr.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = (typeof _xlsxReadAuto === 'function') ? _xlsxReadAuto(e.target.result) : XLSX.read(e.target.result, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+        let hr = 0;
+        for (let i = 0; i < Math.min(5, rows.length); i++) { if ((rows[i]||[]).indexOf('판매자상품코드') >= 0) { hr = i; break; } }
+        const H = rows[hr] || [];
+        const nameCands = ['수령자','받는분성명','수취인명','수령인','받는사람','수화인','수하인'];
+        let nameIdx = -1;
+        for (const n of nameCands) { const i = H.indexOf(n); if (i >= 0) { nameIdx = i; break; } }
+        if (nameIdx < 0) nameIdx = 0;  // 못 찾으면 A열로 폴백(동일/그린캠과 동일한 가정)
+        const store = loadMagnesiumReviewNames();
+        const set = new Set(store[co]||[]);
+        const before = set.size;
+        rows.slice(hr+1).forEach(r => {
+          const v = String((r||[])[nameIdx]||'').trim();
+          if (v) set.add(v);
+        });
+        store[co] = Array.from(set);
+        saveMagnesiumReviewNamesStore(store);
+        totalAdded += (set.size - before);
+      } catch(err) {
+        errs.push(file.name + ': ' + err.message);
+      } finally {
+        done++;
+        if (done === arr.length) {
+          _rebuildMagnesiumReviewSetFromStore();
+          srMagnesiumReviewCoChange();
+          srRenderMagnesiumInfo();
+          if (errs.length) alert('일부 파일 처리 실패:\n' + errs.join('\n'));
+          if (typeof _poShowToast === 'function') _poShowToast(`✅ ${co==='grobn'?'그로븐':'옐로우브릿지'} 리뷰 고객 ${totalAdded}명 새로 추가됨`);
+          const rpt = document.getElementById('srReport');
+          if (rpt && rpt.innerHTML.trim()) srRender();
+          const _pp = document.getElementById('srProfitPanel');
+          if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
+            srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+          }
+        }
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
 
 // ── 디네트 리뷰주문 분리 ──────────────────────────────────────────
 const srDinetteReviewSet = new Set();
