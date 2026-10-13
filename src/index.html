@@ -15945,7 +15945,7 @@ function reconExportXlsx() {
   </div>
   <div class="card">
     <div class="card-title">📋 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 발주서 노란색 행 = 리뷰주문으로 인식</span></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
       <!-- 깐마늘 (동일) -->
       <div>
         <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">🧄 깐마늘</div>
@@ -15975,6 +15975,21 @@ function reconExportXlsx() {
           <input type="file" id="srGrincamFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadGrincam(this.files); this.value='';">
         </div>
         <div id="srGrincamInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
+      </div>
+      <!-- 마그네슘 (자사 OEM, 쿠팡) -->
+      <div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">💊 마그네슘</div>
+        <div class="upload-zone" id="srMagnesiumZone" onclick="document.getElementById('srMagnesiumFile').click()"
+             ondragover="event.preventDefault();this.classList.add('dragover')"
+             ondragleave="this.classList.remove('dragover')"
+             ondrop="srDropMagnesium(event)"
+             style="padding:14px 8px;min-height:90px;justify-content:center">
+          <div style="font-size:22px;margin-bottom:4px">💊</div>
+          <div style="font-size:11px;font-weight:600;margin-bottom:2px;color:var(--text1)">마그네슘-발주서 파일 클릭/드롭</div>
+          <div style="font-size:10px;color:var(--text3)">노란색(FFFF00) = 리뷰</div>
+          <input type="file" id="srMagnesiumFile" accept=".xls,.xlsx" multiple style="display:none" onchange="srLoadMagnesium(this.files); this.value='';">
+        </div>
+        <div id="srMagnesiumInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
       </div>
     </div>
   </div>
@@ -19713,6 +19728,86 @@ function srClearGrincam(){
     srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
   }
 }
+// ─ 마그네슘 리뷰주문 (자사 OEM, 쿠팡 판매 — 발주서의 노란색 채움 = 리뷰) ─
+const srMagnesiumReviewSet = new Set();  // 'grobn||홍길동' / 'yb||홍길동'
+const srMagnesiumFileMeta = [];
+function srDropMagnesium(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (files && files.length) srLoadMagnesium(files);
+}
+function srLoadMagnesium(files){
+  if (!files || !files.length) return;
+  const arr = Array.from(files);
+  let done = 0;
+  arr.forEach(file => {
+    const brand = srDetectReviewBrand(file.name);
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = _xlsxReadAuto(e.target.result, {cellStyles:true});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const range = XLSX.utils.decode_range(ws['!ref']||'A1');
+        let cnt = 0;
+        for (let R = range.s.r + 1; R <= range.e.r; R++) {
+          let isReview = false;
+          for (let C = range.s.c; C <= range.e.c; C++) {
+            const cell = ws[XLSX.utils.encode_cell({r:R, c:C})];
+            if (srIsYellowCell(cell)) { isReview = true; break; }
+          }
+          if (!isReview) continue;
+          const nameCell = ws[XLSX.utils.encode_cell({r:R, c:0})];
+          const name = nameCell ? String(nameCell.v||'').trim() : '';
+          if (!name) continue;
+          if (brand) {
+            srMagnesiumReviewSet.add(brand+'||'+name);
+          } else {
+            srMagnesiumReviewSet.add('grobn||'+name);
+            srMagnesiumReviewSet.add('yb||'+name);
+          }
+          cnt++;
+        }
+        srMagnesiumFileMeta.push({name:file.name, brand, count:cnt});
+      } catch(err) {
+        srMagnesiumFileMeta.push({name:file.name, brand:null, count:0, err:err.message});
+      } finally {
+        done++;
+        if (done === arr.length) {
+          srRenderMagnesiumInfo();
+          const _pp = document.getElementById('srProfitPanel');
+          if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
+            srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+          }
+        }
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+function srRenderMagnesiumInfo(){
+  const info = document.getElementById('srMagnesiumInfo');
+  if (!info) return;
+  if (!srMagnesiumFileMeta.length) { info.innerHTML=''; return; }
+  const lines = srMagnesiumFileMeta.map(m => {
+    if (m.err) return `<span style="color:var(--danger)">❌ ${escHtml(m.name)} — ${escHtml(m.err)}</span>`;
+    const tag = m.brand==='grobn' ? '<span style="color:#1E40AF;font-weight:600">그로븐</span>'
+             : m.brand==='yb' ? '<span style="color:#A47800;font-weight:600">옐로우브릿지</span>'
+             : '<span style="color:#888">브랜드 미감지(양쪽 매칭)</span>';
+    return `<span style="color:var(--success)">✅ ${escHtml(m.name)}</span> — ${tag} · 리뷰 <b>${m.count}건</b> 인식`;
+  });
+  info.innerHTML = lines.join('<br>') + ` <button class="btn btn-sm" style="margin-left:6px;margin-top:6px;padding:2px 8px;font-size:10px" onclick="srClearMagnesium()">전체 제거</button>`;
+}
+function srClearMagnesium(){
+  srMagnesiumReviewSet.clear();
+  srMagnesiumFileMeta.length = 0;
+  const info = document.getElementById('srMagnesiumInfo');
+  if (info) info.innerHTML = '';
+  const _pp = document.getElementById('srProfitPanel');
+  if (_pp && _pp.innerHTML.trim() && typeof srRenderProfitPanel === 'function') {
+    srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+  }
+}
 
 // ── 디네트 리뷰주문 분리 ──────────────────────────────────────────
 const srDinetteReviewSet = new Set();
@@ -20300,12 +20395,13 @@ function srBuildProfitRows(orders){
     const r = map[key];
     const amt = _srSalesAmt(o);
     const units = srPurchaseUnits(o);
-    // 리뷰 주문 여부 — 깐마늘(srReviewSet) / 그린캠(srGrincamReviewSet) 발주서 기반
+    // 리뷰 주문 여부 — 깐마늘(srReviewSet) / 그린캠(srGrincamReviewSet) / 마그네슘(srMagnesiumReviewSet) 발주서 기반
     const _brand = srBrand(o.alias);
     const _rname = String(o.recv_name||'').trim();
-    const _inGarlic   = (typeof srReviewSet !== 'undefined' && srReviewSet && srReviewSet.size > 0 && _rname && srReviewSet.has(_brand + '||' + _rname));
-    const _inGrincam  = (typeof srGrincamReviewSet !== 'undefined' && srGrincamReviewSet && srGrincamReviewSet.size > 0 && _rname && srGrincamReviewSet.has(_brand + '||' + _rname));
-    const isReview = _inGarlic || _inGrincam;
+    const _inGarlic    = (typeof srReviewSet !== 'undefined' && srReviewSet && srReviewSet.size > 0 && _rname && srReviewSet.has(_brand + '||' + _rname));
+    const _inGrincam   = (typeof srGrincamReviewSet !== 'undefined' && srGrincamReviewSet && srGrincamReviewSet.size > 0 && _rname && srGrincamReviewSet.has(_brand + '||' + _rname));
+    const _inMagnesium = (typeof srMagnesiumReviewSet !== 'undefined' && srMagnesiumReviewSet && srMagnesiumReviewSet.size > 0 && _rname && srMagnesiumReviewSet.has(_brand + '||' + _rname));
+    const isReview = _inGarlic || _inGrincam || _inMagnesium;
     r.count  += 1;
     r.qtySum += units;
     if (isReview) {
