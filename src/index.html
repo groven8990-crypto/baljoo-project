@@ -6025,7 +6025,8 @@ function _applyTpl(tpl, vendor, date, brand, brands){
 function _brandLabel(alias){
   const a = String(alias||'');
   if (a.includes('로또상회')) return '그로븐';
-  if (a.includes('자꾸가게')) return '옐로우브릿지';
+  // '또또컴퍼니' 발주용 alias('옐로우브릿지2')는 '자꾸가게'를 포함 안 해서 따로 체크해줌
+  if (a.includes('자꾸가게') || a.includes('옐로우브릿지')) return '옐로우브릿지';
   return '';
 }
 // ── 명함 (이메일 첨부용, 단일) ──
@@ -17852,7 +17853,7 @@ function asstAnswer(q){
       const _amt=o=>(typeof _srSalesAmt==='function')?_srSalesAmt(o):(Number(o.order_amt)||0);
       const total = allOrders.reduce((s,o)=>s+_amt(o),0);
       const gr = allOrders.filter(o=>String(o.alias||'').includes('로또상회'));
-      const yb = allOrders.filter(o=>String(o.alias||'').includes('자꾸가게'));
+      const yb = allOrders.filter(o=>{const a=String(o.alias||'');return a.includes('자꾸가게')||a.includes('옐로우브릿지');});
       const grSum = gr.reduce((s,o)=>s+_amt(o),0);
       const ybSum = yb.reduce((s,o)=>s+_amt(o),0);
       return `오늘 자사 매출\n• 총 ${allOrders.length}건 · ${_fmt(total)}원\n• 로또상회 ${gr.length}건 · ${_fmt(grSum)}원\n• 자꾸가게 ${yb.length}건 · ${_fmt(ybSum)}원`;
@@ -18353,7 +18354,7 @@ function srRenderProductAliases(){
       <button class="btn btn-danger btn-sm" style="margin-left:auto;font-size:10px;padding:2px 8px" onclick="srRemoveProductAlias(${i})">삭제</button>
     </div>`).join('');
 }
-function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회'))return 'grobn';if(a.includes('자꾸가게'))return 'yb';return 'other';}
+function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회'))return 'grobn';if(a.includes('자꾸가게')||a.includes('옐로우브릿지'))return 'yb';return 'other';}
 function _srIsManualB2B(o){ return /^B2B-/.test(String((o&&o.shop_mall)||'')); }
 // 내부 데이터(shop_mall/order_no/매입단가 키/B2B 발주처 매핑)는 전부 '그린켐'을 그대로 쓰지만
 // (Gmail 자동첨부 매칭·매입단가 연동이 걸려있어 바꾸면 깨짐), 화면에 보여줄 때만 이 함수를 거쳐
@@ -19013,17 +19014,19 @@ function _srProcessGrinchemStaged(){
     const prefixes = resolvedVendor
       ? (VENDOR_PREFIXES[resolvedVendor] || (loadCustomVendors()[resolvedVendor]||{}).prefixes || [resolvedVendor+']'])
       : ['또또컴퍼니-미확인]'];
-    // alias를 '자꾸가게-2'처럼 구분되게 지어서, 같은 발주처(예: 일비)로 가는 정규 주문과
+    // alias를 '옐로우브릿지2'처럼 구분되게 지어서, 같은 발주처(예: 일비)로 가는 정규 주문과
     // 또또컴퍼니발 주문이 그룹핑 키(vendor_key+alias)에서부터 갈라지게 함 — 그래야 발주서 생성
     // 탭에서 발주처당 카드가 2개로 나뉘어서 "다운로드"/"자동발송" 할 때 서로 다른 엑셀 파일로
     // 각각 만들어져서 나감(일비가 각각 다른 파일로 운송장을 회신해줄 수 있게). 예전엔
     // '자꾸가게(또또컴퍼니)'로 지어서 발주처(일비 등)한테 또또컴퍼니 이름이 그대로 보였는데,
-    // 거래처 쪽에서 헷갈릴 수 있다고 해서 '자꾸가게-2'처럼 구분만 되는 중립적인 이름으로 바꿈.
-    // 또또컴퍼니 발주는 자꾸가게(옐로우브릿지) 사업자로 내보내기로 함 — alias에 '자꾸가게'가
-    // 그대로 포함돼 있어서 보내는사람 정보·사업자 귀속 로직(.includes 기반)은 그대로 정상 동작함
+    // 거래처 쪽에서 헷갈릴 수 있다고 해서 '자꾸가게-2'처럼 중립적인 이름으로 바꿨다가, 카드 배지·
+    // 파일명에 "자꾸가게2"로 뜨는 게 사업자명(옐로우브릿지)이랑 안 맞아서 보기 헷갈린다고 해서
+    // '옐로우브릿지2'로 다시 변경. 보내는사람 정보·사업자 귀속 로직(getSender/srBrand/
+    // _brandLabel/srBrandFromAlias 등)은 '자꾸가게'뿐 아니라 '옐로우브릿지' 포함 여부도 같이
+    // 체크하도록 맞춰놨으니, 이 alias로도 전부 동일하게(자꾸가게 발송지·옐로우브릿지 사업자) 동작함
     const order = {
       vendor_code: prefixes[0] + r.item, vendor_opt: '', vendor_key: null,
-      alias: '자꾸가게-2', alias_raw: '자꾸가게-2',
+      alias: '옐로우브릿지2', alias_raw: '옐로우브릿지2',
       shop_mall: 'B2B-그린켐',
       item_name: r.item, option_name: '',
       opt_mapped:false, opt_needs_check:false, mapped_code:'', unmatched:false,
@@ -20012,7 +20015,7 @@ function srUpdatePurchaseEntry(key, patch){
 function srBrandFromAlias(alias){
   const a = String(alias||'');
   if (a.includes('로또상회')) return '그로븐';
-  if (a.includes('자꾸가게')) return '옐로우브릿지';
+  if (a.includes('자꾸가게') || a.includes('옐로우브릿지')) return '옐로우브릿지';
   return '기타';
 }
 // 1건 주문이 실제로 몇 매입단위(팩/봉/개)인지 계산
