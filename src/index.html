@@ -20566,16 +20566,18 @@ function srBuildProfitRows(orders){
       r.reviewCount += 1;
       r.reviewQty   += units;
     }
+    const _feeAmt = Math.round(amt * srFeeForOrder(o));
     r.orderDetail.push({
       recv_name: o.recv_name||'(이름없음)',
       order_no: String(o.order_no||''),
       qty: Number(o.qty)||1,
       units,
       salesAmt: amt,
+      feeAmt: _feeAmt,
       isReview
     });
     r.sales  += amt;
-    r.fee += Math.round(amt * srFeeForOrder(o));
+    r.fee += _feeAmt;
   }
   // 디네트(B2B) 행 추가 — 박대를 디네트한테 판매, 발주처는 일비(기본).
   // 자꾸가게에서 들어온 일비 박대와 키가 같으면 같은 행에 병합 (매입처 동일하므로)
@@ -20656,6 +20658,25 @@ function srBuildProfitRows(orders){
       r.saleVat = 0; r.purchaseVat = 0; r.vat = 0;
     }
     r.profit = r.sales - r.purchase - r.fee - r.vat;
+    // "리뷰 단가"에 음수를 넣으면 원가가 아니라 "리뷰 주문 1건당 순이익(손익)을 그 금액으로
+    // 고정"하는 뜻으로 씀 — 예: -5636 입력 시 리뷰 주문은 매출/수수료가 얼마든 상관없이 건당
+    // 정확히 -5636원 손해로 집계됨. (매출·수수료 총액 자체는 그대로 두고 — 매출 보고서에선
+    // 리뷰 주문도 정상 매출로 계속 잡혀야 하니까 — 순이익 계산에서만 리뷰 몫을 들어내고
+    // 고정값으로 바꿔치기함)
+    if (Number(r.reviewUnit) < 0 && _reviewQty > 0) {
+      let _reviewSalesSum = 0, _reviewFeeSum = 0, _reviewCostSum = 0;
+      r.orderDetail.forEach(d => {
+        if (d.isReview) {
+          _reviewSalesSum += d.salesAmt;
+          _reviewFeeSum   += (d.feeAmt||0);
+          _reviewCostSum  += d.itemCost;
+        }
+      });
+      const _reviewVatShare = r.sales > 0 ? r.vat * (_reviewSalesSum / r.sales) : 0;
+      const _normalReviewProfit = _reviewSalesSum - _reviewCostSum - _reviewFeeSum - _reviewVatShare;
+      const _flatReviewProfit = _reviewQty * Number(r.reviewUnit);
+      r.profit += (_flatReviewProfit - _normalReviewProfit);
+    }
   }
   return Object.values(map).sort((a,b)=>{
     if (a.brand !== b.brand) return a.brand.localeCompare(b.brand);
@@ -21261,9 +21282,9 @@ function _srBuildDetailRowHtml(r, i, firstOfGroup){
             oninput="srOnPurchaseInputChange(this)">
           ${r.unitFromTable ? `<span style="font-size:9px;color:#2563EB;white-space:nowrap" title="매입단가표에서 자동으로 가져온 값이에요. 직접 고치면 그 값이 우선 적용돼요">📋자동</span>` : ''}
         </div>
-        ${_showReview ? `<div style="display:flex;align-items:center;gap:3px" title="리뷰 주문 매입단가 — 미입력 시 일반 단가 사용">
+        ${_showReview ? `<div style="display:flex;align-items:center;gap:3px" title="리뷰 주문 매입단가 — 미입력 시 일반 단가 사용. 음수를 넣으면 리뷰 1건당 순이익을 그 금액(손해)으로 고정함">
           <span style="font-size:9px;color:#92400E;width:24px;font-weight:600">리뷰</span>
-          <input type="number" min="0" step="1" value="${r.reviewUnit||''}" placeholder="${r.unit||'리뷰가'}"
+          <input type="number" step="1" value="${r.reviewUnit||''}" placeholder="${r.unit||'리뷰가'}"
             data-key="${_srEsc(r.key)}" data-role="reviewUnit"
             style="width:70px;padding:3px 5px;font-size:11px;text-align:right;border:1px solid #FCD34D;background:#FFFBEB;border-radius:3px;font-variant-numeric:tabular-nums"
             oninput="srOnPurchaseInputChange(this)">
@@ -21489,7 +21510,9 @@ function srOnPurchaseInputChange(elInput){
   const role = elInput.getAttribute('data-role');
   if (!key || !role) return;
   if (role === 'unit' || role === 'shipFee' || role === 'consol' || role === 'reviewUnit') {
-    const v = Math.max(0, parseFloat(elInput.value)||0);
+    // 리뷰 단가만 음수 허용 — 음수를 넣으면 "리뷰 주문 1건당 순이익을 그 금액으로 고정"하는
+    // 뜻으로 쓰임(원가가 아니라 손익 자체). 나머지(일반 매입단가 등)는 음수가 말이 안 되니 0 미만 차단
+    const v = role === 'reviewUnit' ? (parseFloat(elInput.value)||0) : Math.max(0, parseFloat(elInput.value)||0);
     srUpdatePurchaseEntry(key, { [role]: v });
   } else if (role === 'taxable') {
     srUpdatePurchaseEntry(key, { taxable: !!elInput.checked });
