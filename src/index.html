@@ -1652,14 +1652,12 @@ const VENDOR_PREFIXES = {
   '참맛더드림':    ['참맛더드림]','참맛더드림-','참맛더드림_'],
   '숲속양봉원':    ['숲속양봉원]','숲속양봉원-','숲속양봉원_'],
   'MAC컴퍼니':     ['MAC컴퍼니]','MAC컴퍼니-','MAC컴퍼니_'],
-  // 마그네슘(자사 OEM) 실제 제조·공급처 — 안 등록해뒀으면 이 코드 주문이 전부 미매칭으로
-  // 빠져서 매입/순이익 화면에 행 자체가 안 생기고 발주서 생성 탭에도 카드가 안 뜸
-  '보부상':        ['보부상]','보부상-','보부상_'],
   // 외부 발주처한테 보내는 게 아니라 우리가 재고 갖고 직접 포장·발송하는 상품(예: 동일전선
-  // 랜케이블) — 판매자상품코드가 "재고]"로 시작하면 여기로 잡혀서 발주서 생성 탭에 별도
+  // 랜케이블, 마그네슘 — 둘 다 OEM 자사상품이라 발주서 보낼 곳이 없고 택배(경동 등)로 직접
+  // 발송함) — 판매자상품코드가 이 접두사들로 시작하면 여기로 잡혀서 발주서 생성 탭에 별도
   // 카드로 뜸. 보낼 발주처가 없으니 이메일/카카오 등록은 안 해도 되고, 그냥 이 카드 보고
   // 직접 챙겨서 보내면 됨.
-  '직접발송':      ['재고]','재고-','재고_'],
+  '직접발송':      ['재고]','재고-','재고_','보부상]','보부상-','보부상_'],
 };
 // 사용자가 직접 엑셀 양식을 올려서 만드는 "커스텀 양식" — 코드 수정 없이 새 컬럼 구조를 정의
 // 저장 형식: { '양식이름': { columns: [{header:'받는분성명', field:'recv_name', const:''}, ...] } }
@@ -2678,7 +2676,11 @@ function detectVendor(vc, productName, selectOpt) {
     // 자기 이름으로 된 카드가 따로 생기게 함(매입 비중 차트 거래처 이름에도 그대로 반영됨)
     const directShipPrefixes = VENDOR_PREFIXES['직접발송'] || [];
     if (directShipPrefixes.some(p => c.toLowerCase().startsWith(p.toLowerCase()))) {
-      const firstWord = String(productName||'').trim().split(/\s+/)[0];
+      // 마그네슘(보부상 OEM)은 상품명이 "[정품] LNH 액티브..."처럼 대괄호 태그로 시작해서
+      // 첫 단어 추출이 안 먹히니(사장님이 "마그네슘"으로 떠달라고 직접 지정) 먼저 특례 처리
+      const pn2 = String(productName||'');
+      if (pn2.includes('마그네슘')) return '마그네슘';
+      const firstWord = pn2.trim().split(/\s+/)[0];
       return firstWord || '직접발송';
     }
     for (const [v, prefixes] of Object.entries(VENDOR_PREFIXES))
