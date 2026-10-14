@@ -20072,11 +20072,20 @@ function srRender(){
   const yb=allOrders.filter(o=>srBrand(o.alias)==='yb');
   const grAgg=srAggregate(gr), ybAgg=srAggregate(yb);
   const dnAgg=srAggregateDinette(srDinetteRows);
-  // 자사 매출액 = 순수 플랫폼(그로븐/옐로우브릿지) 매출만 — regSales/regCount는 그 브랜드 안에
-  // 섞여 들어온 문자주문/그린켐 같은 B2B 주문을 뺀 값 (안 빼면 B2B가 자사에도 잡히고 B2B에도
-  // 잡혀서 자사+B2B 합계가 총 매출액보다 커지는 이중계산 오류가 남)
-  const selfSales = grAgg.regSales + ybAgg.regSales;
-  const selfCnt   = grAgg.regCount + ybAgg.regCount;
+  // 마그네슘 리뷰/샘플 수기입력도 자사 매출로 같이 잡아야 함(실제 주문 데이터는 아니지만
+  // 결제금액이 실제로 들어오는 자사 쿠팡 판매분이라) — 역마진(음수)이면 총 매출액도 그만큼
+  // 줄어드는 게 맞음(순손익까지 반영된 숫자)
+  const _mgrEntries = loadMagnesiumReviewEntries();
+  const _mgrSalesFor = co => _mgrEntries.filter(e=>e.co===co).reduce((s,e)=>s+e.qty*e.unit,0);
+  const _mgrCntFor   = co => _mgrEntries.filter(e=>e.co===co).reduce((s,e)=>s+e.qty,0);
+  const mgrGrobnSales = _mgrSalesFor('그로븐'), mgrGrobnCnt = _mgrCntFor('그로븐');
+  const mgrYbSales    = _mgrSalesFor('옐로우브릿지'), mgrYbCnt = _mgrCntFor('옐로우브릿지');
+  // 자사 매출액 = 순수 플랫폼(그로븐/옐로우브릿지) 매출 + 마그네슘 리뷰/샘플 수기입력 —
+  // regSales/regCount는 그 브랜드 안에 섞여 들어온 문자주문/그린켐 같은 B2B 주문을 뺀 값
+  // (안 빼면 B2B가 자사에도 잡히고 B2B에도 잡혀서 자사+B2B 합계가 총 매출액보다 커지는
+  // 이중계산 오류가 남)
+  const selfSales = grAgg.regSales + ybAgg.regSales + mgrGrobnSales + mgrYbSales;
+  const selfCnt   = grAgg.regCount + ybAgg.regCount + mgrGrobnCnt + mgrYbCnt;
   // B2B 매출 합계 — 디네트(전용 업로드) + 문자주문/그린켐 등으로 그로븐/옐로우브릿지 안에 등록된 B2B
   const _b2bTotals = mp => Object.values(mp||{}).reduce((s,v)=>({count:s.count+v.count,sales:s.sales+v.sales,purchase:s.purchase+(v.purchase||0)}),{count:0,sales:0,purchase:0});
   const _manualB2b = (()=>{ const g=_b2bTotals(grAgg.b2bMap), y=_b2bTotals(ybAgg.b2bMap); return {count:g.count+y.count, sales:g.sales+y.sales}; })();
@@ -20117,7 +20126,7 @@ function srRender(){
             <div style="background:#fff;border-radius:6px;padding:12px;text-align:center">
               <div style="font-size:11px;color:#888">자사 매출액 <span style="color:#1A56DB;font-weight:600">${selfPct}%</span></div>
               <div style="font-size:18px;font-weight:700;color:#212121;margin-top:2px">${selfSales.toLocaleString()}원</div>
-              <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${grAgg.regCount}건 · 자꾸가게 ${ybAgg.regCount}건</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">로또상회 ${(grAgg.regCount+mgrGrobnCnt).toLocaleString()}건 · 자꾸가게 ${(ybAgg.regCount+mgrYbCnt).toLocaleString()}건</div>
             </div>
             <div style="background:#fff;border-radius:6px;padding:12px;text-align:center">
               <div style="font-size:11px;color:#888">B2B 매출액 <span style="color:#7B4B00;font-weight:600">${b2bPct}%</span></div>
