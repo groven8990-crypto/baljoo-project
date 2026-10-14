@@ -5500,6 +5500,35 @@ function gmailGetTemplate(){
   };
   try { return {...def, ...JSON.parse(localStorage.getItem(LS_GMAIL_TPL)||'{}')}; } catch { return def; }
 }
+// 발주처별 전용 메일 제목/본문 — 경동택배처럼 "발주서"가 아니라 "택배 접수 요청" 등 완전히
+// 다른 용도로 메일을 보내야 하는 발주처(주로 직접발송 상품의 택배사)를 위한 예외.
+// 등록 안 돼있으면 평소처럼 전체 공통 발주서 템플릿(gmailGetTemplate)을 그대로 씀
+const LS_VENDOR_MAIL_TPL = 'yb_vendor_mail_tpl';  // { [vendorKey]: {subject, body} }
+function loadVendorMailTpl(){ try{ return JSON.parse(localStorage.getItem(LS_VENDOR_MAIL_TPL)||'{}'); }catch{ return {}; } }
+function saveVendorMailTpl(m){ try{ localStorage.setItem(LS_VENDOR_MAIL_TPL, JSON.stringify(m||{})); }catch(e){} }
+// 마그네슘(직접발송)은 발주처한테 "발주"하는 게 아니라 택배사(경동택배)한테 그날 발송건
+// 택배 접수를 요청하는 메일이라, 이메일 주소+전용 제목/본문을 한 번만 등록해둠(사장님이
+// 불러준 문구 그대로). 이후 직접 고쳐도 이 로직이 다시 덮어쓰지 않도록 1회성 플래그로 막음.
+function _seedMagnesiumCourierDefaults(){
+  try{
+    if (localStorage.getItem('yb_magnesium_courier_seed_v1')) return;
+    const emails = loadVendorEmails();
+    if (!emails['마그네슘']) { emails['마그네슘'] = 'kd8080@naver.com'; saveVendorEmails(emails); }
+    const delivery = loadVendorDelivery();
+    const cur = Array.isArray(delivery['마그네슘']) ? delivery['마그네슘'] : [];
+    if (!cur.includes('email')) { delivery['마그네슘'] = [...cur, 'email']; saveVendorDelivery(delivery); }
+    const tpl = loadVendorMailTpl();
+    if (!tpl['마그네슘']) {
+      tpl['마그네슘'] = {
+        subject: '{YYMMDD} {BRAND}(자꾸가게) 택배 접수 요청',
+        body: '안녕하세요, 경동택배 담당자님.\n{BRAND}(자꾸가게)입니다.\n\n금일 발송건 택배 접수 요청드립니다.\n상세 내역은 첨부 엑셀 파일로 전달드립니다.'
+      };
+      saveVendorMailTpl(tpl);
+    }
+    localStorage.setItem('yb_magnesium_courier_seed_v1', '1');
+  }catch(e){}
+}
+_seedMagnesiumCourierDefaults();
 function gmailResetTemplate(){
   if (!confirm('메일 템플릿을 기본값으로 되돌릴까요?')) return;
   localStorage.removeItem(LS_GMAIL_TPL);
@@ -6351,7 +6380,10 @@ async function autoSendVendor(vendorName, opts){
     emails[vendorName] = newEmail.trim();
     saveVendorEmails(emails);
   }
-  const tpl = opts.resend ? gmailGetResendTemplate() : gmailGetTemplate();
+  // 재전송(resend)은 어떤 발주처든 항상 공통 재전송 템플릿을 씀 — 전용 템플릿이 있어도
+  // "원래 보낸 내용 다시 보냄"이라는 성격은 똑같아서 굳이 구분 안 함
+  const vendorTpl = (!opts.resend) ? (loadVendorMailTpl()[vendorName]) : null;
+  const tpl = vendorTpl || (opts.resend ? gmailGetResendTemplate() : gmailGetTemplate());
   const today = _localISO();
   try { await gmailRequestToken(); } catch(e) { alert('Gmail 인증 실패: '+e.message); return; }
   // 워크북 모두 생성 + 폴더 백업
