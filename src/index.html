@@ -12688,6 +12688,27 @@ function _seedMacCompanyBankEntry(){
   }catch(e){}
 }
 _seedMacCompanyBankEntry();
+// 생선상륙 주인이 바뀌어서 사업자를 새로 냄(2026-10-06, 신규 등록번호 274-92-02472,
+// 대표 장진희) — 계좌도 NH농협은행으로 새로 바뀌어서 기존 등록된 계좌 정보를 한 번만
+// 덮어씀. 이미 같은 정보로 바꿔놨으면(사용자가 그 후에 또 직접 고쳤어도) 다시 안 건드림.
+function _seedSaengseonSangnyukBankUpdate(){
+  try{
+    if (localStorage.getItem('yb_bank_saengseon_update_v1')) return;
+    const banks = loadBankInfo();
+    const newInfo = {
+      bank: 'NH농협은행',
+      acct: '302-2186-4695-21',
+      holder: '장진희',
+      tnote: '2026-10 사업자 변경(신규 등록번호 274-92-02472, 대표 장진희) — 계좌 새로 등록됨'
+    };
+    const idx = banks.findIndex(b => b.name === '생선상륙');
+    if (idx >= 0) banks[idx] = { ...banks[idx], ...newInfo };
+    else banks.push({ name:'생선상륙', ...newInfo, tmemo:'', tpayType:'즉시결제', tev1:false,tev2:false,tev3:false,tev4:false,tev5:false,tev6:false });
+    saveBankInfo(banks);
+    localStorage.setItem('yb_bank_saengseon_update_v1', '1');
+  }catch(e){}
+}
+_seedSaengseonSangnyukBankUpdate();
 function loadExpHist() { try{ return JSON.parse(localStorage.getItem(LS_EXPHIST)||'[]'); }catch{ return []; } }
 function saveExpHist(a){
   let arr = a.slice(0, 100); // 최대 100개 유지
