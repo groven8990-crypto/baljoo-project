@@ -1683,7 +1683,7 @@ const CUSTOM_FORMAT_FIELDS = [
   {key:'__blank__',     label:'— 빈칸으로 둠 —'},
 ];
 function loadCustomFormats(){ try{ return JSON.parse(localStorage.getItem(LS_CUSTOM_FORMATS)||'{}'); }catch{ return {}; } }
-function saveCustomFormats(map){ try{ localStorage.setItem(LS_CUSTOM_FORMATS, JSON.stringify(map)); }catch(e){} }
+function saveCustomFormats(map){ try{ localStorage.setItem(LS_CUSTOM_FORMATS, JSON.stringify(map)); }catch(e){} _sbSaveKV('custom_formats', map).catch(()=>{}); }
 // 커스텀 양식 컬럼 정의대로 주문 목록 → 시트 rows 배열 생성 (buildRows의 다른 case들과 동일한 반환 형태)
 function _buildFromCustomFormat(fmt, orders, alias){
   const s = getSender(alias);
@@ -1708,7 +1708,7 @@ function _buildFromCustomFormat(fmt, orders, alias){
 const LS_CUSTOM_VENDORS = 'yb_custom_vendors';
 const BASE_FORMAT_OPTIONS = ['일비','최고집','늘푸른우리','거풍푸드','생선상륙','공덕농협','푸드엔드베스트','한마당식품','남부파머스','해담별'];
 function loadCustomVendors(){ try{ return JSON.parse(localStorage.getItem(LS_CUSTOM_VENDORS)||'{}'); }catch{ return {}; } }
-function saveCustomVendors(map){ try{ localStorage.setItem(LS_CUSTOM_VENDORS, JSON.stringify(map)); }catch(e){} }
+function saveCustomVendors(map){ try{ localStorage.setItem(LS_CUSTOM_VENDORS, JSON.stringify(map)); }catch(e){} _sbSaveKV('custom_vendors', map).catch(()=>{}); }
 function mergeCustomVendorPrefixes(){
   const cv = loadCustomVendors();
   for (const [name, def] of Object.entries(cv)) {
@@ -2337,6 +2337,46 @@ async function _sbLoadKV(key) {
   } catch(e) { console.warn('[SB] kv_store load error:', e); return null; }
 }
 
+// kv_store에 저장된 원격 "키별 객체"(발주처명 등을 키로 쓰는 맵)를 이 브라우저 localStorage와
+// 병합. 같은 키가 양쪽에 있으면 원격(가장 나중에 저장된 쪽) 값으로 덮어쓰고, 한쪽에만 있는
+// 키는 그대로 유지 — 어느 기기에서 등록했든 서로 지우지 않고 합쳐짐
+function _sbMergeMapKV(cloudKey, lsKey) {
+  _sbLoadKV(cloudKey).then(remote => {
+    if (!remote || typeof remote !== 'object' || Array.isArray(remote)) return;
+    let local = {}; try { local = JSON.parse(localStorage.getItem(lsKey) || '{}'); } catch(_){}
+    localStorage.setItem(lsKey, JSON.stringify(Object.assign({}, local, remote)));
+  }).catch(()=>{});
+}
+
+// 발주처 설정류를 클라우드 동기화에 새로 편입시키면서, 지금까지 이 컴퓨터에만 있던 데이터를
+// 한 번 클라우드로 올려줌(이후부턴 save*() 호출마다 자동으로 올라감) — 안 해주면 다른
+// 컴퓨터는 이 컴퓨터가 뭔가 "새로" 수정해주기 전까진 기존 설정을 받아갈 방법이 없음.
+// 빈 값은 올리지 않음(새 컴퓨터가 먼저 열려서 빈 값으로 기존 데이터를 덮어쓰는 것을 방지)
+function _sbSeedSettingsSyncV1(){
+  if (localStorage.getItem('yb_sb_settings_sync_seed_v1')) return;
+  const pushIfNonEmpty = (cloudKey, lsKey) => {
+    try {
+      const raw = localStorage.getItem(lsKey);
+      if (!raw) return;
+      const val = JSON.parse(raw);
+      const empty = val==null || (Array.isArray(val) && !val.length) || (typeof val==='object' && !Array.isArray(val) && !Object.keys(val).length);
+      if (!empty) _sbSaveKV(cloudKey, val).catch(()=>{});
+    } catch(_){}
+  };
+  pushIfNonEmpty('vendor_emails', LS_VENDOR_EMAILS);
+  pushIfNonEmpty('vendor_site_urls', LS_VENDOR_SITE_URLS);
+  pushIfNonEmpty('vendor_delivery', LS_VENDOR_DELIVERY);
+  pushIfNonEmpty('vendor_mail_tpl', LS_VENDOR_MAIL_TPL);
+  pushIfNonEmpty('custom_vendors', LS_CUSTOM_VENDORS);
+  pushIfNonEmpty('custom_formats', LS_CUSTOM_FORMATS);
+  pushIfNonEmpty('sr_vendor_category_override', LS_SR_VENDOR_CAT_OVERRIDE);
+  pushIfNonEmpty('overrides', LS_OVERRIDES);
+  pushIfNonEmpty('instant_pay_vendors', LS_INSTANT_PAY_VENDORS);
+  pushIfNonEmpty('product_aliases', LS_PRODUCT_ALIASES);
+  pushIfNonEmpty('fee_override', LS_FEE_OVERRIDE);
+  localStorage.setItem('yb_sb_settings_sync_seed_v1', '1');
+}
+
 async function _sbSyncBankInfo() {
   const remote = await _sbLoadKV('bank_info');
   if (!remote || !Array.isArray(remote) || !remote.length) return;
@@ -2619,7 +2659,7 @@ function saveOptMap(a) {
 // 직접수정(override): "코드+선택사항" 단위로 품목명/옵션/수량을 사용자가 직접 지정
 const LS_OVERRIDES = 'yb_overrides';
 function loadOverrides(){ try{ return JSON.parse(localStorage.getItem(LS_OVERRIDES)||'[]'); }catch{ return []; } }
-function saveOverrides(a){ localStorage.setItem(LS_OVERRIDES, JSON.stringify(a)); }
+function saveOverrides(a){ localStorage.setItem(LS_OVERRIDES, JSON.stringify(a)); _sbSaveKV('overrides', a).catch(()=>{}); }
 function ovKey(vc, so){ return String(vc||'').trim()+''+String(so||'').trim(); }
 function applyOverride(vc, so){
   return loadOverrides().find(o => o.key === ovKey(vc, so)) || null;
@@ -3058,6 +3098,28 @@ document.addEventListener('DOMContentLoaded',()=>{
   try { renderStaffBtn(); } catch(e) {}
   _sbLoadKV('staff_list').then(remote=>{
     if (Array.isArray(remote) && remote.length) localStorage.setItem(LS_STAFF_LIST, JSON.stringify(remote));
+  }).catch(()=>{});
+  // 발주처 설정류(이메일/사이트URL/전달방식/전용메일템플릿/사용자등록발주처/커스텀양식/
+  // 코드별 직접수정/상품명 별칭) — 다른 컴퓨터에서 등록한 것도 이 브라우저에 합쳐짐
+  try { _sbSeedSettingsSyncV1(); } catch(e){}
+  _sbMergeMapKV('vendor_emails', LS_VENDOR_EMAILS);
+  _sbMergeMapKV('vendor_site_urls', LS_VENDOR_SITE_URLS);
+  _sbMergeMapKV('vendor_delivery', LS_VENDOR_DELIVERY);
+  _sbMergeMapKV('vendor_mail_tpl', LS_VENDOR_MAIL_TPL);
+  _sbMergeMapKV('custom_vendors', LS_CUSTOM_VENDORS);
+  _sbMergeMapKV('custom_formats', LS_CUSTOM_FORMATS);
+  _sbMergeMapKV('sr_vendor_category_override', LS_SR_VENDOR_CAT_OVERRIDE);
+  _sbLoadKV('overrides').then(remote=>{
+    if (Array.isArray(remote)) localStorage.setItem(LS_OVERRIDES, JSON.stringify(remote));
+  }).catch(()=>{});
+  _sbLoadKV('instant_pay_vendors').then(remote=>{
+    if (Array.isArray(remote)) localStorage.setItem(LS_INSTANT_PAY_VENDORS, JSON.stringify(remote));
+  }).catch(()=>{});
+  _sbLoadKV('product_aliases').then(remote=>{
+    if (Array.isArray(remote)) localStorage.setItem(LS_PRODUCT_ALIASES, JSON.stringify(remote));
+  }).catch(()=>{});
+  _sbLoadKV('fee_override').then(remote=>{
+    if (Array.isArray(remote)) localStorage.setItem(LS_FEE_OVERRIDE, JSON.stringify(remote));
   }).catch(()=>{});
   try {
     const gcs = document.getElementById('gmarketCouponModeSel');
@@ -4970,11 +5032,11 @@ function verifyEditItemOpt(gk, srcIdx){
 // ── 거래처별 이메일 저장 ──
 const LS_VENDOR_EMAILS = 'yb_vendor_emails';
 function loadVendorEmails(){ try{ return JSON.parse(localStorage.getItem(LS_VENDOR_EMAILS)||'{}'); }catch{ return {}; } }
-function saveVendorEmails(map){ try{ localStorage.setItem(LS_VENDOR_EMAILS, JSON.stringify(map)); }catch(e){} }
+function saveVendorEmails(map){ try{ localStorage.setItem(LS_VENDOR_EMAILS, JSON.stringify(map)); }catch(e){} _sbSaveKV('vendor_emails', map).catch(()=>{}); }
 // ── 발주처별 발주사이트 URL 저장 ──
 const LS_VENDOR_SITE_URLS = 'yb_vendor_site_urls';
 function loadVendorSiteUrls(){ try{ return JSON.parse(localStorage.getItem(LS_VENDOR_SITE_URLS)||'{}'); }catch{ return {}; } }
-function saveVendorSiteUrls(map){ try{ localStorage.setItem(LS_VENDOR_SITE_URLS, JSON.stringify(map)); }catch(e){} }
+function saveVendorSiteUrls(map){ try{ localStorage.setItem(LS_VENDOR_SITE_URLS, JSON.stringify(map)); }catch(e){} _sbSaveKV('vendor_site_urls', map).catch(()=>{}); }
 function onVendorSiteUrlInput(input){
   const vendor = input.getAttribute('data-vendor');
   if (!vendor) return;
@@ -5028,7 +5090,7 @@ function loadVendorDelivery(){
     return out;
   } catch { return {}; }
 }
-function saveVendorDelivery(map){ try{ localStorage.setItem(LS_VENDOR_DELIVERY, JSON.stringify(map)); }catch(e){} }
+function saveVendorDelivery(map){ try{ localStorage.setItem(LS_VENDOR_DELIVERY, JSON.stringify(map)); }catch(e){} _sbSaveKV('vendor_delivery', map).catch(()=>{}); }
 // 발주처별 이메일/전달방식 기본값 — 참맛더드림·우리뜰 발주를 이메일로 넣기로 해서 등록.
 // 이미 등록된 값이 있으면 건드리지 않음(사용자가 직접 바꿨을 수 있으므로). 이거 하나로
 // 발주서 카드에 "📧 자동발송" 버튼이 뜨고, 눌렀을 때 등록된 주소로 바로 감.
@@ -5241,7 +5303,7 @@ function renderVendorRegistry(){
 // ── 즉시결제 거래처 설정 — 체크해둔 발주처는 발주서 목록에 "지출결의서 입력" 버튼이 바로 표시됨 ──
 const LS_INSTANT_PAY_VENDORS = 'yb_instant_pay_vendors';
 function loadInstantPayVendors(){ try{ return JSON.parse(localStorage.getItem(LS_INSTANT_PAY_VENDORS)||'[]'); }catch{ return []; } }
-function saveInstantPayVendors(arr){ try{ localStorage.setItem(LS_INSTANT_PAY_VENDORS, JSON.stringify(arr)); }catch(e){} }
+function saveInstantPayVendors(arr){ try{ localStorage.setItem(LS_INSTANT_PAY_VENDORS, JSON.stringify(arr)); }catch(e){} _sbSaveKV('instant_pay_vendors', arr).catch(()=>{}); }
 function isInstantPayVendor(v){ return loadInstantPayVendors().includes(v); }
 function toggleInstantPayVendor(v){
   let arr = loadInstantPayVendors();
@@ -5508,7 +5570,7 @@ function gmailGetTemplate(){
 // 등록 안 돼있으면 평소처럼 전체 공통 발주서 템플릿(gmailGetTemplate)을 그대로 씀
 const LS_VENDOR_MAIL_TPL = 'yb_vendor_mail_tpl';  // { [vendorKey]: {subject, body} }
 function loadVendorMailTpl(){ try{ return JSON.parse(localStorage.getItem(LS_VENDOR_MAIL_TPL)||'{}'); }catch{ return {}; } }
-function saveVendorMailTpl(m){ try{ localStorage.setItem(LS_VENDOR_MAIL_TPL, JSON.stringify(m||{})); }catch(e){} }
+function saveVendorMailTpl(m){ try{ localStorage.setItem(LS_VENDOR_MAIL_TPL, JSON.stringify(m||{})); }catch(e){} _sbSaveKV('vendor_mail_tpl', m||{}).catch(()=>{}); }
 // 마그네슘(직접발송)은 발주처한테 "발주"하는 게 아니라 택배사(경동택배)한테 그날 발송건
 // 택배 접수를 요청하는 메일이라, 이메일 주소+전용 제목/본문을 한 번만 등록해둠(사장님이
 // 불러준 문구 그대로). 이후 직접 고쳐도 이 로직이 다시 덮어쓰지 않도록 1회성 플래그로 막음.
@@ -18116,7 +18178,7 @@ function srFee(plat){
 }
 const LS_PRODUCT_ALIASES = 'yb_product_aliases';
 function loadProductAliases(){ try{ return JSON.parse(localStorage.getItem(LS_PRODUCT_ALIASES)||'[]'); }catch{ return []; } }
-function saveProductAliases(arr){ try{ localStorage.setItem(LS_PRODUCT_ALIASES, JSON.stringify(arr)); }catch(e){} }
+function saveProductAliases(arr){ try{ localStorage.setItem(LS_PRODUCT_ALIASES, JSON.stringify(arr)); }catch(e){} _sbSaveKV('product_aliases', arr).catch(()=>{}); }
 function srNormalize(name){
   const n=String(name||'');
   const aliases = loadProductAliases();
