@@ -5544,7 +5544,7 @@ function gmailSaveTemplate(subject, body){ localStorage.setItem(LS_GMAIL_TPL, JS
 const LS_GMAIL_RESEND_TPL = 'yb_gmail_resend_tpl';
 function gmailGetResendTemplate(){
   const def = {
-    subject: '[{BRAND}]({YYMMDD}) 발주서',
+    subject: '[{BRAND}]({YYMMDD}) 발주서 (이전 발주서 폐기)',
     body: '안녕하세요, {VENDOR} 담당자님\n\n발주서 다시 보내드립니다.\n이전 발주서 폐기 후 해당 메일의 발주서로 확인 부탁드립니다.\n\n감사합니다.'
   };
   try { return {...def, ...JSON.parse(localStorage.getItem(LS_GMAIL_RESEND_TPL)||'{}')}; } catch { return def; }
