@@ -4759,7 +4759,10 @@ function verifyVendorBuild(vendor, alias, orders){
     const r = rows[i+1] || [];
     const dstItem = itemCol >= 0 ? String(r[itemCol]||'') : '';
     const dstOpt  = optCol  >= 0 ? String(r[optCol]||'')  : '';
-    const dstQty  = qtyCol  >= 0 ? (parseInt(r[qtyCol]) || 0) : null;
+    // 공덕농협은 "박스수량" 칸을 일부러 항상 비워두고(buildRows 참고) 수량을 품목명 글자에
+    // 직접 적음(예: "누룽지 2개") — 그래서 이 칸으로 수량을 검증/수정하는 게 의미가 없음.
+    // null로 둬서 "0"이라는 오해의 소지가 있는 값 대신 "-"로 표시되고 수정 버튼도 안 뜨게 함
+    const dstQty  = (vendor === '공덕농협') ? null : (qtyCol >= 0 ? (parseInt(r[qtyCol]) || 0) : null);
     const dstHaystack = (dstItem + ' ' + dstOpt).toLowerCase();
     const issues = [];
     // 토큰 누락 검사
