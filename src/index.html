@@ -5331,6 +5331,30 @@ function _seedMacInstantPayVendor(){
   }catch(e){}
 }
 _seedMacInstantPayVendor();
+// 목전지·삼겹살은 상품명으로 바로 MAC컴퍼니로 보냄 — 판매자상품코드에 "MAC컴퍼니]" 접두사가
+// 안 붙어 들어오는 채널이 있어도(지마켓 마그네슘 건과 같은 문제) 상품명만으로 매칭되도록
+// detectVendor() 5순위(상품명 키워드) 등록을 코드 등록 목록에 미리 심어둠. 한 번만 실행해서
+// 이후 사용자가 직접 수정/삭제해도 이 로직이 다시 되살리지 않도록 함.
+function _seedMacMeatKeywords(){
+  try{
+    if (localStorage.getItem('yb_mac_meat_kw_seed_v1')) return;
+    const codes = loadCodes();
+    const want = [
+      { code:'MAC컴퍼니]목전지', vendor:'MAC컴퍼니', product:'목전지', productKw:'목전지' },
+      { code:'MAC컴퍼니]삼겹살', vendor:'MAC컴퍼니', product:'삼겹살', productKw:'삼겹살' },
+    ];
+    let changed = false;
+    for (const w of want) {
+      if (!codes.some(cc => cc.vendor === w.vendor && cc.productKw === w.productKw)) {
+        codes.push({ originalCode:w.code, ...w });
+        changed = true;
+      }
+    }
+    if (changed) saveCodes(codes);
+    localStorage.setItem('yb_mac_meat_kw_seed_v1', '1');
+  }catch(e){}
+}
+_seedMacMeatKeywords();
 function renderInstantPayRegistry(){
   const el = document.getElementById('instantPayRegistryArea');
   if (!el) return;
