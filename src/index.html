@@ -5165,6 +5165,24 @@ function _seedVendorEmailDefaults(){
       localStorage.setItem('yb_vendor_email_fix_v3', '1');
     }
   }catch(e){}
+
+  // 1회성 추가 v4: 참맛더드림 발주 메일에 로젠택배 담당자(전래상, jungrs4u@naver.com)도 같이
+  // 받도록 추가(명함 전달받음) — 쉼표로 구분된 기존 주소 뒤에 이어 붙임. 한 번만 실행해서,
+  // 이후 사용자가 이메일 란을 직접 수정해도 이 로직이 다시 덮어쓰지 않도록 함.
+  try{
+    if (!localStorage.getItem('yb_vendor_email_fix_v4')) {
+      const emails5 = loadVendorEmails();
+      const logenEmail = 'jungrs4u@naver.com';
+      const cur5 = String(emails5['참맛더드림']||'');
+      const list5 = cur5.split(',').map(s=>s.trim()).filter(Boolean);
+      if (!list5.includes(logenEmail)) {
+        list5.push(logenEmail);
+        emails5['참맛더드림'] = list5.join(', ');
+        saveVendorEmails(emails5);
+      }
+      localStorage.setItem('yb_vendor_email_fix_v4', '1');
+    }
+  }catch(e){}
 }
 _seedVendorEmailDefaults();
 function toggleVendorDelivery(vendor, mode){
