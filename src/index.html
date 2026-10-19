@@ -19998,26 +19998,35 @@ function srMagnesiumReviewEntrySection(co, realInfo){
   const sumSales = real.sales + totalAmt;
   const sumColor = sumSales < 0 ? '#DC2626' : '#111827';
   // 실제 판매(정상 주문)랑 리뷰/샘플(역마진 수기입력)을 한눈에 비교할 수 있게 위에 요약 표를 둠 —
-  // 깐마늘의 "실주문/리뷰주문 분리" 표와 같은 형식(사장님이 그 표를 보여주며 요청)
+  // 날짜(세로 병합) | 구분(실제매출/리뷰)+건수 | 금액 형태로, 사장님이 그려준 형식 그대로
+  const reportDate = document.getElementById('srReportDate')?.value || _localISO();
+  const dm = String(reportDate).match(/(\d{4})-(\d{2})-(\d{2})/);
+  const dateLabel = dm ? `${parseInt(dm[2],10)}월 ${parseInt(dm[3],10)}일` : escHtml(reportDate);
+  const realAmtColor = real.sales < 0 ? '#DC2626' : '#111827';
+  const reviewAmtColor = totalAmt < 0 ? '#DC2626' : '#111827';
   const summary = `
     <div style="background:#FFFBEB;color:#78350F;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #FBBF24">💊 마그네슘 실판매 / 리뷰·샘플 분리</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FFFBEB">
-      <colgroup><col style="width:25%"><col style="width:25%"><col style="width:25%"><col style="width:25%"></colgroup>
+      <colgroup><col style="width:28%"><col style="width:36%"><col style="width:36%"></colgroup>
       <thead><tr style="background:#FEF3C7">
-        <th style="padding:8px 14px;text-align:right;color:#78350F;font-weight:700">실판매 건수</th>
-        <th style="padding:8px 14px;text-align:right;color:#166534;font-weight:700">실판매 매출</th>
-        <th style="padding:8px 14px;text-align:right;color:#92400E;font-weight:700">리뷰·샘플 건수</th>
-        <th style="padding:8px 14px;text-align:right;color:#92400E;font-weight:700">리뷰·샘플 금액</th>
+        <th style="padding:8px 14px;text-align:left;color:#78350F;font-weight:700">날짜</th>
+        <th style="padding:8px 14px;text-align:left;color:#78350F;font-weight:700">주문건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#78350F;font-weight:700">금액</th>
       </tr></thead>
-      <tbody><tr>
-        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:#78350F">${real.count.toLocaleString()}건</td>
-        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:#166534;font-weight:700">${real.sales.toLocaleString()}원</td>
-        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:#92400E">${totalQty.toLocaleString()}건</td>
-        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:#92400E;font-weight:700">${totalAmt.toLocaleString()}원</td>
-      </tr></tbody>
+      <tbody>
+        <tr>
+          <td rowspan="2" style="padding:8px 14px;border-bottom:1px solid #FDE68A;color:#78350F;vertical-align:middle">${escHtml(dateLabel)}</td>
+          <td style="padding:8px 14px;border-bottom:1px solid #FDE68A;color:#166534">실제매출 &nbsp;${real.count.toLocaleString()}</td>
+          <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:${realAmtColor};font-weight:700">${real.sales.toLocaleString()}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 14px;border-bottom:1px solid #FDE68A;color:#92400E">리뷰 &nbsp;${totalQty.toLocaleString()}</td>
+          <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:${reviewAmtColor};font-weight:700">${totalAmt.toLocaleString()}</td>
+        </tr>
+      </tbody>
       <tfoot><tr style="background:#FDE68A;font-weight:700">
-        <td style="padding:8px 14px;text-align:right;color:#78350F">${sumCount.toLocaleString()}건</td>
-        <td colspan="3" style="padding:8px 14px;text-align:right;color:${sumColor}">합계 ${sumSales.toLocaleString()}원</td>
+        <td colspan="2" style="padding:8px 14px;color:#78350F">총합계 &nbsp;${sumCount.toLocaleString()}</td>
+        <td style="padding:8px 14px;text-align:right;color:${sumColor}">${sumSales.toLocaleString()}</td>
       </tr></tfoot>
     </table>`;
   if (!entries.length) return summary;
