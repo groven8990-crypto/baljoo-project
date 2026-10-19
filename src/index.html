@@ -20814,7 +20814,7 @@ function _srBuildBizHeaderInner(biz, T){
     </span>`;
 }
 // 매입/순이익 화면 발주처 표시명 변경 + 취급품목 병기
-const SR_VENDOR_RENAME = { '에이팩': '3PL' };
+const SR_VENDOR_RENAME = { '에이팩': '3PL', '마그네슘': '자사제품' };
 const SR_VENDOR_CATEGORY = {
   '에이팩':'깐마늘', '동일':'깐마늘', '일비':'박대', '푸드엔드베스트':'간고등어',
   '늘푸른우리':'농산물', '최고집':'농산물', '한마당식품':'밀키트', '생선상륙':'굴비 외',
@@ -21060,10 +21060,12 @@ let _srProfitVendorChartInst = null;
 // 임의 canvas 요소에 도넛 그리기 (export용에서 cloned canvas 에 직접 그리기 위해 분리)
 function _srRenderVendorPurchaseChartTo(c, lg, rows, opts){
   if (typeof Chart === 'undefined' || !c) return null;
-  // 발주처별 매입 합계 (전체)
+  // 발주처별 매입 합계 (전체) — 표시 이름(_srVendorName)으로 묶어서 "마그네슘→자사제품" 같은
+  // 이름 변경이 이 차트에도 그대로 반영되게 함
   const byV = {};
   for (const r of (rows||[])) {
-    byV[r.vendor] = (byV[r.vendor]||0) + r.purchase;
+    const vn = _srVendorName(r.vendor);
+    byV[vn] = (byV[vn]||0) + r.purchase;
   }
   const entries = Object.entries(byV).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
   if (entries.length === 0) {
