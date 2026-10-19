@@ -2708,6 +2708,11 @@ function detectVendor(vc, productName, selectOpt) {
       && cc.optKw && so.includes(String(cc.optKw).toLowerCase()));
     if (specific) return specific.vendor;
   }
+  // 2.5) 마그네슘(보부상 OEM)은 지마켓/11번가 등 일부 채널에서 판매자상품코드를 따로 안 정해놔서
+  // "재고]"/"보부상]" 접두사 없이 쿠팡식 자동생성 코드(m2026...)로만 들어오는 경우가 있음 —
+  // 코드 형식과 무관하게 상품명에 "마그네슘"이 있으면 무조건 마그네슘 카드로 보냄(이 상품명은
+  // 이 OEM 상품 전용이라 다른 발주처와 헷갈릴 일이 없음)
+  if (pn.includes('마그네슘')) return '마그네슘';
   // 3) 판매자상품코드 접두사로 발주처 추정
   if (c) {
     // "직접발송"(재고] 접두사)은 실제 발주처가 아니라 우리가 재고로 직접 포장·발송하는 상품이라,
@@ -2716,10 +2721,7 @@ function detectVendor(vc, productName, selectOpt) {
     // 자기 이름으로 된 카드가 따로 생기게 함(매입 비중 차트 거래처 이름에도 그대로 반영됨)
     const directShipPrefixes = VENDOR_PREFIXES['직접발송'] || [];
     if (directShipPrefixes.some(p => c.toLowerCase().startsWith(p.toLowerCase()))) {
-      // 마그네슘(보부상 OEM)은 상품명이 "[정품] LNH 액티브..."처럼 대괄호 태그로 시작해서
-      // 첫 단어 추출이 안 먹히니(사장님이 "마그네슘"으로 떠달라고 직접 지정) 먼저 특례 처리
       const pn2 = String(productName||'');
-      if (pn2.includes('마그네슘')) return '마그네슘';
       const firstWord = pn2.trim().split(/\s+/)[0];
       return firstWord || '직접발송';
     }
