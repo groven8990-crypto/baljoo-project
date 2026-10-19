@@ -18716,7 +18716,7 @@ function srBrandSection(title, color, agg, opts){
     </table>
     ${srB2BDetailHtml(agg)}
     ${srGarlicDetailHtml(agg, color)}
-    ${srMagnesiumReviewEntrySection(title.includes('그로븐') ? '그로븐' : (title.includes('옐로우브릿지') ? '옐로우브릿지' : ''))}`;
+    ${srMagnesiumReviewEntrySection(title.includes('그로븐') ? '그로븐' : (title.includes('옐로우브릿지') ? '옐로우브릿지' : ''), agg.prodMap['마그네슘'])}`;
 }
 // B2B(문자주문 등으로 등록된) 매출 — 일반 플랫폼 표와 분리해서 거래처별로 표시, 순마진(매출-매입)도 같이 보여줌
 function srB2BDetailHtml(agg){
@@ -19988,13 +19988,41 @@ function renderMagnesiumReviewEntryList(){
 // 매출 보고서(srBrandSection) 안에 끼워 넣을 섹션 — 사업자(co)별로 그 사업자의 입력분만 집계.
 // 실제 주문(allOrders)과는 완전히 별개 데이터라 총 매출액/플랫폼별 표에는 안 섞이고, 이
 // 카드로만 따로 보여줌 — 역마진(음수)이어도 다른 집계를 오염시키지 않도록 함
-function srMagnesiumReviewEntrySection(co){
+function srMagnesiumReviewEntrySection(co, realInfo){
   const entries = loadMagnesiumReviewEntries().filter(e => e.co === co);
-  if (!entries.length) return '';
+  const real = realInfo || {count:0, sales:0};
+  if (!entries.length && !real.count) return '';
   let totalQty = 0, totalAmt = 0;
+  for (const e of entries) totalQty += e.qty, totalAmt += e.qty * e.unit;
+  const sumCount = real.count + totalQty;
+  const sumSales = real.sales + totalAmt;
+  const sumColor = sumSales < 0 ? '#DC2626' : '#111827';
+  // 실제 판매(정상 주문)랑 리뷰/샘플(역마진 수기입력)을 한눈에 비교할 수 있게 위에 요약 표를 둠 —
+  // 깐마늘의 "실주문/리뷰주문 분리" 표와 같은 형식(사장님이 그 표를 보여주며 요청)
+  const summary = `
+    <div style="background:#FFFBEB;color:#78350F;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #FBBF24">💊 마그네슘 실판매 / 리뷰·샘플 분리</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FFFBEB">
+      <colgroup><col style="width:25%"><col style="width:25%"><col style="width:25%"><col style="width:25%"></colgroup>
+      <thead><tr style="background:#FEF3C7">
+        <th style="padding:8px 14px;text-align:right;color:#78350F;font-weight:700">실판매 건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#166534;font-weight:700">실판매 매출</th>
+        <th style="padding:8px 14px;text-align:right;color:#92400E;font-weight:700">리뷰·샘플 건수</th>
+        <th style="padding:8px 14px;text-align:right;color:#92400E;font-weight:700">리뷰·샘플 금액</th>
+      </tr></thead>
+      <tbody><tr>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:#78350F">${real.count.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:#166534;font-weight:700">${real.sales.toLocaleString()}원</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:#92400E">${totalQty.toLocaleString()}건</td>
+        <td style="padding:8px 14px;text-align:right;border-bottom:1px solid #FDE68A;color:#92400E;font-weight:700">${totalAmt.toLocaleString()}원</td>
+      </tr></tbody>
+      <tfoot><tr style="background:#FDE68A;font-weight:700">
+        <td style="padding:8px 14px;text-align:right;color:#78350F">${sumCount.toLocaleString()}건</td>
+        <td colspan="3" style="padding:8px 14px;text-align:right;color:${sumColor}">합계 ${sumSales.toLocaleString()}원</td>
+      </tr></tfoot>
+    </table>`;
+  if (!entries.length) return summary;
   const rows = entries.slice().sort((a,b)=> a.date < b.date ? -1 : (a.date > b.date ? 1 : 0)).map(e => {
     const amt = e.qty * e.unit;
-    totalQty += e.qty; totalAmt += amt;
     const amtColor = amt < 0 ? '#DC2626' : '#111827';
     return `<tr>
       <td style="padding:8px 14px;border-bottom:1px solid #FDE68A;color:#78350F">${escHtml(e.date)}</td>
@@ -20005,7 +20033,7 @@ function srMagnesiumReviewEntrySection(co){
     </tr>`;
   }).join('');
   const totalColor = totalAmt < 0 ? '#DC2626' : '#111827';
-  return `
+  return summary + `
     <div style="background:#FFFBEB;color:#78350F;padding:8px 14px;margin-top:10px;font-weight:700;font-size:12px;border-radius:4px 4px 0 0;border-left:3px solid #FBBF24">💊 마그네슘 리뷰/샘플 (역마진 포함)</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;background:#FFFBEB">
       <colgroup><col style="width:18%"><col style="width:30%"><col style="width:16%"><col style="width:18%"><col style="width:18%"></colgroup>
