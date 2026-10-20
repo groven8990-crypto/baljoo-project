@@ -3837,7 +3837,7 @@ function handleFile(file, onDone) {
         const autoAdded2=autoRegisterBracketCodes(allOrders);
         if(autoAdded2>0) rematchAllOrders();
         setSt('당근 주문 ' + res.added + '건 로드됨');
-        renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+        _syncDinetteOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
         loadedFileNames.push(file.name);
         renderLoadedFiles();
         saveToHistory(file.name, allOrders);
@@ -3854,7 +3854,7 @@ function handleFile(file, onDone) {
         const autoAdded3=autoRegisterBracketCodes(allOrders);
         if(autoAdded3>0) rematchAllOrders();
         setSt('11번가 주문 ' + res.added + '건 로드됨' + (res.dupSkipped?` (중복 ${res.dupSkipped} 제외)`:''));
-        renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+        _syncDinetteOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
         loadedFileNames.push(file.name);
         renderLoadedFiles();
         saveToHistory(file.name, allOrders);
@@ -3871,7 +3871,7 @@ function handleFile(file, onDone) {
         const autoAdded4=autoRegisterBracketCodes(allOrders);
         if(autoAdded4>0) rematchAllOrders();
         setSt('식자재코리아 주문 ' + res.added + '건 로드됨' + (res.dupSkipped?` (중복 ${res.dupSkipped} 제외)`:''));
-        renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+        _syncDinetteOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
         loadedFileNames.push(file.name);
         renderLoadedFiles();
         saveToHistory(file.name, allOrders);
@@ -3934,7 +3934,7 @@ function handleFile(file, onDone) {
       // 발주처]품목명 형태 자동 등록 후 재매칭
       const autoAdded=autoRegisterBracketCodes(allOrders);
       if(autoAdded>0) rematchAllOrders();
-      setSt('');renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+      setSt('');_syncDinetteOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
       // 이력 저장
       loadedFileNames.push(file.name);
       renderLoadedFiles();
@@ -6684,7 +6684,9 @@ function foodenItem(o){
   return o.item_name;
 }
 function getSender(alias){
-  if(String(alias).includes('로또상회'))
+  // "그로븐2"(디네트 B2B 물량 등 — 그로븐 사업자인데 별칭엔 "로또상회"가 안 들어간 합성 별칭)도
+  // 로또상회로 인식되게 함
+  if(String(alias).includes('로또상회') || String(alias).includes('그로븐'))
     return {name:'로또상회',phone:'010-5853-8990',addr:'전라북도 군산시 산북로 130-1',zip:'36742'};
   return {name:'자꾸가게',phone:'010-5853-8990',addr:'전라북도 군산시 산북로 130-1',zip:'36742'};
 }
@@ -8732,7 +8734,7 @@ function regenOrders(){
   autoRegisterBracketCodes(allOrders);  // 발주처]품목명 형태 자동 등록
   rematchAllOrders();
   switchTab('order');
-  renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+  _syncDinetteOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
 }
 function prefill(code, product, selectOpt){
   switchTab('codes');switchSubTab('code');
@@ -18543,7 +18545,7 @@ function srRenderProductAliases(){
       <button class="btn btn-danger btn-sm" style="margin-left:auto;font-size:10px;padding:2px 8px" onclick="srRemoveProductAlias(${i})">삭제</button>
     </div>`).join('');
 }
-function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회'))return 'grobn';if(a.includes('자꾸가게')||a.includes('옐로우브릿지'))return 'yb';return 'other';}
+function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회')||a.includes('그로븐'))return 'grobn';if(a.includes('자꾸가게')||a.includes('옐로우브릿지'))return 'yb';return 'other';}
 function _srIsManualB2B(o){ return /^B2B-/.test(String((o&&o.shop_mall)||'')); }
 // 내부 데이터(shop_mall/order_no/매입단가 키/B2B 발주처 매핑)는 전부 '그린켐'을 그대로 쓰지만
 // (Gmail 자동첨부 매칭·매입단가 연동이 걸려있어 바꾸면 깨짐), 화면에 보여줄 때만 이 함수를 거쳐
@@ -18993,6 +18995,49 @@ function srRenderDinettePricingInfo(){
 }
 let srDinetteRows = null;
 let srDinetteFileName = '';
+// 디네트 B2B 물량을 "발주서 생성" 탭의 실제 일비 발주서(allOrders/groupedOrders)에도 합쳐 넣음 —
+// 예전엔 "매출 보고용" 탭의 매입/순이익 계산에만 쓰이고 실제 발주서엔 안 들어가서, 디네트한테
+// 팔 박대 물량을 일비한테 깜빡하고 안 넣을 위험이 있었음(사장님 요청으로 추가). 등록된 코드
+// 형식("일비]박대/4P-2")을 그대로 흉내내서 넣으면 기존 매칭 파이프라인(rematchAllOrders)이
+// 알아서 일비로 잡아줌. alias를 "그로븐2"로 둬서 일반 로또상회 주문과 같은 카드로 안 섞이고
+// 일비 발주서 안에 별도 묶음("일비 | 그로븐2")으로 뜸.
+function _dinetteOrdersFromRows(){
+  if (!Array.isArray(srDinetteRows) || !srDinetteRows.length) return [];
+  const supplier = (typeof srGetB2BVendor === 'function') ? (srGetB2BVendor('디네트') || '일비') : '일비';
+  const out = [];
+  srDinetteRows.forEach((r, i) => {
+    const spec = String(r[3]||'').trim().toLowerCase();
+    if (!(spec in SR_DINETTE_SPEC)) return;
+    const qty = parseInt(r[4]) || SR_DINETTE_UNIT[spec] || 1;
+    const specLabel = spec.toUpperCase();  // '4p' → '4P'
+    out.push({
+      vendor_code: `${supplier}]박대/${specLabel}-${qty}`, vendor_opt:'', vendor_key:null,
+      alias:'그로븐2', alias_raw:'디네트-그로븐2', shop_mall:'디네트',
+      item_name:'', option_name:'', opt_mapped:false, opt_needs_check:false, mapped_code:'', unmatched:false,
+      recv_name: String(r[0]||'').trim() || '(이름없음)',
+      recv_phone: String(r[1]||'').trim(),
+      zip: '',
+      addr: String(r[2]||'').trim(),
+      memo: String(r[5]||'').trim(),
+      product:'박대', select_opt:specLabel, disp_opt:specLabel,
+      qty:1, code_qty:qty,
+      order_no:`dinette-${spec}-${i}`,
+      buyer:'', buyer_phone:'',
+      carrier: String(r[7]||'').trim(),
+      order_amt:0,
+      order_date:_localISO(),
+    });
+  });
+  return out;
+}
+function _syncDinetteOrdersIntoAllOrders(){
+  if (!Array.isArray(allOrders)) return;
+  // 기존에 넣어둔 디네트 합성 행을 지우고 최신 상태로 다시 생성(파일 제거/재업로드 모두 대응)
+  allOrders = allOrders.filter(o => !String(o.order_no||'').startsWith('dinette-'));
+  const dn = _dinetteOrdersFromRows();
+  if (dn.length) allOrders.push(...dn);
+  rematchAllOrders();
+}
 function srDropDinette(e){
   e.preventDefault();
   e.currentTarget.classList.remove('dragover');
@@ -19012,6 +19057,14 @@ function srLoadDinette(file){
       const info = document.getElementById('srDinetteInfo');
       const valid = srDinetteRows.length;
       info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(file.name)} — ${valid}건 인식</span> <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearDinette()">제거</button>`;
+      // 디네트 물량도 일비 발주서(발주서 생성 탭)에 "그로븐2" 묶음으로 같이 들어가게 함 — 이미
+      // 샵마인 주문이 올라와있으면 그 자리에서 바로 반영
+      if (typeof _syncDinetteOrdersIntoAllOrders === 'function') {
+        _syncDinetteOrdersIntoAllOrders();
+        if (Array.isArray(allOrders) && allOrders.length) {
+          try { renderStep2(); renderUnmatchedHints(); if (typeof renderVerifyArea==='function') renderVerifyArea(); } catch(e){}
+        }
+      }
       // 보고서가 이미 생성된 상태면 전체 재렌더 (디네트 건수·섹션·상태메시지 모두 갱신)
       const rpt = document.getElementById('srReport');
       if (rpt && rpt.innerHTML.trim()) {
@@ -19034,6 +19087,13 @@ function srLoadDinette(file){
 function srClearDinette(){
   srDinetteRows = null; srDinetteFileName = '';
   document.getElementById('srDinetteInfo').innerHTML = '';
+  // 발주서 생성 탭에 넣어뒀던 "그로븐2" 디네트 행도 같이 제거
+  if (typeof _syncDinetteOrdersIntoAllOrders === 'function') {
+    _syncDinetteOrdersIntoAllOrders();
+    if (Array.isArray(allOrders) && allOrders.length) {
+      try { renderStep2(); renderUnmatchedHints(); if (typeof renderVerifyArea==='function') renderVerifyArea(); } catch(e){}
+    }
+  }
   // 제거 시에도 전체 재렌더
   const rpt = document.getElementById('srReport');
   if (rpt && rpt.innerHTML.trim()) {
@@ -20384,7 +20444,7 @@ function srUpdatePurchaseEntry(key, patch){
 }
 function srBrandFromAlias(alias){
   const a = String(alias||'');
-  if (a.includes('로또상회')) return '그로븐';
+  if (a.includes('로또상회') || a.includes('그로븐')) return '그로븐';
   if (a.includes('자꾸가게') || a.includes('옐로우브릿지')) return '옐로우브릿지';
   return '기타';
 }
