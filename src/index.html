@@ -13380,8 +13380,11 @@ function onExpVendorKeydown(ev) {
   }
 }
 
+// 발주처 매칭용 짧은 이름("MAC컴퍼니")과 실제 송금처에 적어야 할 정식 상호가 다른 경우 —
+// 발주 매칭/코드 등록은 짧은 이름 그대로 두고, 지출결의서 "송금처" 칸에만 정식 상호로 바꿔 넣음
+const VENDOR_PAYEE_NAME = { 'MAC컴퍼니': '주식회사엠에이씨컴퍼니' };
 function selectVendorItem(name) {
-  document.getElementById('expVendor').value = name;
+  document.getElementById('expVendor').value = VENDOR_PAYEE_NAME[name] || name;
   hideVendorList();
   const bank = loadBankInfo().find(b => b.name === name);
   if (bank) applyBankTemplate(bank);
