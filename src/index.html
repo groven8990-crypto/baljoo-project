@@ -16150,7 +16150,7 @@ function reconExportXlsx() {
   </div>
   <div class="card">
     <div class="card-title">💊 마그네슘 리뷰/샘플 매출 입력 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 역마진(손해) 직접 입력</span></div>
-    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">리뷰·샘플 발송처럼 제품만 안 나가고 결제는 그대로 들어오는(또는 아예 손해만 나는) 건을 따로 기록해요. <b>단가는 건당 순손익</b>이에요 — 리뷰 1건에 5,636원 손해면 <b>-5636</b>처럼 음수로 입력하면 돼요. 매출 보고서에 별도 카드로 집계됩니다.</div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">리뷰·샘플 발송처럼 제품만 안 나가고 결제는 그대로 들어오는(또는 아예 손해만 나는) 건을 따로 기록해요. <b>단가는 건당 손실액</b>이에요 — 리뷰 1건에 5,636원 손해면 <b>5636</b>처럼 그냥 입력하세요(음수로 입력해도 똑같이 처리돼요). 항상 총 매출에서 빠지는 금액으로 계산됩니다.</div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="mgrCo" value="그로븐"> 그로븐 (로또상회)</label>
       <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="mgrCo" value="옐로우브릿지" checked> 옐로우브릿지 (자꾸가게)</label>
@@ -16158,7 +16158,7 @@ function reconExportXlsx() {
     <div style="display:grid;grid-template-columns:1.4fr 0.8fr 1fr;gap:10px;margin-bottom:10px">
       <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">제품이름</label><input class="inp" id="mgrProduct" placeholder="예: 마그네슘" value="마그네슘"></div>
       <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">개수</label><input class="inp" id="mgrQty" type="number" min="1" value="1"></div>
-      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">리뷰 건 단가(순손익, 음수 가능)</label><input class="inp" id="mgrUnit" type="number" step="1" placeholder="예: -5636"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">리뷰 건 단가(건당 손실액)</label><input class="inp" id="mgrUnit" type="number" step="1" placeholder="예: 5636"></div>
     </div>
     <div id="mgrError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
     <button class="btn btn-primary" onclick="addMagnesiumReviewEntry()">+ 추가</button>
@@ -19942,6 +19942,23 @@ function srClearGrincam(){
 const LS_MAGNESIUM_REVIEW_ENTRIES = 'yb_magnesium_review_entries';  // [{id,date,co,product,qty,unit}]
 function loadMagnesiumReviewEntries(){ try{ return JSON.parse(localStorage.getItem(LS_MAGNESIUM_REVIEW_ENTRIES)||'[]'); }catch{ return []; } }
 function saveMagnesiumReviewEntries(arr){ try{ localStorage.setItem(LS_MAGNESIUM_REVIEW_ENTRIES, JSON.stringify(arr||[])); }catch(e){} }
+// 1회성 정정: 예전엔 손실을 음수로 직접 입력해야 했는데, 양수로 입력된 기존 항목들이 매출에
+// 더해지는 걸로 잘못 계산되고 있었음(사장님이 실제매출 4건/122,900원 + 리뷰 5건/35,000원 =
+// 총합계 157,900원으로 뜨는 걸 보고 발견 — 리뷰는 항상 빼야 하는데 더해지고 있었음). 이제부턴
+// 항상 음수로 저장되지만, 기존에 양수로 저장된 항목은 한 번만 음수로 고쳐줌
+function _fixMagnesiumReviewEntrySigns(){
+  try{
+    if (localStorage.getItem('yb_mgr_sign_fix_v1')) return;
+    const entries = loadMagnesiumReviewEntries();
+    let changed = false;
+    entries.forEach(e => {
+      if (e && typeof e.unit === 'number' && e.unit > 0) { e.unit = -e.unit; changed = true; }
+    });
+    if (changed) saveMagnesiumReviewEntries(entries);
+    localStorage.setItem('yb_mgr_sign_fix_v1', '1');
+  }catch(e){}
+}
+_fixMagnesiumReviewEntrySigns();
 function addMagnesiumReviewEntry(){
   const co = document.querySelector('input[name="mgrCo"]:checked')?.value || '옐로우브릿지';
   const product = (document.getElementById('mgrProduct')?.value||'').trim();
@@ -19951,14 +19968,17 @@ function addMagnesiumReviewEntry(){
   const err = document.getElementById('mgrError');
   if (err) err.textContent = '';
   if (!product) { if(err) err.textContent = '제품이름을 입력해주세요.'; return; }
-  if (unitRaw === '' || unitRaw == null || isNaN(unit)) { if(err) err.textContent = '리뷰 건 단가(손익)를 입력해주세요. 손해면 음수로 입력하세요.'; return; }
+  if (unitRaw === '' || unitRaw == null || isNaN(unit) || unit === 0) { if(err) err.textContent = '리뷰 건 단가(건당 손실액)를 입력해주세요.'; return; }
+  // 리뷰/샘플은 항상 손실로 취급 — 양수로 입력해도 음수로 입력해도 결과는 같음(총 매출에서
+  // 항상 빠짐). 부호를 기억해야 하는 부담을 없애려고 여기서 무조건 음수로 저장함
+  const lossUnit = -Math.abs(unit);
   const entries = loadMagnesiumReviewEntries();
-  entries.push({ id: Date.now()+'_'+Math.random().toString(36).slice(2,7), date: _localISO(), co, product, qty, unit });
+  entries.push({ id: Date.now()+'_'+Math.random().toString(36).slice(2,7), date: _localISO(), co, product, qty, unit: lossUnit });
   saveMagnesiumReviewEntries(entries);
   document.getElementById('mgrQty').value = 1;
   document.getElementById('mgrUnit').value = '';
   renderMagnesiumReviewEntryList();
-  if (typeof _poShowToast === 'function') _poShowToast(`✅ ${product} ${qty}건 추가됨 (건당 ${unit.toLocaleString()}원)`);
+  if (typeof _poShowToast === 'function') _poShowToast(`✅ ${product} ${qty}건 추가됨 (건당 ${Math.abs(unit).toLocaleString()}원 손실)`);
   const rpt = document.getElementById('srReport');
   if (rpt && rpt.innerHTML.trim()) srRender();
 }
@@ -20827,7 +20847,7 @@ function _srBuildBizHeaderInner(biz, T){
     </span>`;
 }
 // 매입/순이익 화면 발주처 표시명 변경 + 취급품목 병기
-const SR_VENDOR_RENAME = { '에이팩': '3PL', '마그네슘': '자사제품' };
+const SR_VENDOR_RENAME = { '에이팩': '3PL', '마그네슘': '자사제품 (마그네슘)' };
 const SR_VENDOR_CATEGORY = {
   '에이팩':'깐마늘', '동일':'깐마늘', '일비':'박대', '푸드엔드베스트':'간고등어',
   '늘푸른우리':'농산물', '최고집':'농산물', '한마당식품':'밀키트', '생선상륙':'굴비 외',
