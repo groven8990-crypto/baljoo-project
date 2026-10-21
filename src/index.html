@@ -3123,6 +3123,9 @@ document.addEventListener('DOMContentLoaded',()=>{
   _sbLoadKV('fee_override').then(remote=>{
     if (Array.isArray(remote)) localStorage.setItem(LS_FEE_OVERRIDE, JSON.stringify(remote));
   }).catch(()=>{});
+  _sbLoadKV('inv_gmail_senders').then(remote=>{
+    if (Array.isArray(remote)) localStorage.setItem(LS_INV_GMAIL_SENDERS, JSON.stringify(remote));
+  }).catch(()=>{});
   // 직거래 단골 고객 — 다른 컴퓨터에서 등록한 고객도 이 브라우저에 합쳐짐(id 기준 병합, 겹치면 최신 것으로)
   _sbLoadKV('jikgeorae_customers').then(remote=>{
     if (!Array.isArray(remote)) return;
@@ -9235,7 +9238,21 @@ function invGmailLoadSenders() {
 }
 function invGmailSaveSenders(list) {
   localStorage.setItem(LS_INV_GMAIL_SENDERS, JSON.stringify(list));
+  _sbSaveKV('inv_gmail_senders', list).catch(()=>{});
 }
+// 1회성 등록: 참맛더드림 운송장 회신이 로젠택배 담당자(정래섭) 이름으로 와서 "(미분류)"로 잡히던
+// 문제 — 발신자→거래처 매핑에 미리 등록해둠. 이미 등록해놨으면(사용자가 직접 지웠을 수도 있으니)
+// 다시 안 더함
+function _seedInvGmailSenderJeongRaeseop(){
+  if (localStorage.getItem('yb_inv_sender_jeongraeseop_v1')) return;
+  const list = invGmailLoadSenders();
+  if (!list.some(s => s && s.match === '정래섭')) {
+    list.push({ match:'정래섭', label:'참맛더드림' });
+    invGmailSaveSenders(list);
+  }
+  localStorage.setItem('yb_inv_sender_jeongraeseop_v1', '1');
+}
+_seedInvGmailSenderJeongRaeseop();
 function _invGmailMatchLabel(fromStr) {
   const haystack = (fromStr || '').toLowerCase();
   const list = invGmailLoadSenders();
