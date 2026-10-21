@@ -3123,6 +3123,14 @@ document.addEventListener('DOMContentLoaded',()=>{
   _sbLoadKV('fee_override').then(remote=>{
     if (Array.isArray(remote)) localStorage.setItem(LS_FEE_OVERRIDE, JSON.stringify(remote));
   }).catch(()=>{});
+  // 직거래 단골 고객 — 다른 컴퓨터에서 등록한 고객도 이 브라우저에 합쳐짐(id 기준 병합, 겹치면 최신 것으로)
+  _sbLoadKV('jikgeorae_customers').then(remote=>{
+    if (!Array.isArray(remote)) return;
+    let local = []; try{ local = JSON.parse(localStorage.getItem(LS_JG_CUSTOMERS)||'[]'); }catch(_){}
+    const byId = new Map(local.map(c=>[c.id,c]));
+    for (const rc of remote) { if (rc && rc.id) byId.set(rc.id, rc); }
+    localStorage.setItem(LS_JG_CUSTOMERS, JSON.stringify([...byId.values()]));
+  }).catch(()=>{});
   try {
     const gcs = document.getElementById('gmarketCouponModeSel');
     if (gcs) gcs.value = _gmarketCouponMode();
@@ -4317,6 +4325,182 @@ function removeManualB2BEntry(orderNo){
   if (rpt && rpt.innerHTML.trim()) srRender();
   else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
   renderManualB2BList();
+}
+
+// ── 직거래 주문 (단골 고객에게 직접 판매 — 우리뜰 깐마늘 등) ──────────────────
+// addManualB2BEntry와 같은 구조(allOrders에 바로 push + shop_mall="B2B-직거래"로 태그해서
+// 수수료 0%·매입/순이익에 "직거래 우리뜰"로 별도 집계)에, 실제 배송을 위한 받는사람/전화번호/
+// 주소를 추가하고, 자주 파는 단골 고객을 저장해뒀다가 다음에 검색만으로 재사용하게 함.
+const LS_JG_CUSTOMERS = 'yb_jikgeorae_customers';
+function loadJgCustomers(){ try{ return JSON.parse(localStorage.getItem(LS_JG_CUSTOMERS)||'[]'); }catch{ return []; } }
+function saveJgCustomers(arr){ try{ localStorage.setItem(LS_JG_CUSTOMERS, JSON.stringify(arr||[])); }catch(e){} _sbSaveKV('jikgeorae_customers', arr||[]).catch(()=>{}); }
+function _jgUpsertCustomer(name, phone, addr){
+  if (!name) return;
+  const list = loadJgCustomers();
+  const idx = list.findIndex(c => c.name === name && (c.phone||'') === (phone||''));
+  const entry = { id: idx>=0 ? list[idx].id : (Date.now()+'_'+Math.random().toString(36).slice(2,7)), name, phone: phone||'', addr: addr||'', lastDate: _localISO() };
+  if (idx >= 0) list[idx] = entry; else list.push(entry);
+  saveJgCustomers(list);
+  renderJgCustomerManageList();
+}
+function removeJgCustomer(id){
+  if (!confirm('이 단골 고객을 삭제할까요?')) return;
+  saveJgCustomers(loadJgCustomers().filter(c => c.id !== id));
+  renderJgCustomerManageList();
+}
+function onJgCustSearchInput(){
+  const q = (document.getElementById('jgCustSearch')?.value||'').trim();
+  const dd = document.getElementById('jgCustDropdown');
+  if (!dd) return;
+  if (!q) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
+  const matches = loadJgCustomers().filter(c => c.name.includes(q) || (c.phone||'').includes(q)).slice(0, 8);
+  if (!matches.length) { dd.style.display = 'none'; dd.innerHTML = ''; return; }
+  dd.innerHTML = matches.map(c => `
+    <div style="padding:8px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--border)"
+      onmousedown="selectJgCustomer('${esc(c.id)}')">
+      <div style="font-weight:600">${escHtml(c.name)} <span style="font-weight:400;color:var(--text3)">${escHtml(c.phone||'')}</span></div>
+      <div style="color:var(--text3);font-size:11px">${escHtml(c.addr||'')}</div>
+    </div>`).join('');
+  dd.style.display = 'block';
+}
+function hideJgCustList(){ const dd = document.getElementById('jgCustDropdown'); if (dd) dd.style.display = 'none'; }
+function selectJgCustomer(id){
+  const c = loadJgCustomers().find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('jgCustSearch').value = c.name;
+  document.getElementById('jgCustPhone').value = c.phone||'';
+  document.getElementById('jgCustAddr').value = c.addr||'';
+  hideJgCustList();
+}
+function renderJgCustomerManageList(){
+  const el = document.getElementById('jgCustList');
+  if (!el) return;
+  const list = loadJgCustomers().slice().sort((a,b)=> b.lastDate < a.lastDate ? -1 : (b.lastDate > a.lastDate ? 1 : 0));
+  if (!list.length) { el.innerHTML = '<p style="font-size:12px;color:var(--text3)">등록된 단골 고객이 없습니다.</p>'; return; }
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="color:var(--text3);text-align:left"><th style="padding:5px 8px">이름</th><th style="padding:5px 8px">전화번호</th><th style="padding:5px 8px">주소</th><th style="padding:5px 8px">최근 주문</th><th></th></tr></thead>
+    <tbody>${list.map(c => `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:5px 8px;font-weight:600">${escHtml(c.name)}</td>
+      <td style="padding:5px 8px">${escHtml(c.phone||'')}</td>
+      <td style="padding:5px 8px;color:var(--text3)">${escHtml(c.addr||'')}</td>
+      <td style="padding:5px 8px;color:var(--text3)">${escHtml(c.lastDate||'')}</td>
+      <td style="padding:5px 8px"><button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger);padding:2px 8px;font-size:11px" onclick="removeJgCustomer('${esc(c.id)}')">삭제</button></td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+function addJikgeoraeOrder(){
+  const errEl = document.getElementById('jgError');
+  if (errEl) errEl.textContent = '';
+  const recv_name = (document.getElementById('jgCustSearch').value||'').trim();
+  const recv_phone = (document.getElementById('jgCustPhone').value||'').trim();
+  const addr = (document.getElementById('jgCustAddr').value||'').trim();
+  const vendor = (document.getElementById('jgVendor').value||'').trim();
+  const item = (document.getElementById('jgItem').value||'').trim();
+  const option = (document.getElementById('jgOption').value||'').trim();
+  const qty = Math.max(1, parseInt(document.getElementById('jgQty').value||'1')||1);
+  const unit = Math.max(0, parseInt(document.getElementById('jgUnit').value||'0')||0);
+  const salePrice = Math.max(0, parseInt(document.getElementById('jgSalePrice').value||'0')||0);
+  const memo = (document.getElementById('jgMemo').value||'').trim();
+
+  if (!recv_name) { if(errEl) errEl.textContent = '받는사람(고객) 이름을 입력해주세요.'; return; }
+  if (!addr) { if(errEl) errEl.textContent = '받는 주소를 입력해주세요.'; return; }
+  if (!vendor) { if(errEl) errEl.textContent = '발주처를 입력해주세요.'; return; }
+  if (!VENDOR_PREFIXES[vendor] && !loadCustomVendors()[vendor]) {
+    if(errEl) errEl.textContent = `'${vendor}' 은 등록된 발주처가 아니에요. 발주처명을 정확히 입력해주세요.`;
+    return;
+  }
+  if (!item) { if(errEl) errEl.textContent = '품목명을 입력해주세요.'; return; }
+  if (!salePrice) { if(errEl) errEl.textContent = '판매단가를 입력해주세요.'; return; }
+  const co = document.querySelector('input[name="jgCo"]:checked')?.value || '옐로우브릿지';
+  const alias = co === '그로븐' ? '로또상회' : '자꾸가게';
+  const amt = salePrice * qty;
+  const vendor_code = `${vendor}]${item}/${option}`;
+
+  const order = {
+    vendor_code, vendor_opt:'', vendor_key:null,
+    alias, alias_raw: alias,
+    shop_mall: 'B2B-직거래',
+    item_name: item, option_name: option,
+    opt_mapped:false, opt_needs_check:false, mapped_code:'', unmatched:false,
+    recv_name, recv_phone, zip:'', addr, memo,
+    product: item + (option ? (' '+option) : ''),
+    select_opt: option, disp_opt:'',
+    qty, code_qty:1,
+    order_no: '직거래'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+    buyer:'', buyer_phone:'', carrier:'',
+    order_amt: amt,
+    order_date: _localISO(),
+  };
+  allOrders.push(order);
+  totalCount = (totalCount||0) + 1;
+  rematchAllOrders();
+
+  if (!order.vendor_key) {
+    if (errEl) errEl.textContent = `'${vendor}' 코드로 매칭이 안 됐어요 — 발주처명을 다시 확인해주세요. (주문은 일단 추가됨)`;
+  }
+
+  if (unit > 0 && order.vendor_key) {
+    try {
+      const db = srLoadPurchaseDB();
+      const key = srPurchaseKey(order) + '|b2b:직거래';
+      db[key] = Object.assign({}, db[key], { unit });
+      srSavePurchaseDB(db);
+    } catch(e) { console.warn('매입단가 자동등록 실패:', e); }
+  }
+
+  if (document.getElementById('jgCustSave')?.checked) {
+    _jgUpsertCustomer(recv_name, recv_phone, addr);
+  }
+
+  const statusEl = document.getElementById('jgStatus');
+  if (statusEl) {
+    const marginPerUnit = salePrice - unit;
+    const marginText = unit > 0
+      ? ` · 마진 개당 ${marginPerUnit.toLocaleString()}원 × ${qty}개 = ${(marginPerUnit*qty).toLocaleString()}원`
+      : ' · 매입단가를 안 넣어서 마진은 매입/순이익 화면에서 확인하세요';
+    statusEl.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(recv_name)} — ${escHtml(item)}${option?(' '+escHtml(option)):''} ${qty}개 추가됨 (매출 ${amt.toLocaleString()}원${marginText})</span>`;
+  }
+  // 고객/발주처/품목은 남겨서 연달아 입력하기 편하게 하고, 수량·단가만 비움
+  document.getElementById('jgQty').value = '1';
+  document.getElementById('jgUnit').value = '';
+  document.getElementById('jgSalePrice').value = '';
+  document.getElementById('jgMemo').value = '';
+
+  renderStep2(); renderUnmatchedHints();
+  if (typeof renderOmPreview === 'function') renderOmPreview();
+  const rpt = document.getElementById('srReport');
+  if (rpt && rpt.innerHTML.trim()) srRender();
+  else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+  renderJikgeoraeOrderList();
+}
+function renderJikgeoraeOrderList(){
+  const el = document.getElementById('jgEntryList');
+  if (!el) return;
+  const entries = (Array.isArray(allOrders) ? allOrders : []).filter(o => /^직거래\d/.test(o.order_no||''));
+  if (!entries.length) { el.innerHTML = ''; return; }
+  const totalSales = entries.reduce((s,o)=>s+(Number(o.order_amt)||0), 0);
+  const rows = entries.map(o => {
+    const label = o.item_name + (o.option_name ? (' '+o.option_name) : '');
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;background:var(--card);font-size:12px">
+      <span style="font-weight:600">${escHtml(o.recv_name)}</span>
+      <span style="color:var(--text3)">${escHtml(label)} × ${o.qty}개 · 매출 ${Number(o.order_amt||0).toLocaleString()}원 · ${escHtml(o.vendor_key||'미매칭')}</span>
+      <button class="btn btn-sm" style="margin-left:auto;color:var(--danger);border-color:var(--danger);padding:2px 8px;font-size:11px" onclick="removeJikgeoraeOrder('${esc(o.order_no)}')">제거</button>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">오늘 등록한 직거래 주문 (${entries.length}건 · 매출 ${totalSales.toLocaleString()}원)</div>${rows}`;
+}
+function removeJikgeoraeOrder(orderNo){
+  const idx = allOrders.findIndex(o => o.order_no === orderNo);
+  if (idx < 0) return;
+  allOrders.splice(idx, 1);
+  totalCount = Math.max(0, (totalCount||1) - 1);
+  rematchAllOrders();
+  renderStep2(); renderUnmatchedHints();
+  if (typeof renderOmPreview === 'function') renderOmPreview();
+  const rpt = document.getElementById('srReport');
+  if (rpt && rpt.innerHTML.trim()) srRender();
+  else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
+  renderJikgeoraeOrderList();
 }
 
 // ── 매출 보고용 "🧄 자사 매출 수기 입력" — 우리뜰 마늘처럼 샵마인 발송대기 파일에 아예 안
@@ -12394,7 +12578,7 @@ function switchTab(name){
     if(name==='invoice'){try{if(typeof invRestoreOrder==='function')invRestoreOrder();}catch(e){console.error(e);}try{_invGmailRenderSenderChip();}catch(e){}try{_restoreInvSaveFolder();}catch(e){}try{checkInvImportFolder();}catch(e){console.error(e);}}
     if(name==='recon'){try{reconInitIfNeeded();}catch(e){console.error(e);}}
     if(name==='report'){try{const d=document.getElementById('rptDate');if(d&&!d.value)d.value=_localISO();}catch(e){console.error(e);}}
-    if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}try{renderManualB2BList();}catch(e){console.error(e);}try{renderManualSelfList();}catch(e){console.error(e);}try{renderMagnesiumReviewEntryList();}catch(e){console.error(e);}}
+    if(name==='salesreport'){try{const d=document.getElementById('srReportDate');if(d)d.value=_localISO();}catch(e){console.error(e);}try{_populateManualOrderVendorList();}catch(e){console.error(e);}try{renderManualB2BList();}catch(e){console.error(e);}try{renderManualSelfList();}catch(e){console.error(e);}try{renderMagnesiumReviewEntryList();}catch(e){console.error(e);}try{renderJikgeoraeOrderList();}catch(e){console.error(e);}try{renderJgCustomerManageList();}catch(e){console.error(e);}}
     if(name==='weeklyreport'){try{const d=document.getElementById('wrAnyDate');if(d)d.value=_localISO();}catch(e){console.error(e);}}
   }catch(e){console.error('switchTab 오류:',e);}
 }
@@ -16116,8 +16300,9 @@ function reconExportXlsx() {
     <div id="myEntryList" style="margin-top:10px"></div>
   </div>
   <div class="card">
-    <div class="card-title">📋 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 발주서 노란색 행 = 리뷰주문으로 인식</span></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <details>
+    <summary class="card-title" style="cursor:pointer">📋 리뷰주문 분리 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 발주서 노란색 행 = 리뷰주문으로 인식 · 평소엔 안 써서 접어둠, 펼치면 그대로 씀</span></summary>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
       <!-- 깐마늘 (동일) -->
       <div>
         <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text1)">🧄 깐마늘</div>
@@ -16148,6 +16333,51 @@ function reconExportXlsx() {
         </div>
         <div id="srGrincamInfo" style="margin-top:6px;font-size:11px;color:var(--text2)"></div>
       </div>
+    </div>
+    </details>
+  </div>
+  <div class="card">
+    <div class="card-title">🧄 직거래 주문 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 선택 · 단골 고객 직접 판매</span></div>
+    <div class="alert alert-info" style="margin-bottom:12px;font-size:12px">여기 작성하면 ① 우리뜰 발주서에 이 주문도 같이 포함돼서 나가고 ② 매출 보고서엔 "직거래"로 따로 잡히고 ③ 매입단가를 적으면 매입/순이익 탭에 "직거래 우리뜰"로 마진까지 바로 보여요.</div>
+    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:10px;margin-bottom:10px">
+      <div style="position:relative">
+        <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">고객 검색/선택 (이름 또는 전화번호)</label>
+        <input class="inp" id="jgCustSearch" placeholder="예: 김철수" autocomplete="off" oninput="onJgCustSearchInput()" onfocus="onJgCustSearchInput()" onblur="setTimeout(()=>hideJgCustList(),200)">
+        <div id="jgCustDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.08);z-index:20;max-height:220px;overflow-y:auto"></div>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">사업자</label>
+        <div style="display:flex;gap:8px;padding-top:6px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="jgCo" value="그로븐"> 그로븐 (로또상회)</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="jgCo" value="옐로우브릿지" checked> 옐로우브릿지 (자꾸가게)</label>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">전화번호</label><input class="inp" id="jgCustPhone" placeholder="010-0000-0000"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">주소</label><input class="inp" id="jgCustAddr" placeholder="받는 주소 전체"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);margin-bottom:10px;cursor:pointer"><input type="checkbox" id="jgCustSave" checked style="width:14px;height:14px;cursor:pointer"> 이 고객 정보 단골로 저장/업데이트</label>
+    <div style="display:grid;grid-template-columns:1.2fr 0.8fr 0.6fr 1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">품목</label><input class="inp" id="jgItem" value="업소용깐마늘"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">옵션</label>
+        <select class="inp" id="jgOption"><option value="1kg">1kg</option><option value="2kg">2kg</option><option value="3kg">3kg</option></select>
+      </div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">수량</label><input class="inp" id="jgQty" type="number" min="1" value="1"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">매입단가(개당)</label><input class="inp" id="jgUnit" type="number" min="0" placeholder="우리뜰에서 사온 가격"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">판매단가(개당)</label><input class="inp" id="jgSalePrice" type="number" min="0" placeholder="고객한테 받는 가격"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">발주처</label><input class="inp" id="jgVendor" value="우리뜰"></div>
+      <div><label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">배송메세지 (선택)</label><input class="inp" id="jgMemo" placeholder="예: 문 앞에 놓아주세요"></div>
+    </div>
+    <div id="jgError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
+    <button class="btn btn-primary" onclick="addJikgeoraeOrder()">+ 직거래 주문 추가</button>
+    <div id="jgStatus" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+    <div id="jgEntryList" style="margin-top:10px"></div>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text1)">⭐ 단골 고객 관리</div>
+      <div id="jgCustList"></div>
     </div>
   </div>
   <div class="card">
