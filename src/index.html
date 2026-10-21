@@ -4354,7 +4354,8 @@ function _jgUpsertCustomer(name, phone, addr){
   if (!name) return;
   const list = loadJgCustomers();
   const idx = list.findIndex(c => c.name === name && (c.phone||'') === (phone||''));
-  const entry = { id: idx>=0 ? list[idx].id : (Date.now()+'_'+Math.random().toString(36).slice(2,7)), name, phone: phone||'', addr: addr||'', lastDate: _localISO() };
+  const prevCount = idx>=0 ? (Number(list[idx].orderCount)||0) : 0;
+  const entry = { id: idx>=0 ? list[idx].id : (Date.now()+'_'+Math.random().toString(36).slice(2,7)), name, phone: phone||'', addr: addr||'', lastDate: _localISO(), orderCount: prevCount + 1 };
   if (idx >= 0) list[idx] = entry; else list.push(entry);
   saveJgCustomers(list);
   renderJgCustomerManageList();
@@ -4394,12 +4395,13 @@ function renderJgCustomerManageList(){
   const list = loadJgCustomers().slice().sort((a,b)=> b.lastDate < a.lastDate ? -1 : (b.lastDate > a.lastDate ? 1 : 0));
   if (!list.length) { el.innerHTML = '<p style="font-size:12px;color:var(--text3)">등록된 단골 고객이 없습니다.</p>'; return; }
   el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px">
-    <thead><tr style="color:var(--text3);text-align:left"><th style="padding:5px 8px">이름</th><th style="padding:5px 8px">전화번호</th><th style="padding:5px 8px">주소</th><th style="padding:5px 8px">최근 주문</th><th></th></tr></thead>
+    <thead><tr style="color:var(--text3);text-align:left"><th style="padding:5px 8px">이름</th><th style="padding:5px 8px">전화번호</th><th style="padding:5px 8px">주소</th><th style="padding:5px 8px">최근 주문</th><th style="padding:5px 8px">주문 횟수</th><th></th></tr></thead>
     <tbody>${list.map(c => `<tr style="border-top:1px solid var(--border)">
-      <td style="padding:5px 8px;font-weight:600">${escHtml(c.name)}</td>
+      <td style="padding:5px 8px;font-weight:600;color:var(--accent);cursor:pointer;text-decoration:underline" onclick="selectJgCustomer('${esc(c.id)}')" title="클릭하면 위 입력폼에 이 고객 정보가 자동으로 채워져요">${escHtml(c.name)}</td>
       <td style="padding:5px 8px">${escHtml(c.phone||'')}</td>
       <td style="padding:5px 8px;color:var(--text3)">${escHtml(c.addr||'')}</td>
       <td style="padding:5px 8px;color:var(--text3)">${escHtml(c.lastDate||'')}</td>
+      <td style="padding:5px 8px;color:var(--text3);text-align:center">${(Number(c.orderCount)||0).toLocaleString()}회</td>
       <td style="padding:5px 8px"><button class="btn btn-sm" style="color:var(--danger);border-color:var(--danger);padding:2px 8px;font-size:11px" onclick="removeJgCustomer('${esc(c.id)}')">삭제</button></td>
     </tr>`).join('')}</tbody>
   </table>`;
@@ -16370,10 +16372,8 @@ function reconExportXlsx() {
       </div>
       <div>
         <label style="font-size:11px;color:var(--text3);font-weight:500;display:block;margin-bottom:4px">사업자</label>
-        <div style="display:flex;gap:8px;padding-top:6px">
-          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="jgCo" value="그로븐"> 그로븐 (로또상회)</label>
-          <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="radio" name="jgCo" value="옐로우브릿지" checked> 옐로우브릿지 (자꾸가게)</label>
-        </div>
+        <input type="radio" name="jgCo" value="그로븐" checked style="display:none">
+        <div class="inp" style="background:var(--bg2,#F8F9FA);color:var(--text2);display:flex;align-items:center">그로븐 (로또상회) <span style="margin-left:6px;font-size:11px;color:var(--text3)">— 깐마늘은 전부 그로븐이라 고정</span></div>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
