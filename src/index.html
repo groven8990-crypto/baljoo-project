@@ -3137,6 +3137,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   } catch(e){}
   try { _autoRestoreTodayUploads(); } catch(e){ console.warn('오늘 업로드 자동 복원 실패:', e); }
   try { _autoRestoreGrinchemUpload(); } catch(e){ console.warn('또또컴퍼니 업로드 자동 복원 실패:', e); }
+  // 직거래 주문은 샵마인 파일 업로드 여부와 무관하게 항상 복원(저장돼있는 주문을 allOrders에 끼워 넣음)
+  try { _syncJikgeoraeOrdersIntoAllOrders(); } catch(e){ console.warn('직거래 주문 자동 복원 실패:', e); }
   // 복원할 또또컴퍼니 주문이 없는 완전 빈 상태에서도 "주문이 없어요" 안내문이라도 보이게 —
   // 안 해주면 처음 보는 사람 눈엔 카드 안이 그냥 텅 비어 보여서 뭘 해야 하는지 알 수 없음
   try { renderGrinchemTrackingList(); } catch(e){}
@@ -3845,7 +3847,7 @@ function handleFile(file, onDone) {
         const autoAdded2=autoRegisterBracketCodes(allOrders);
         if(autoAdded2>0) rematchAllOrders();
         setSt('당근 주문 ' + res.added + '건 로드됨');
-        _syncDinetteOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+        _syncDinetteOrdersIntoAllOrders();_syncJikgeoraeOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
         loadedFileNames.push(file.name);
         renderLoadedFiles();
         saveToHistory(file.name, allOrders);
@@ -3862,7 +3864,7 @@ function handleFile(file, onDone) {
         const autoAdded3=autoRegisterBracketCodes(allOrders);
         if(autoAdded3>0) rematchAllOrders();
         setSt('11번가 주문 ' + res.added + '건 로드됨' + (res.dupSkipped?` (중복 ${res.dupSkipped} 제외)`:''));
-        _syncDinetteOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+        _syncDinetteOrdersIntoAllOrders();_syncJikgeoraeOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
         loadedFileNames.push(file.name);
         renderLoadedFiles();
         saveToHistory(file.name, allOrders);
@@ -3879,7 +3881,7 @@ function handleFile(file, onDone) {
         const autoAdded4=autoRegisterBracketCodes(allOrders);
         if(autoAdded4>0) rematchAllOrders();
         setSt('식자재코리아 주문 ' + res.added + '건 로드됨' + (res.dupSkipped?` (중복 ${res.dupSkipped} 제외)`:''));
-        _syncDinetteOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+        _syncDinetteOrdersIntoAllOrders();_syncJikgeoraeOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
         loadedFileNames.push(file.name);
         renderLoadedFiles();
         saveToHistory(file.name, allOrders);
@@ -3942,7 +3944,7 @@ function handleFile(file, onDone) {
       // 발주처]품목명 형태 자동 등록 후 재매칭
       const autoAdded=autoRegisterBracketCodes(allOrders);
       if(autoAdded>0) rematchAllOrders();
-      setSt('');_syncDinetteOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+      setSt('');_syncDinetteOrdersIntoAllOrders();_syncJikgeoraeOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
       // 이력 저장
       loadedFileNames.push(file.name);
       renderLoadedFiles();
@@ -4331,6 +4333,20 @@ function removeManualB2BEntry(orderNo){
 // addManualB2BEntry와 같은 구조(allOrders에 바로 push + shop_mall="B2B-직거래"로 태그해서
 // 수수료 0%·매입/순이익에 "직거래 우리뜰"로 별도 집계)에, 실제 배송을 위한 받는사람/전화번호/
 // 주소를 추가하고, 자주 파는 단골 고객을 저장해뒀다가 다음에 검색만으로 재사용하게 함.
+// 직거래 주문 자체도 영속 저장— allOrders는 샵마인 파일을 (다시) 올릴 때마다 통째로
+// 비워지는데(handleFile), 직거래 주문을 거기에만 push해두면 그 순간 날아가버림(실제로 발생한
+// 버그 — 우리뜰 발주서에서 직거래 건이 안 보임). 디네트와 같은 방식으로 별도 저장해뒀다가
+// 파일을 올릴 때마다 다시 끼워 넣음
+const LS_JG_ORDERS = 'yb_jikgeorae_orders';
+function loadJgOrders(){ try{ return JSON.parse(localStorage.getItem(LS_JG_ORDERS)||'[]'); }catch{ return []; } }
+function saveJgOrders(arr){ try{ localStorage.setItem(LS_JG_ORDERS, JSON.stringify(arr||[])); }catch(e){} }
+function _syncJikgeoraeOrdersIntoAllOrders(){
+  if (!Array.isArray(allOrders)) return;
+  allOrders = allOrders.filter(o => !/^직거래\d/.test(o.order_no||''));
+  const jg = loadJgOrders();
+  if (jg.length) allOrders.push(...jg);
+  rematchAllOrders();
+}
 const LS_JG_CUSTOMERS = 'yb_jikgeorae_customers';
 function loadJgCustomers(){ try{ return JSON.parse(localStorage.getItem(LS_JG_CUSTOMERS)||'[]'); }catch{ return []; } }
 function saveJgCustomers(arr){ try{ localStorage.setItem(LS_JG_CUSTOMERS, JSON.stringify(arr||[])); }catch(e){} _sbSaveKV('jikgeorae_customers', arr||[]).catch(()=>{}); }
@@ -4435,6 +4451,11 @@ function addJikgeoraeOrder(){
   totalCount = (totalCount||0) + 1;
   rematchAllOrders();
 
+  // 영속 저장 — 샵마인 파일을 나중에 (다시) 올려도 이 주문이 사라지지 않고 다시 끼워 넣어지게 함
+  const jgList = loadJgOrders();
+  jgList.push(order);
+  saveJgOrders(jgList);
+
   if (!order.vendor_key) {
     if (errEl) errEl.textContent = `'${vendor}' 코드로 매칭이 안 됐어요 — 발주처명을 다시 확인해주세요. (주문은 일단 추가됨)`;
   }
@@ -4479,15 +4500,16 @@ function renderJikgeoraeOrderList(){
   const entries = (Array.isArray(allOrders) ? allOrders : []).filter(o => /^직거래\d/.test(o.order_no||''));
   if (!entries.length) { el.innerHTML = ''; return; }
   const totalSales = entries.reduce((s,o)=>s+(Number(o.order_amt)||0), 0);
-  const rows = entries.map(o => {
+  const rows = entries.slice().sort((a,b)=> b.order_date < a.order_date ? -1 : (b.order_date > a.order_date ? 1 : 0)).map(o => {
     const label = o.item_name + (o.option_name ? (' '+o.option_name) : '');
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;background:var(--card);font-size:12px">
+      <span style="color:var(--text3);white-space:nowrap">${escHtml(o.order_date||'')}</span>
       <span style="font-weight:600">${escHtml(o.recv_name)}</span>
       <span style="color:var(--text3)">${escHtml(label)} × ${o.qty}개 · 매출 ${Number(o.order_amt||0).toLocaleString()}원 · ${escHtml(o.vendor_key||'미매칭')}</span>
       <button class="btn btn-sm" style="margin-left:auto;color:var(--danger);border-color:var(--danger);padding:2px 8px;font-size:11px" onclick="removeJikgeoraeOrder('${esc(o.order_no)}')">제거</button>
     </div>`;
   }).join('');
-  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">오늘 등록한 직거래 주문 (${entries.length}건 · 매출 ${totalSales.toLocaleString()}원)</div>${rows}`;
+  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">등록된 직거래 주문 — 발주처에 전달 전이면 계속 쌓여요, 보낸 뒤엔 직접 제거하세요 (${entries.length}건 · 매출 ${totalSales.toLocaleString()}원)</div>${rows}`;
 }
 function removeJikgeoraeOrder(orderNo){
   const idx = allOrders.findIndex(o => o.order_no === orderNo);
@@ -4495,6 +4517,7 @@ function removeJikgeoraeOrder(orderNo){
   allOrders.splice(idx, 1);
   totalCount = Math.max(0, (totalCount||1) - 1);
   rematchAllOrders();
+  saveJgOrders(loadJgOrders().filter(o => o.order_no !== orderNo));
   renderStep2(); renderUnmatchedHints();
   if (typeof renderOmPreview === 'function') renderOmPreview();
   const rpt = document.getElementById('srReport');
@@ -8918,7 +8941,7 @@ function regenOrders(){
   autoRegisterBracketCodes(allOrders);  // 발주처]품목명 형태 자동 등록
   rematchAllOrders();
   switchTab('order');
-  _syncDinetteOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
+  _syncDinetteOrdersIntoAllOrders();_syncJikgeoraeOrdersIntoAllOrders();renderStep2();goStep(2);renderUnmatchedHints();renderOmPreview();
 }
 function prefill(code, product, selectOpt){
   switchTab('codes');switchSubTab('code');
