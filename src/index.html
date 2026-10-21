@@ -9258,6 +9258,18 @@ function _seedInvGmailSenderJeongRaeseop(){
   localStorage.setItem('yb_inv_sender_jeongraeseop_v1', '1');
 }
 _seedInvGmailSenderJeongRaeseop();
+// 1회성 등록: MAC컴퍼니가 "FSMC MAC" 이름으로 그로븐 출고분 송장정보를 보내와서 "(미분류)"로
+// 잡히던 문제
+function _seedInvGmailSenderFsmcMac(){
+  if (localStorage.getItem('yb_inv_sender_fsmcmac_v1')) return;
+  const list = invGmailLoadSenders();
+  if (!list.some(s => s && s.match === 'FSMC MAC')) {
+    list.push({ match:'FSMC MAC', label:'MAC컴퍼니' });
+    invGmailSaveSenders(list);
+  }
+  localStorage.setItem('yb_inv_sender_fsmcmac_v1', '1');
+}
+_seedInvGmailSenderFsmcMac();
 function _invGmailMatchLabel(fromStr) {
   const haystack = (fromStr || '').toLowerCase();
   const list = invGmailLoadSenders();
