@@ -3126,6 +3126,11 @@ document.addEventListener('DOMContentLoaded',()=>{
   _sbLoadKV('inv_gmail_senders').then(remote=>{
     if (Array.isArray(remote)) localStorage.setItem(LS_INV_GMAIL_SENDERS, JSON.stringify(remote));
   }).catch(()=>{});
+  // Gmail OAuth Client ID — 비밀값이 아니라 공개 식별자라 여러 컴퓨터에 그대로 공유해도 안전함.
+  // 새 컴퓨터에서 잘못 입력했거나 비어있어도, 다른 컴퓨터에서 저장해둔 값으로 자동 맞춰짐
+  _sbLoadKV('gmail_client_id').then(remote=>{
+    if (typeof remote === 'string' && remote) localStorage.setItem(LS_GMAIL_CLIENT_ID, remote);
+  }).catch(()=>{});
   // 직거래 단골 고객 — 다른 컴퓨터에서 등록한 고객도 이 브라우저에 합쳐짐(id 기준 병합, 겹치면 최신 것으로)
   _sbLoadKV('jikgeorae_customers').then(remote=>{
     if (!Array.isArray(remote)) return;
@@ -5809,7 +5814,7 @@ const LS_EXP_SHEET_ID = 'yb_exp_sheet_id';
 const LS_EXP_DELETED  = 'yb_exp_deleted_keys'; // 삭제된 항목 키 블랙리스트
 let _gmailTokenClient = null;
 function gmailGetClientId(){ return (localStorage.getItem(LS_GMAIL_CLIENT_ID)||'').trim(); }
-function gmailSetClientId(id){ localStorage.setItem(LS_GMAIL_CLIENT_ID, String(id||'').trim()); }
+function gmailSetClientId(id){ const v=String(id||'').trim(); localStorage.setItem(LS_GMAIL_CLIENT_ID, v); _sbSaveKV('gmail_client_id', v).catch(()=>{}); }
 function gmailGetToken(){ try{ return JSON.parse(localStorage.getItem(LS_GMAIL_TOKEN)||'null'); }catch{ return null; } }
 function gmailSetToken(t){ if(t) localStorage.setItem(LS_GMAIL_TOKEN, JSON.stringify(t)); else localStorage.removeItem(LS_GMAIL_TOKEN); }
 function gmailTokenValid(){
