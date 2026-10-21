@@ -9922,6 +9922,11 @@ function _invDetectTrackHeader(rawRows) {
   let trackIdx = -1, nameIdx = -1, orderCodeIdx = -1, courierIdx = -1, addrIdx = -1, hdrRow = -1;
   for (let ri = 0; ri < Math.min(20, rawRows.length); ri++) {
     const row = rawRows[ri];
+    // 셀 하나만 채워진 행(예: "2026년 10월 21일 출고분 송장정보" 같은 제목 줄)은 진짜 헤더가
+    // 아닌데, 그 문장 안에 "송장" 같은 단어가 우연히 섞여 있으면 운송장번호 컬럼으로 잘못
+    // 잡혀서(실제로는 NO/순번 컬럼이 골라짐) 전체 매칭이 틀어지는 버그가 있었음 — 진짜 헤더 행은
+    // 컬럼명이 여러 개 나열돼있으므로, 채워진 셀이 2개 미만인 행은 헤더 후보에서 아예 제외
+    if (row.filter(c => String(c||'').trim() !== '').length < 2) continue;
     const nextRow = rawRows[ri+1] || [];
     const ti = row.findIndex(isTrackCol);
     // 헤더가 두 줄로 나뉜 표(예: 1행 "수하인"(그룹병합) / 2행 "이름·주소·전화"(세부라벨)) 대응 —
