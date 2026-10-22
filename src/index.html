@@ -3090,6 +3090,20 @@ document.addEventListener('DOMContentLoaded',()=>{
       localStorage.setItem('yb_sales_override_seeded','1');
     }
   } catch(_){}
+  // 목전지(MAC컴퍼니)는 그로븐·옐로우브릿지 둘 다 판가가 19,900원으로 고정인데, 옐로우브릿지
+  // 쪽만 쿠팡 쿠폰이 걸려서(쿠팡이 쿠폰 비용을 부담하는 방식 — 정산은 그대로 19,900원 들어옴)
+  // 매출이 쿠폰만큼 낮게 찍혀 매입/순이익 퍼센트가 그로븐이랑 안 맞던 문제 — 고정 매출금액으로
+  // 지정해둬서 어느 채널·쿠폰 여부와 상관없이 항상 정산받는 실제 금액(19,900원×수량)으로 계산되게 함
+  try {
+    if (!localStorage.getItem('yb_sales_override_mokjeonji_v1')) {
+      const cur2 = srLoadSalesOverride();
+      if (!cur2.some(ov => ov && ov.code === 'MAC컴퍼니]목전지/')) {
+        cur2.push({code:'MAC컴퍼니]목전지/', alias:'', amount:19900});
+        srSaveSalesOverride(cur2);
+      }
+      localStorage.setItem('yb_sales_override_mokjeonji_v1','1');
+    }
+  } catch(_){}
   _sbLoadKV('sales_amt_override').then(remote=>{
     if(Array.isArray(remote)) localStorage.setItem(LS_SALES_OVERRIDE, JSON.stringify(remote));
   }).catch(()=>{});
