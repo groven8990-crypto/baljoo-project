@@ -3142,6 +3142,16 @@ document.addEventListener('DOMContentLoaded',()=>{
       localStorage.setItem('yb_sales_override_mokjeonji_revert_v1','1');
     }
   } catch(_){}
+  // 1회성 되돌리기: bk004(일비 박대) 매출 고정(30,000원)도 철회 — 수량 이중계산 버그를
+  // rematchAllOrders에서도 고정하고 나니(code_qty=1 유지) 파일의 원래 매출액(order_amt)을
+  // 그대로 써도 자연스럽게 정상 마진이 나와서, 우리뜰(dongil3)처럼 별도 고정값 없이 원본 그대로 씀
+  try {
+    if (!localStorage.getItem('yb_sales_override_bk004_revert_v1')) {
+      const cur6 = srLoadSalesOverride().filter(ov => !(ov && ov.code === 'bk004'));
+      srSaveSalesOverride(cur6);
+      localStorage.setItem('yb_sales_override_bk004_revert_v1','1');
+    }
+  } catch(_){}
   _sbLoadKV('sales_amt_override').then(remote=>{
     if(Array.isArray(remote)) localStorage.setItem(LS_SALES_OVERRIDE, JSON.stringify(remote));
   }).catch(()=>{});
@@ -8684,7 +8694,12 @@ function rematchAllOrders(){
     o.vendor_key=vk;
     o.item_name=parsed.itemName;
     o.option_name=parsed.optionName;
-    o.code_qty=parsed.codeQty||1;
+    // 식자재코리아는 o.qty(파일의 실제 수량 칸)가 이미 진짜 수량이라 code_qty를 항상 1로 고정—
+    // 안 그러면 과거에 "-2"처럼 수량 내장 코드로 등록해둔 코드를 다시 매칭할 때마다(코드 등록/
+    // 수정, 파일 재업로드 등으로 rematchAllOrders가 돌 때마다) code_qty가 되살아나서 실제 수량과
+    // 또 곱해져 매입수량이 두 배로 틀어지는 버그가 있었음(_addSikjaeOrdersFromRows에서 생성 시점엔
+    // 고정했지만, 그 뒤 재매칭될 때 여기서 다시 덮어써지고 있었음)
+    o.code_qty = (o.shop_mall === '식자재코리아') ? 1 : (parsed.codeQty||1);
     o.opt_mapped=parsed.optMapped||false;
     o.opt_needs_check=parsed.optNeedsCheck||false;
     o.mapped_code=parsed.mappedCode||'';
