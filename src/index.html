@@ -3526,7 +3526,12 @@ function _addSikjaeOrdersFromRows(rows, hr){
     // 기존 샵마인발 "로또상회" 그룹과 합쳐지도록 별칭도 그냥 '로또상회'로 통일 (플랫폼 구분은 shop_mall로 별도 유지)
     const alias = '로또상회';
     const phone = String(r[C.rp]||r[C.rp2]||'').replace(/^'/, '').trim();
-    const order_amt = parseInt(String(r[C.sp]||'').replace(/[,\s원]/g,'')) || 0;
+    // "공급가" 칸은 개당(1개) 단가라서, 실제 매출(=식자재코리아 사이트의 "합계" 칸)을 내려면
+    // 수량을 곱해야 함 — 공급가를 그대로 매출로 쓰면 수량이 2개 이상인 주문은 매출이 실제의
+    // 절반 이하로 찍혀서 역마진처럼 보이는 문제가 있었음(수량 1건짜리는 우연히 안 틀어져서
+    // 안 드러났었음)
+    const sikjaeQty = parseInt(r[C.qt]) || 1;
+    const order_amt = (parseInt(String(r[C.sp]||'').replace(/[,\s원]/g,'')) || 0) * sikjaeQty;
     const order = {
       vendor_code: vc, vendor_opt: '', vendor_key: vk,
       alias, alias_raw: alias,
@@ -3546,7 +3551,7 @@ function _addSikjaeOrdersFromRows(rows, hr){
       // 별도 옵션 컬럼이 없어 상품명에 kg/규격 정보가 다 들어있음 — select_opt/disp_opt에도
       // 상품명을 넣어둬야 동일(깐마늘) 등의 "Nkg" 자동 인식 로직이 정상 동작함
       select_opt: pn, disp_opt: pn,
-      qty: parseInt(r[C.qt]) || 1,
+      qty: sikjaeQty,
       // 식자재코리아 파일의 "수량" 칸이 이미 실제 주문 수량이라 그대로 씀 — 과거에 다른
       // 발주처(일비 등)에서 이 상품관리코드(예: bk004)를 "일비]박대/3P-2"처럼 수량 내장 코드로
       // 등록해둔 적이 있으면 parsed.codeQty도 같이 잡혀서 qty(진짜 수량)×codeQty(코드 내장
