@@ -3131,6 +3131,17 @@ document.addEventListener('DOMContentLoaded',()=>{
       localStorage.setItem('yb_sales_override_sikjae_bk004_v1','1');
     }
   } catch(_){}
+  // 1회성 되돌리기: 목전지 고정 매출(19,900원) 지정을 사장님 요청으로 완전히 철회함 — 쿠팡
+  // 쿠폰 할인에 맞춰 옐로우브릿지 쪽 정가를 일부러 올려둔 상태라, 파일에 찍힌 원래 금액을 그대로
+  // 써야 정확했는데 고정값으로 덮어써서 역마진이 나는 등 오히려 틀어짐. 등록해뒀던 항목을 지워서
+  // 원래(파일의 order_amt를 그대로 쓰는) 계산 방식으로 되돌림
+  try {
+    if (!localStorage.getItem('yb_sales_override_mokjeonji_revert_v1')) {
+      const cur5 = srLoadSalesOverride().filter(ov => !(ov && ov.code === 'MAC컴퍼니]목전지/'));
+      srSaveSalesOverride(cur5);
+      localStorage.setItem('yb_sales_override_mokjeonji_revert_v1','1');
+    }
+  } catch(_){}
   _sbLoadKV('sales_amt_override').then(remote=>{
     if(Array.isArray(remote)) localStorage.setItem(LS_SALES_OVERRIDE, JSON.stringify(remote));
   }).catch(()=>{});
