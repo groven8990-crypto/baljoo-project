@@ -3118,6 +3118,19 @@ document.addEventListener('DOMContentLoaded',()=>{
       localStorage.setItem('yb_sales_override_mokjeonji_scope_fix_v1','1');
     }
   } catch(_){}
+  // 식자재코리아 일비 박대(상품관리코드 bk004) — 사장님이 직접 확인해준 실제 금액: 이 주문(수량
+  // 2개) 총 매출 30,000원. 수량 두 배 곱해지던 버그(code_qty 강제 1)는 따로 고쳤고, 매출액은
+  // 혹시 파일마다 공급가가 다르게 찍혀오는 경우를 대비해 개당 금액(30,000÷2)으로 고정해둠.
+  try {
+    if (!localStorage.getItem('yb_sales_override_sikjae_bk004_v1')) {
+      const cur4 = srLoadSalesOverride();
+      if (!cur4.some(ov => ov && ov.code === 'bk004')) {
+        cur4.push({code:'bk004', alias:'', amount:15000});
+        srSaveSalesOverride(cur4);
+      }
+      localStorage.setItem('yb_sales_override_sikjae_bk004_v1','1');
+    }
+  } catch(_){}
   _sbLoadKV('sales_amt_override').then(remote=>{
     if(Array.isArray(remote)) localStorage.setItem(LS_SALES_OVERRIDE, JSON.stringify(remote));
   }).catch(()=>{});
@@ -3513,7 +3526,12 @@ function _addSikjaeOrdersFromRows(rows, hr){
       // 상품명을 넣어둬야 동일(깐마늘) 등의 "Nkg" 자동 인식 로직이 정상 동작함
       select_opt: pn, disp_opt: pn,
       qty: parseInt(r[C.qt]) || 1,
-      code_qty: parsed.codeQty || 1,
+      // 식자재코리아 파일의 "수량" 칸이 이미 실제 주문 수량이라 그대로 씀 — 과거에 다른
+      // 발주처(일비 등)에서 이 상품관리코드(예: bk004)를 "일비]박대/3P-2"처럼 수량 내장 코드로
+      // 등록해둔 적이 있으면 parsed.codeQty도 같이 잡혀서 qty(진짜 수량)×codeQty(코드 내장
+      // 수량)로 두 배 곱해지는 버그가 있었음(건수1·실제수량2인데 매입수량4로 계산됨).
+      // 식자재코리아는 항상 1로 고정해서 파일의 수량 값만 그대로 쓰게 함.
+      code_qty: 1,
       order_no: onVal,
       buyer: '', buyer_phone: '',
       carrier: '',
