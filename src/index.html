@@ -3090,18 +3090,32 @@ document.addEventListener('DOMContentLoaded',()=>{
       localStorage.setItem('yb_sales_override_seeded','1');
     }
   } catch(_){}
-  // 목전지(MAC컴퍼니)는 그로븐·옐로우브릿지 둘 다 판가가 19,900원으로 고정인데, 옐로우브릿지
-  // 쪽만 쿠팡 쿠폰이 걸려서(쿠팡이 쿠폰 비용을 부담하는 방식 — 정산은 그대로 19,900원 들어옴)
-  // 매출이 쿠폰만큼 낮게 찍혀 매입/순이익 퍼센트가 그로븐이랑 안 맞던 문제 — 고정 매출금액으로
-  // 지정해둬서 어느 채널·쿠폰 여부와 상관없이 항상 정산받는 실제 금액(19,900원×수량)으로 계산되게 함
+  // 목전지(MAC컴퍼니)는 옐로우브릿지 쪽만 쿠팡 쿠폰이 걸려서(쿠팡이 쿠폰 비용을 부담하는
+  // 방식 — 정산은 그대로 19,900원 들어옴) 매출이 쿠폰만큼 낮게 찍혀 매입/순이익 퍼센트가
+  // 그로븐이랑 안 맞던 문제 — 고정 매출금액으로 지정해서 해결. 단, 전체(alias 무관)로 걸었더니
+  // 이미 정상이던 그로븐 쪽 수치까지 바뀌어버려서(사장님이 "원상복구" 요청) 옐로우브릿지(자꾸가게)
+  // 채널에만 적용되도록 범위를 좁힘
   try {
     if (!localStorage.getItem('yb_sales_override_mokjeonji_v1')) {
       const cur2 = srLoadSalesOverride();
       if (!cur2.some(ov => ov && ov.code === 'MAC컴퍼니]목전지/')) {
-        cur2.push({code:'MAC컴퍼니]목전지/', alias:'', amount:19900});
+        cur2.push({code:'MAC컴퍼니]목전지/', alias:'자꾸가게', amount:19900});
         srSaveSalesOverride(cur2);
       }
       localStorage.setItem('yb_sales_override_mokjeonji_v1','1');
+    }
+  } catch(_){}
+  // 1회성 수정: 위 시드가 이미 한 번 실행돼서(alias 전체 적용 버전으로) 저장돼있는 기존 항목을
+  // 자꾸가게 전용으로 좁혀줌 — 플래그가 이미 세팅돼있어서 위 블록은 다시 안 돌아가므로 별도 처리
+  try {
+    if (!localStorage.getItem('yb_sales_override_mokjeonji_scope_fix_v1')) {
+      const cur3 = srLoadSalesOverride();
+      const idx3 = cur3.findIndex(ov => ov && ov.code === 'MAC컴퍼니]목전지/' && !ov.alias);
+      if (idx3 >= 0) {
+        cur3[idx3] = {...cur3[idx3], alias:'자꾸가게'};
+        srSaveSalesOverride(cur3);
+      }
+      localStorage.setItem('yb_sales_override_mokjeonji_scope_fix_v1','1');
     }
   } catch(_){}
   _sbLoadKV('sales_amt_override').then(remote=>{
