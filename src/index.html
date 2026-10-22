@@ -4006,11 +4006,7 @@ function handleFile(file, onDone) {
           const _bcAmt=_bcM?parseInt(_bcM[1].replace(/,/g,'')):0;
           const _bcMode=_gmarketCouponMode();
           const _bcAdj=_bcM?Math.round(_bcMode==='full'?_bcAmt:(_bcMode==='half'?_bcAmt/2:0)):0;
-          // 목전지(MAC컴퍼니)는 옐로우브릿지에서 우리가 직접 쿠폰을 발행해 할인 판매 중인데,
-          // 그 쿠폰 손해분을 메우려고 정가(AB) 자체를 미리 올려둔 상태라, 할인금액(AI)을 그대로
-          // 빼버리면 매출이 실제 받는 돈보다 낮게 찍힘 — 그로븐(쿠폰 없음)과 같은 구조로 맞추려고
-          // 목전지만 할인금액을 빼지 않고 정가+배송비 그대로 매출로 잡음(사장님 확인)
-          const _order_amt_full=Math.round(pn.includes('목전지') ? (_ab + _ah) : (_ab - _ai + _ah + _bcAdj));
+          const _order_amt_full=Math.round(_ab - _ai + _ah + _bcAdj);
           // 한 주문이 여러 행으로 나뉜 경우(도매꾹 옵션 분리) 주문금액을 행 수만큼 중복 계상하지 않도록 나눠 배분
           const order_amt = _optionList.length > 1
             ? (Math.round(_order_amt_full*(_oi+1)/_optionList.length) - Math.round(_order_amt_full*_oi/_optionList.length))
@@ -12900,11 +12896,7 @@ function handleFileAdd(file, onDone){
           const _bcAmt=_bcM?parseInt(_bcM[1].replace(/,/g,'')):0;
           const _bcMode=_gmarketCouponMode();
           const _bcAdj=_bcM?Math.round(_bcMode==='full'?_bcAmt:(_bcMode==='half'?_bcAmt/2:0)):0;
-          // 목전지(MAC컴퍼니)는 옐로우브릿지에서 우리가 직접 쿠폰을 발행해 할인 판매 중인데,
-          // 그 쿠폰 손해분을 메우려고 정가(AB) 자체를 미리 올려둔 상태라, 할인금액(AI)을 그대로
-          // 빼버리면 매출이 실제 받는 돈보다 낮게 찍힘 — 그로븐(쿠폰 없음)과 같은 구조로 맞추려고
-          // 목전지만 할인금액을 빼지 않고 정가+배송비 그대로 매출로 잡음(사장님 확인)
-          const _order_amt_full=Math.round(pn.includes('목전지') ? (_ab + _ah) : (_ab - _ai + _ah + _bcAdj));
+          const _order_amt_full=Math.round(_ab - _ai + _ah + _bcAdj);
           // 한 주문이 여러 행으로 나뉜 경우(도매꾹 옵션 분리) 주문금액을 행 수만큼 중복 계상하지 않도록 나눠 배분
           const order_amt = _optionList.length > 1
             ? (Math.round(_order_amt_full*(_oi+1)/_optionList.length) - Math.round(_order_amt_full*_oi/_optionList.length))
