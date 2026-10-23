@@ -21116,6 +21116,12 @@ function srBuildProfitRows(orders){
   const map = {};  // key → row
   for (const o of orders) {
     if (!o.vendor_key) continue;  // unmatched 제외
+    // 디네트 합성 주문(order_no가 "dinette-"로 시작)은 "발주서 생성" 탭에 일비 발주서를 만들기
+    // 위한 용도일 뿐, 매입/순이익 계산은 아래 _srBuildDinetteProfitRows가 묶음단가 기준으로
+    // 별도 처리함(이 행에서도 또 집계하면 매출 0짜리 매입 유령 행이 따로 생기고 실제 디네트
+    // 매출과도 합쳐지지 않음 — 코드 등록 상태에 따라 품목/옵션명이 달라져서 두 쪽 키가 서로
+    // 안 맞기 때문) — 그래서 여기서는 건너뜀
+    if (String(o.order_no||'').startsWith('dinette-')) continue;
     // 문자주문 등으로 등록된 B2B 주문 — 같은 발주처/품목이라도 일반 주문과 합쳐지면 안 되니
     // 키에 B2B 거래처명을 붙여서 별도 행으로 만들고, 매입/순이익 화면에서도 디네트처럼 분리 표시
     const isManualB2B = (typeof _srIsManualB2B === 'function') && _srIsManualB2B(o);
