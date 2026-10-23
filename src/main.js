@@ -102,16 +102,28 @@ async function createWindow() {
   }
 }
 
-// 새로고침 시에도 원격에서 HTML 다시 받아오기 위해 Ctrl+R / F5 인터셉트
+// 새로고침 시 원격에서 최신 HTML을 다시 받아와서 로드 — 메뉴의 두 새로고침 항목과
+// 키보드 단축키 인터셉트가 모두 이 함수 하나를 거치게 해서, "새로고침을 눌렀는데 예전
+// 화면 그대로"인 경로가 생기지 않게 함
+async function reloadFromRemote() {
+  if (!mainWindow) return;
+  const htmlPath = await prepareHtmlAndGetPath();
+  mainWindow.loadFile(htmlPath);
+}
+
+// 새로고침 시에도 원격에서 HTML 다시 받아오기 위해 F5 / Ctrl+R / Ctrl+Shift+R 인터셉트.
+// Ctrl+Shift+R("강제 새로고침")은 사람들이 "이게 더 확실히 최신으로 받아올 것"이라고
+// 기대하는 단축키인데, 이전엔 가로채지 않아서 Electron 기본 forceReload(캐시만 비우고
+// 지금 로드된 로컬 파일을 그대로 다시 그림 — 원격 재요청 없음)로 떨어져, 방금 push한
+// 수정사항이 화면에 안 보이는 원인이 됐었음
 function setupReloadHook() {
   mainWindow.webContents.on('before-input-event', async (event, input) => {
     const isReload =
       (input.key === 'F5' && input.type === 'keyDown') ||
-      (input.key === 'r' && input.control && input.type === 'keyDown');
+      ((input.key === 'r' || input.key === 'R') && input.control && input.type === 'keyDown');
     if (!isReload) return;
     event.preventDefault();
-    const htmlPath = await prepareHtmlAndGetPath();
-    mainWindow.loadFile(htmlPath);
+    await reloadFromRemote();
   });
 }
 
@@ -178,13 +190,16 @@ const menuTemplate = [
       {
         label: '새로 고침 (최신 HTML 받기)',
         accelerator: 'CmdOrCtrl+R',
-        click: async () => {
-          if (!mainWindow) return;
-          const htmlPath = await prepareHtmlAndGetPath();
-          mainWindow.loadFile(htmlPath);
-        },
+        click: reloadFromRemote,
       },
-      { role: 'forceReload', label: '강제 새로 고침' },
+      {
+        // Electron 기본 role('forceReload')은 원격을 다시 안 받아오고 로컬 캐시만 비우고
+        // 다시 그리는 거라, 이름과 달리 오히려 최신 버전을 못 받아오는 함정이었음 — 똑같이
+        // 원격에서 새로 받아오도록 고침
+        label: '강제 새로 고침 (최신 HTML 받기)',
+        accelerator: 'CmdOrCtrl+Shift+R',
+        click: reloadFromRemote,
+      },
       { role: 'toggleDevTools', label: '개발자 도구' },
       { type: 'separator' },
       { role: 'resetZoom', label: '실제 크기' },
