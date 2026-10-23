@@ -21116,6 +21116,7 @@ function srBuildProfitRows(orders){
       qty: Number(o.qty)||1,
       units,
       salesAmt: amt,
+      feeRate: srFeeForOrder(o),
       isReview
     });
     r.sales  += amt;
@@ -21171,6 +21172,16 @@ function srBuildProfitRows(orders){
       d.boxesComputed = computed;
       d.boxesOverridden = (ov.boxes != null && !isNaN(ov.boxes));
       d.boxes = d.boxesOverridden ? Number(ov.boxes) : computed;
+      // 매출액 수동 보정 — 자동 계산(쿠폰/할인 계산식)이 실제 정산금과 안 맞을 때, 그 주문만
+      // "사람별 검산"에서 직접 금액을 입력해 덮어씀. 합계(매출/수수료)에도 차액만큼 반영
+      d.salesAmtComputed = d.salesAmt;
+      d.salesAmtOverridden = (ov.salesAmt != null && !isNaN(ov.salesAmt));
+      if (d.salesAmtOverridden) {
+        const _newAmt = Number(ov.salesAmt);
+        r.sales += (_newAmt - d.salesAmt);
+        r.fee   += Math.round(_newAmt * (d.feeRate||0)) - Math.round(d.salesAmt * (d.feeRate||0));
+        d.salesAmt = _newAmt;
+      }
       d.itemCost = d.units * (d.isReview ? _effReviewUnit : r.unit);
       // 배송비: shipTiers 가 있으면 박스별 수량에 따라 단계 적용, 없으면 박스수 × shipFee
       if (Array.isArray(r.shipTiers) && r.shipTiers.length) {
@@ -21393,7 +21404,8 @@ function srUpdateProfitIncremental(changedKey){
         const k = td.getAttribute('data-cell');
         if (r[k] != null) {
           if (k === 'profit') {
-            const sales = Number(td.getAttribute('data-sales')) || r.sales || 0;
+            td.setAttribute('data-sales', r.sales);
+            const sales = r.sales || 0;
             const pct = sales > 0 ? `<span style="font-size:9px;font-weight:400;opacity:.7;margin-left:3px">(${(r.profit/sales*100).toFixed(1)}%)</span>` : '';
             td.innerHTML = Number(r.profit).toLocaleString() + pct;
             td.style.color = r.profit >= 0 ? '#16A34A' : '#DC2626';
@@ -21794,7 +21806,7 @@ function _srBuildDetailRowHtml(r, i, firstOfGroup){
     <td style="padding:6px 8px;border-bottom:1px solid #eee;color:#6B7280">${escHtml(r.option||'-')}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${r.count}</td>
     <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${r.qtySum}</td>
-    <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums">${r.sales.toLocaleString()}</td>
+    <td data-cell="sales" style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;font-variant-numeric:tabular-nums">${r.sales.toLocaleString()}</td>
     <td style="padding:3px 3px;border-bottom:1px solid #eee">
       ${ (() => {
         const _showReview = r.reviewQty > 0 || Number(r.reviewUnit) > 0 || r.vendor === '동일' || r.vendor === '그린캠';
@@ -21964,10 +21976,18 @@ function srBuildDetailInnerHtml(r){
   const dRows = r.orderDetail.map((d, i) => {
     const ovTag = d.boxesOverridden ? `<span style="font-size:9px;color:#7C3AED;margin-left:4px" title="자동 계산값: ${d.boxesComputed}박스">✏️수정됨</span>` : '';
     const restoreBtn = d.boxesOverridden ? `<button type="button" onclick="srRestoreDetailBox(this)" data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}" title="자동 계산으로 되돌리기 (${d.boxesComputed}박스)" style="border:none;background:none;cursor:pointer;color:#7C3AED;font-size:11px;padding:0 4px">↺</button>` : '';
+    const salesOvTag = d.salesAmtOverridden ? `<span style="font-size:9px;color:#2563EB;margin-left:2px" title="자동 계산값: ${d.salesAmtComputed.toLocaleString()}원">✏️</span>` : '';
+    const salesRestoreBtn = d.salesAmtOverridden ? `<button type="button" onclick="srRestoreDetailSales(this)" data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}" title="자동 계산으로 되돌리기 (${d.salesAmtComputed.toLocaleString()}원)" style="border:none;background:none;cursor:pointer;color:#2563EB;font-size:11px;padding:0 4px">↺</button>` : '';
     return `<tr style="background:${d.boxesOverridden?'#F3E8FF':(i%2===0?'#fff':'#FAFAFA')}">
       <td style="padding:5px 8px;font-size:11px">${escHtml(d.recv_name)}</td>
       <td style="padding:5px 8px;text-align:right;font-size:11px">${d.qty}</td>
       <td style="padding:5px 8px;text-align:right;font-size:11px;color:#7B4B00">${d.units}</td>
+      <td style="padding:3px 6px;text-align:right;font-size:11px;white-space:nowrap">
+        <input type="number" min="0" step="1" value="${d.salesAmt}"
+          data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}"
+          oninput="srOnDetailSalesChange(this)"
+          style="width:70px;padding:2px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums;${d.salesAmtOverridden?'background:#EFF6FF;color:#1D4ED8;font-weight:600':''}">${salesOvTag}${salesRestoreBtn}
+      </td>
       <td style="padding:3px 6px;text-align:right;font-size:11px;white-space:nowrap">
         <input type="number" min="0" step="1" value="${d.boxes}"
           data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}"
@@ -21980,7 +22000,7 @@ function srBuildDetailInnerHtml(r){
     </tr>`;
   }).join('');
   const totalBoxes = r.orderDetail.reduce((s,d)=>s+d.boxes,0);
-  const formula = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">계산식: <b>박스수</b> = ceil(매입수량 ÷ ${r.consol||'없음'}) · <b>매입가</b> = 매입수량 × ${r.unit.toLocaleString()}원 · <b>배송비</b> = 박스수 × ${r.shipFee.toLocaleString()}원 <span style="color:#7C3AED;margin-left:6px">· 박스수에 직접 입력하면 그 주문만 수동 보정</span></div>`;
+  const formula = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">계산식: <b>박스수</b> = ceil(매입수량 ÷ ${r.consol||'없음'}) · <b>매입가</b> = 매입수량 × ${r.unit.toLocaleString()}원 · <b>배송비</b> = 박스수 × ${r.shipFee.toLocaleString()}원 <span style="color:#2563EB;margin-left:6px">· 매출액 칸에 직접 입력하면 그 주문의 매출(자동계산 대신)로 쓰임</span><span style="color:#7C3AED;margin-left:6px">· 박스수에 직접 입력하면 그 주문만 수동 보정</span></div>`;
   return `<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📋 ${escHtml(r.brand)} · ${escHtml(_srVendorName(r.vendor))} · ${escHtml(r.item)} · ${escHtml(r.option)} — 사람별 계산</div>
     ${formula}
     <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #E5E7EB;border-radius:4px">
@@ -21988,6 +22008,7 @@ function srBuildDetailInnerHtml(r){
         <th style="padding:5px 8px;text-align:left;font-size:11px;border-bottom:1px solid #D1D5DB">받는사람</th>
         <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">주문수량</th>
         <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">매입수량</th>
+        <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">매출액</th>
         <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">박스수</th>
         <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">매입가</th>
         <th style="padding:5px 8px;text-align:right;font-size:11px;border-bottom:1px solid #D1D5DB">배송비</th>
@@ -21997,6 +22018,7 @@ function srBuildDetailInnerHtml(r){
       <tfoot><tr style="background:#E5E7EB;font-weight:700">
         <td style="padding:6px 8px;color:#1F2937;font-size:11px" colspan="2">합계</td>
         <td style="padding:6px 8px;text-align:right;color:#7B4B00;font-size:11px">${r.qtySum}</td>
+        <td style="padding:6px 8px;text-align:right;font-size:11px;color:#1D4ED8;font-variant-numeric:tabular-nums">${r.sales.toLocaleString()}</td>
         <td style="padding:6px 8px;text-align:right;font-size:11px">${totalBoxes}박스</td>
         <td style="padding:6px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${r.itemCost.toLocaleString()}</td>
         <td style="padding:6px 8px;text-align:right;font-size:11px;color:#92400E;font-variant-numeric:tabular-nums">${r.shipTotal.toLocaleString()}</td>
@@ -22065,6 +22087,33 @@ function srRestoreDetailBox(btn){
   const ovDB = srLoadOverridesDB();
   const k = srOverrideKey(rowKey, orderNo);
   if (ovDB[k]) { delete ovDB[k].boxes; if (!Object.keys(ovDB[k]).length) delete ovDB[k]; srSaveOverridesDB(ovDB); }
+  srUpdateProfitIncremental(rowKey);
+}
+// 사람별 검산에서 매출액을 직접 입력 — 쿠폰/할인 자동계산식이 실제 정산금과 안 맞는 주문(예: 목전지)을
+// 그 주문만 수동으로 바로잡을 때 씀. 박스수 수동 보정(ovDB.boxes)과 같은 저장소에 salesAmt로 같이 저장.
+function srOnDetailSalesChange(input){
+  const rowKey = input.getAttribute('data-rowkey');
+  const orderNo = input.getAttribute('data-orderno');
+  if (rowKey == null) return;
+  const ovDB = srLoadOverridesDB();
+  const k = srOverrideKey(rowKey, orderNo);
+  const raw = input.value;
+  if (raw === '' || isNaN(parseFloat(raw))) {
+    if (ovDB[k]) { delete ovDB[k].salesAmt; if (!Object.keys(ovDB[k]).length) delete ovDB[k]; srSaveOverridesDB(ovDB); }
+  } else {
+    const v = Math.max(0, parseFloat(raw));
+    ovDB[k] = ovDB[k] || {};
+    ovDB[k].salesAmt = v;
+    srSaveOverridesDB(ovDB);
+  }
+  srUpdateProfitIncremental(rowKey);
+}
+function srRestoreDetailSales(btn){
+  const rowKey = btn.getAttribute('data-rowkey');
+  const orderNo = btn.getAttribute('data-orderno');
+  const ovDB = srLoadOverridesDB();
+  const k = srOverrideKey(rowKey, orderNo);
+  if (ovDB[k]) { delete ovDB[k].salesAmt; if (!Object.keys(ovDB[k]).length) delete ovDB[k]; srSaveOverridesDB(ovDB); }
   srUpdateProfitIncremental(rowKey);
 }
 
