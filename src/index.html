@@ -19002,6 +19002,11 @@ function srAggregate(orders){
   // 깐마늘 전용 상세: 플랫폼(쿠팡/스마트스토어 등) × 옵션 단위 집계
   const garlicMap = {};  // key = platformLabel + '||' + option
   for(const o of orders){
+    // 디네트 합성 주문(order_no가 "dinette-"로 시작)은 발주서 생성용이라 order_amt가 항상 0 —
+    // 그대로 집계하면 그로븐 플랫폼 표에 "디네트 0원"짜리 유령 행이 생김. 디네트 실제 매출은
+    // srAggregateDinette(srDinetteRows)가 묶음단가 기준으로 따로 계산해서 totalSales/B2B
+    // 카드에 이미 합산되므로(srRender의 dnAgg), 여기서는 그냥 건너뜀
+    if (String(o.order_no||'').startsWith('dinette-')) continue;
     const amt=(typeof _srSalesAmt==='function')?_srSalesAmt(o):(Number(o.order_amt)||0);totalSales+=amt;
     if (_srIsManualB2B(o)) {
       const bn = String(o.shop_mall).replace(/^B2B-/,'').trim() || '미지정';
@@ -20805,8 +20810,8 @@ function srRender(){
         </div>
       </div>
       <div id="srGrobnSection">${srBrandSection('그로븐 (로또상회)', '#1E3A5F', grAgg)}</div>
-      <div id="srYbSection">${srBrandSection('옐로우브릿지 (자꾸가게)', '#3A1E5F', ybAgg)}</div>
       <div id="srDinetteSection">${srDinetteSection(dnAgg)}</div>
+      <div id="srYbSection">${srBrandSection('옐로우브릿지 (자꾸가게)', '#3A1E5F', ybAgg)}</div>
       <div style="margin-top:18px;font-size:10px;color:#888;text-align:right">발주일자 ${dateStr} 기준 · 발주 자동화 시스템</div>
     </div>`;
   document.getElementById('srReport').innerHTML=html;
