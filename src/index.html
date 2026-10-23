@@ -22477,7 +22477,8 @@ function srExportImage(){
   const headerEl=document.getElementById('srReportHeader');
   const groups=[
     {label:'그로븐',       includeHeader:true,  sectionIds:['srGrobnSection']},
-    {label:'옐로우브릿지', includeHeader:false, sectionIds:['srYbSection','srDinetteSection']}
+    {label:'디네트',       includeHeader:false, sectionIds:['srDinetteSection']},
+    {label:'옐로우브릿지', includeHeader:false, sectionIds:['srYbSection']}
   ];
   const targets=groups.filter(g=>g.sectionIds.some(id=>{
     const s=document.getElementById(id);
