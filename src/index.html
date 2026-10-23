@@ -22475,9 +22475,10 @@ function srExportImage(){
   if (!confirm('🏷️ 품목명 확인하셨어요?\n\n• 이상한 이름(잘린 상품명/오타)이 있는지 보고서 한번 훑어보세요\n• 발견하면 "🏷️ 상품명 별칭 관리" 에서 등록해주세요\n\n그대로 저장할까요?')) return;
   const dateStr=(document.getElementById('srReportDate').value||_localISO()).replace(/-/g,'').slice(2);  // YYMMDD
   const headerEl=document.getElementById('srReportHeader');
+  // 디네트는 그로븐이랑 거래하는 B2B라, 별도 파일로 안 쪼개고 그로븐 이미지 안에 이어서 붙임
+  // (그로븐 내용 → 디네트 → 다음 줄에 옐로우브릿지가 아니라, 한 장의 연결된 이미지로)
   const groups=[
-    {label:'그로븐',       includeHeader:true,  sectionIds:['srGrobnSection']},
-    {label:'디네트',       includeHeader:false, sectionIds:['srDinetteSection']},
+    {label:'그로븐',       includeHeader:true,  sectionIds:['srGrobnSection','srDinetteSection']},
     {label:'옐로우브릿지', includeHeader:false, sectionIds:['srYbSection']}
   ];
   const targets=groups.filter(g=>g.sectionIds.some(id=>{
