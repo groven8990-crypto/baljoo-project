@@ -6984,6 +6984,18 @@ ${today} 발주 건 송부드립니다.
 function combined(o){return o.option_name?o.item_name+' '+o.option_name:o.item_name;}
 // 유효 수량 = 실주문수량 × 코드내장수량
 function effQty(o){return (o.qty||1)*(o.code_qty||1);}
+// 합쳐져서 들어오는 주소 한 줄을 기본주소/상세주소로 자동 분리 (경동택배 요청사항 — 마그네슘 발주서용).
+// 도로명/지번 주소는 보통 "...로/길/동/리/가 숫자(-숫자)?"로 끝나고 그 뒤에 아파트명·동·호·층 같은
+// 상세정보가 붙으므로, 그 패턴이 마지막으로 나오는 지점까지를 기본주소로 자름. 패턴을 못 찾으면
+// (주소 형태가 특이한 경우) 잘못 잘라서 배송 사고 나는 것보다 안전하게 전체를 기본주소에 두고
+// 상세주소는 비워둠.
+function _splitKoreanAddress(full){
+  const addr = String(full||'').trim();
+  if (!addr) return { base: '', detail: '' };
+  const m = addr.match(/^(.*(?:로|길|동|리|가)\s*\d+(?:-\d+)?)\s+(\S.*)$/);
+  if (m && m[2]) return { base: m[1].trim(), detail: m[2].trim() };
+  return { base: addr, detail: '' };
+}
 // 보내는분 성명/전화번호 — 식자재코리아처럼 주문 건마다 택배발송자(명/연락처)가 따로 지정된 경우
 // 그 값을 우선 쓰고, 없으면 평소처럼 발주처 공통 보내는사람(getSender) 값을 씀. 주소는 항상 공통 값 사용.
 function effSenderName(o, s){ return (o && o.ship_sender_name) ? o.ship_sender_name : s.name; }
@@ -7264,7 +7276,7 @@ function buildRows(vk,orders,alias){
       const mgQty = o => { const m = String(o.option_name||'').match(/(\d+)\s*개\s*$/); return m ? parseInt(m[1]) : effQty(o); };
       const mgItem = o => { const n = mgQty(o); return '자사제품' + (n > 1 ? ` ${n}개` : ''); };
       return [['받는분','주소','상세주소','운송장번호','고객사주문번호','우편번호','도착영업소','전화번호','기타전화번호','선불후불','품목명','수량','포장상태','가로','세로','높이','무게','개별단가','배송운임','기타운임','별도운임','할증운임','도서운임','메모'],
-        ...orders.map(o => [o.recv_name, o.addr, '', '', o.order_no, o.zip, '', o.recv_phone, '', '선불', mgItem(o), 1, '', '', '', '', '', '', '', '', '', '', '', o.memo||''])];
+        ...orders.map(o => { const _a = _splitKoreanAddress(o.addr); return [o.recv_name, _a.base, _a.detail, '', o.order_no, o.zip, '', o.recv_phone, '', '선불', mgItem(o), 1, '', '', '', '', '', '', '', '', '', '', '', o.memo||'']; })];
     }
     default:
       return [['주문번호','품목명','옵션','수량','수령인','연락처','주소','우편번호','배송메모','원본코드'],
