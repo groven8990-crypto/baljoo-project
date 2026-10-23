@@ -4021,6 +4021,19 @@ function handleFile(file, onDone) {
             const _mgTier = {1:17800, 2:33800, 3:48000}[_mgN];
             if (_mgTier != null) order_amt = _mgTier;
           }
+          // 목전지(MAC컴퍼니, 자꾸가게)도 같은 이유로 쿠팡에 등록된 실제 판매가(중량 옵션별)를
+          // 고정 매출로 사용. kg은 옵션명/선택사항/노출옵션명/상품명 순으로 찾음(동일(깐마늘)
+          // kg 감지와 같은 방식) — 삼겹살 등 같은 발주처의 다른 상품은 건드리지 않도록 상품명에
+          // "목전지"가 있을 때만 적용. 등록 안 된 중량이면 원래 계산값 그대로 둠
+          if (vk === 'MAC컴퍼니' && pn.includes('목전지') && /자꾸가게/.test(_aliasRaw)) {
+            let _mjKg = 0;
+            for (const s of [parsed.optionName, soOne, dop, pn]) {
+              const m = String(s||'').match(/(\d+)\s*kg/i);
+              if (m) { _mjKg = parseInt(m[1]); break; }
+            }
+            const _mjTier = {2:19900, 3:28900, 4:37900, 5:58630}[_mjKg];
+            if (_mjTier != null) order_amt = _mjTier;
+          }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
           // 시간대별 발주처 규칙 적용
@@ -12920,6 +12933,19 @@ function handleFileAdd(file, onDone){
             const _mgN = _mgOptN ? parseInt(_mgOptN) : ((parseInt(r[C.qt])||1) * (parsed.codeQty||1));
             const _mgTier = {1:17800, 2:33800, 3:48000}[_mgN];
             if (_mgTier != null) order_amt = _mgTier;
+          }
+          // 목전지(MAC컴퍼니, 자꾸가게)도 같은 이유로 쿠팡에 등록된 실제 판매가(중량 옵션별)를
+          // 고정 매출로 사용. kg은 옵션명/선택사항/노출옵션명/상품명 순으로 찾음(동일(깐마늘)
+          // kg 감지와 같은 방식) — 삼겹살 등 같은 발주처의 다른 상품은 건드리지 않도록 상품명에
+          // "목전지"가 있을 때만 적용. 등록 안 된 중량이면 원래 계산값 그대로 둠
+          if (vk === 'MAC컴퍼니' && pn.includes('목전지') && /자꾸가게/.test(_aliasRaw)) {
+            let _mjKg = 0;
+            for (const s of [parsed.optionName, soOne, dop, pn]) {
+              const m = String(s||'').match(/(\d+)\s*kg/i);
+              if (m) { _mjKg = parseInt(m[1]); break; }
+            }
+            const _mjTier = {2:19900, 3:28900, 4:37900, 5:58630}[_mjKg];
+            if (_mjTier != null) order_amt = _mjTier;
           }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
