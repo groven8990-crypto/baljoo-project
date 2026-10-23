@@ -4008,9 +4008,19 @@ function handleFile(file, onDone) {
           const _bcAdj=_bcM?Math.round(_bcMode==='full'?_bcAmt:(_bcMode==='half'?_bcAmt/2:0)):0;
           const _order_amt_full=Math.round(_ab - _ai + _ah + _bcAdj);
           // 한 주문이 여러 행으로 나뉜 경우(도매꾹 옵션 분리) 주문금액을 행 수만큼 중복 계상하지 않도록 나눠 배분
-          const order_amt = _optionList.length > 1
+          let order_amt = _optionList.length > 1
             ? (Math.round(_order_amt_full*(_oi+1)/_optionList.length) - Math.round(_order_amt_full*_oi/_optionList.length))
             : _order_amt_full;
+          // 마그네슘(자꾸가게)은 쿠팡 쿠폰/즉시할인 구조 때문에 자동계산 매출이 실제 정산금과 계속
+          // 안 맞아서, 사장님이 알려준 수량별 실판매가로 고정(쿠팡 "수량" 옵션 기준: 1개 17,800원 /
+          // 2개 33,800원 / 3개 48,000원 — 비례 할인이 아니라 수량별 고정가라 그대로 표 사용). 등록
+          // 안 된 수량(4개 이상)이거나 자꾸가게가 아니면 원래 계산값 그대로 둠
+          if (vk === '마그네슘' && /자꾸가게/.test(_aliasRaw)) {
+            const _mgOptN = (String(parsed.optionName||'').match(/(\d+)\s*개\s*$/)||[])[1];
+            const _mgN = _mgOptN ? parseInt(_mgOptN) : ((parseInt(r[C.qt])||1) * (parsed.codeQty||1));
+            const _mgTier = {1:17800, 2:33800, 3:48000}[_mgN];
+            if (_mgTier != null) order_amt = _mgTier;
+          }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
           // 시간대별 발주처 규칙 적용
@@ -12898,9 +12908,19 @@ function handleFileAdd(file, onDone){
           const _bcAdj=_bcM?Math.round(_bcMode==='full'?_bcAmt:(_bcMode==='half'?_bcAmt/2:0)):0;
           const _order_amt_full=Math.round(_ab - _ai + _ah + _bcAdj);
           // 한 주문이 여러 행으로 나뉜 경우(도매꾹 옵션 분리) 주문금액을 행 수만큼 중복 계상하지 않도록 나눠 배분
-          const order_amt = _optionList.length > 1
+          let order_amt = _optionList.length > 1
             ? (Math.round(_order_amt_full*(_oi+1)/_optionList.length) - Math.round(_order_amt_full*_oi/_optionList.length))
             : _order_amt_full;
+          // 마그네슘(자꾸가게)은 쿠팡 쿠폰/즉시할인 구조 때문에 자동계산 매출이 실제 정산금과 계속
+          // 안 맞아서, 사장님이 알려준 수량별 실판매가로 고정(쿠팡 "수량" 옵션 기준: 1개 17,800원 /
+          // 2개 33,800원 / 3개 48,000원 — 비례 할인이 아니라 수량별 고정가라 그대로 표 사용). 등록
+          // 안 된 수량(4개 이상)이거나 자꾸가게가 아니면 원래 계산값 그대로 둠
+          if (vk === '마그네슘' && /자꾸가게/.test(_aliasRaw)) {
+            const _mgOptN = (String(parsed.optionName||'').match(/(\d+)\s*개\s*$/)||[])[1];
+            const _mgN = _mgOptN ? parseInt(_mgOptN) : ((parseInt(r[C.qt])||1) * (parsed.codeQty||1));
+            const _mgTier = {1:17800, 2:33800, 3:48000}[_mgN];
+            if (_mgTier != null) order_amt = _mgTier;
+          }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
           const vkFinal=_applyTimeVendorRule(order, vk);
