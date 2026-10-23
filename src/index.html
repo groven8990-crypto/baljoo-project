@@ -2564,6 +2564,18 @@ function _mergeCloudValue(key, cloudRaw, localRaw) {
       // (다른 컴퓨터에서 켜둔 게 이 컴퓨터에서 재동기화 한 번에 없어지지 않게 함)
       return JSON.stringify([...new Set([...cloud, ...local])]);
     }
+    if (key === 'yb_sales_history' && Array.isArray(cloud) && Array.isArray(local)) {
+      // 매출 보고 일별 스냅샷 — 이게 날짜별 merge 규칙이 없어서 그냥 클라우드 값으로
+      // 덮어써지고 있었음. "💾 이력에 저장"으로 방금 덮어쓴 값이 재동기화(클라우드 pull) 한
+      // 번에 옛날 값으로 되돌아가던 버그의 원인 — 날짜가 같으면 로컬(방금 저장한 값)을
+      // 우선하고, 한쪽에만 있는 날짜는 그대로 합침
+      const map = new Map();
+      for (const rec of cloud) { if (rec && rec.date) map.set(rec.date, rec); }
+      for (const rec of local) { if (rec && rec.date) map.set(rec.date, rec); }
+      const merged = [...map.values()];
+      merged.sort((a,b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+      return JSON.stringify(merged);
+    }
     if ((key === 'yb_exphist' || key === 'yb_inchist') && Array.isArray(cloud) && Array.isArray(local)) {
       // 지출/입금결의서 이력은 그냥 클라우드로 덮어쓰면 위험함 — 이 컴퓨터에서 push가
       // 한동안 실패해서 클라우드 스냅샷이 오래된 상태로 굳어있으면, 최근에 이 컴퓨터에서
