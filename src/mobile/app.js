@@ -350,6 +350,15 @@ $('saleForm').onsubmit = saveSale;
 for (const id of ['fSales', 'fBuy']) $(id).oninput = updatePreview;
 $('dPrev').onclick = () => { day = shiftDay(day, -1); loadB2B(); };
 $('dNext').onclick = () => { if (day < kstToday()) { day = shiftDay(day, 1); loadB2B(); } };
+$('pwForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const { error } = await db.auth.updateUser({ password: $('newPw').value });
+  const m = $('pwMsg');
+  m.hidden = false;
+  m.className = error ? 'notice warn' : 'notice ok';
+  m.textContent = error ? '변경하지 못했습니다: ' + error.message : '비밀번호를 바꿨습니다. 다음 로그인부터 새 비밀번호를 쓰세요.';
+  if (!error) $('newPw').value = '';
+};
 $('logout').onclick = $('logout2').onclick = async () => { await db.auth.signOut(); location.reload(); };
 document.addEventListener('visibilitychange', () => {
   if (document.hidden || $('app').hidden) return;
