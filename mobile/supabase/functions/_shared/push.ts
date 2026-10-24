@@ -1,8 +1,8 @@
 // 폰으로 웹 푸시 보내기 (VAPID)
-// 필요한 비밀값: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT(예: mailto:담당자메일)
+// 필요한 비밀값: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT(예: mailto:담당자메일) — Secrets 또는 app_secrets
 import webpush from "npm:web-push@3.6.7";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.45.4";
-import { secret } from "./types.ts";
+import { appSecret } from "./types.ts";
 
 export interface PushMessage {
   title: string;
@@ -12,15 +12,18 @@ export interface PushMessage {
 }
 
 let configured = false;
-function configure() {
+async function configure(db: SupabaseClient) {
   if (configured) return;
-  webpush.setVapidDetails(secret("VAPID_SUBJECT"), secret("VAPID_PUBLIC_KEY"), secret("VAPID_PRIVATE_KEY"));
+  const [subject, pub, priv] = await Promise.all(
+    ["VAPID_SUBJECT", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"].map((n) => appSecret(db, n)),
+  );
+  webpush.setVapidDetails(subject, pub, priv);
   configured = true;
 }
 
 // pref 가 켜진 관리자·실무 팀원 폰 전체에 보냅니다. 만료된 구독은 지웁니다.
 export async function pushToStaff(db: SupabaseClient, pref: string, msg: PushMessage): Promise<number> {
-  configure();
+  await configure(db);
   const { data: subs, error } = await db
     .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth, prefs, members!inner(role)")

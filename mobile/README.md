@@ -19,6 +19,7 @@
 | `supabase/functions/b2b-sync` | 발주 사이트 '직거래 주문 추가' → 문자매출 저장 |
 | `supabase/migrations/…_report_snapshots.sql` · `functions/report-sync` | 발주 자동화가 만든 매출 보고서(매출 · 매입 · 수수료 · 부가세 · 순이익)를 받아 현황 · 보고서 · 순마진 화면에 씀 |
 | `supabase/dashboard/` | 대시보드에 그대로 붙여 넣는 설정 파일 (`setup.sql` · 함수 한 파일본) |
+| `supabase/functions/shopmine-sync` · `../tools/shopmine-order-alert` | 샵마인 엑셀 → 신규 주문만 저장 · 푸시 (PC 스크립트가 샵마인 자동 수집 후 업로드) |
 | `../src/mobile/` | 폰 앱 — 현황 · 보고서 · 순마진 (공통) + B2B · CS (담당자) · 설정 |
 
 ## 설정 순서
@@ -45,7 +46,13 @@ select id, '이름', 'viewer' from auth.users where email = '팀원이메일'
 on conflict (user_id) do update set name = excluded.name, role = excluded.role;
 ```
 
-### 나중에 — 신규 주문 푸시 (쇼핑몰 API 키 발급 후)
+### 신규 주문 푸시 — 샵마인 (지금 방식)
+1. 웹 푸시 키는 `app_secrets` 에 `VAPID_PUBLIC_KEY` · `VAPID_PRIVATE_KEY` · `VAPID_SUBJECT` 로 넣고, 공개키는 `src/mobile/config.js` 에도 입력
+2. `shopmine-sync` 배포 (Verify JWT 끄기), 마이그레이션 `…_shopmine_orders.sql`
+3. 샵마인 PC 에서 `tools/shopmine-order-alert` 설정 · 실행 (그 폴더 README)
+4. 폰 앱 → 톱니바퀴 → **신규 주문 알림 켜기**
+
+### 나중에 — 쇼핑몰 API 직접 연동 (고정 IP 필요)
 1. VAPID 키 만들기 — `npx web-push generate-vapid-keys`, 공개키는 `src/mobile/config.js` 에도 입력
 2. Edge Functions → Secrets: `CRON_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`(`mailto:메일주소`),
    쿠팡 `COUPANG_<REF>_ACCESS_KEY` · `_SECRET_KEY` · `_VENDOR_ID`, 네이버 `NAVER_<REF>_CLIENT_ID` · `_CLIENT_SECRET`

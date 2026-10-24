@@ -3,7 +3,7 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', (e) => {
-  let msg = { title: '발주 자동화', body: '새 알림이 있습니다', url: './' };
+  let msg = { title: '발주 알리미', body: '새 알림이 있습니다', url: './' };
   try { msg = { ...msg, ...e.data.json() }; } catch (_) {}
   e.waitUntil(self.registration.showNotification(msg.title, {
     body: msg.body,

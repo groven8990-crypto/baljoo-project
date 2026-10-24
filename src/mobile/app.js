@@ -32,6 +32,7 @@ function kstMidnight() {
 
 function storeLabel(o) {
   const a = accounts[o.account_id];
+  if (a?.platform === 'shopmine') return o.platform; // 샵마인 주문은 판매처 이름(예: 쿠팡-로또상회)이 platform 에 들어 있음
   return a ? `${PLATFORM[a.platform] || a.platform}-${a.store_name}` : o.account_id;
 }
 

@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#FFFFFF">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="주문알림">
+<meta name="apple-mobile-web-app-title" content="발주 알리미">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icon-192.png">
-<title>발주 자동화 모바일</title>
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>발주 알리미</title>
 <style>
 :root{--bg:#F6F7F9;--card:#FFFFFF;--line:#E5E7EB;--line2:#F1F3F6;--ink:#1F2937;--ink2:#4B5563;--ink3:#6B7280;--accent:#3B5BAA;--accentT:#E8F0FE;--accentD:#2A4380;--ok:#1E7B45;--okT:#E6F6EC;--warn:#8A4D0B;--warnT:#FFF3E0}
 *{box-sizing:border-box}
@@ -96,7 +96,8 @@ nav.tabs button[aria-current=page]{color:var(--accent);font-weight:700}
 <body>
 <section id="login" hidden>
   <main style="padding-top:calc(env(safe-area-inset-top) + 48px)">
-    <h1>로그인</h1>
+    <img src="icon-192.png" alt="" width="64" height="64" style="border-radius:16px">
+    <h1>발주 알리미</h1>
     <p class="sub">관리자가 만들어 준 이메일 · 비밀번호로 로그인합니다.</p>
     <form id="loginForm" style="display:flex;flex-direction:column;gap:10px">
       <label>이메일<input id="email" type="email" autocomplete="username" required></label>
