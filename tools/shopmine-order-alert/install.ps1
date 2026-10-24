@@ -57,10 +57,15 @@ foreach ($s in @(@('발주 알리미 실행', ''), @('발주 알리미 설정', 
 }
 Write-Host '  바탕화면에 [발주 알리미 실행] [발주 알리미 설정] 아이콘을 만들었습니다.'
 
-Step '[4/4] 설정을 시작합니다.'
-Push-Location $Dir
-& $py shopmine_alert.py --setup
-Pop-Location
+# 이미 설정해 둔 PC 는 프로그램만 새로 받고 설정은 건너뜀 (다시 하려면 [발주 알리미 설정])
+if (Test-Path (Join-Path $Dir 'config.json')) {
+  Step '[4/4] 기존 설정을 그대로 씁니다.'
+} else {
+  Step '[4/4] 설정을 시작합니다.'
+  Push-Location $Dir
+  & $py shopmine_alert.py --setup
+  Pop-Location
+}
 
 Write-Host ''
 Write-Host '설치 끝. 이제 바탕화면의 [발주 알리미 실행] 을 더블클릭하면 알림이 시작됩니다.' -ForegroundColor Green
