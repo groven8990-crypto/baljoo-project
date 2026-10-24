@@ -217,7 +217,7 @@ export async function renderReport() {
   const phoneCnt = isDay ? phoneOf(state.day).length : 0;
   $('repMain').innerHTML = `
     <span class="pill ${statusPill[0]}">${esc(statusPill[1])}</span>
-    ${state.role !== 'viewer' && isDay ? `<button class="card" type="button" id="toB2B" style="border:1px solid var(--line);text-align:left;font:inherit;color:inherit"><div class="row"><span><b style="font-size:13px">B2B 반영 상태</b><br><span class="meta">폰 입력 문자매출 ${phoneCnt}건 · 발주 자동화 직거래 · 디네트 · 또또는 보고서에 포함</span></span><span class="meta" style="color:var(--accent);font-weight:700">B2B 탭 ›</span></div></button>` : ''}
+    ${state.role === 'admin' && isDay ? `<button class="card" type="button" id="toB2B" style="border:1px solid var(--line);text-align:left;font:inherit;color:inherit"><div class="row"><span><b style="font-size:13px">B2B 반영 상태</b><br><span class="meta">폰 입력 문자매출 ${phoneCnt}건 · 발주 자동화 직거래 · 디네트 · 또또는 보고서에 포함</span></span><span class="meta" style="color:var(--accent);font-weight:700">B2B 탭 ›</span></div></button>` : ''}
     ${summaryCard(m, extra)}
     ${monthChart ? `<div class="card"><div class="row"><b>일별 매출 · 순이익</b><span class="meta">막대를 누르면 그날 보고서</span></div>${monthChart.html}</div>` : ''}
     <b class="meta" style="padding:4px 4px 0;font-weight:700;color:var(--ink2)">사업자별 · 누르면 상세</b>
