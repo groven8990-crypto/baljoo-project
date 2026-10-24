@@ -100,9 +100,16 @@ def report(path: Path, res: dict):
 
 
 def recent_files(folder: Path):
+    # 샵마인이 날짜별 하위 폴더에 저장하는 경우도 있어 두 단계 아래 폴더까지 봄
     now = time.time()
-    files = [p for p in folder.iterdir() if p.suffix.lower() in EXTS and not p.name.startswith("~$")]
-    return sorted((p for p in files if now - p.stat().st_mtime <= FILE_MAX_AGE), key=lambda p: p.stat().st_mtime)
+    files = []
+    for p in [*folder.glob("*"), *folder.glob("*/*"), *folder.glob("*/*/*")]:
+        try:
+            if p.suffix.lower() in EXTS and not p.name.startswith("~$") and now - p.stat().st_mtime <= FILE_MAX_AGE:
+                files.append(p)
+        except OSError:
+            pass
+    return sorted(files, key=lambda p: p.stat().st_mtime)
 
 
 def scan_and_upload(cfg, sent):
@@ -141,7 +148,7 @@ def gui():
     return pyautogui, win32con, win32gui
 
 
-APP_VERSION = "2026-10-24e"
+APP_VERSION = "2026-10-24f"
 
 
 def proc_name(hwnd):
@@ -319,8 +326,28 @@ def self_update():
         log(f"   (업데이트 확인 건너뜀: {e})")
 
 
+def ensure_autostart():
+    """윈도우를 켜면 알림이 자동으로 시작되도록 '시작프로그램'에 바로가기를 한 번 만들어 둠"""
+    try:
+        import win32com.client
+        startup = Path(os.environ["APPDATA"]) / "Microsoft/Windows/Start Menu/Programs/Startup"
+        lnk = startup / "발주 알리미.lnk"
+        if lnk.exists():
+            return
+        sc = win32com.client.Dispatch("WScript.Shell").CreateShortcut(str(lnk))
+        sc.TargetPath = str(Path(os.environ["SystemRoot"]) / "System32/cmd.exe")
+        sc.Arguments = f'/k ""{sys.executable}" "{Path(__file__).resolve()}""'
+        sc.WorkingDirectory = str(BASE_DIR)
+        sc.WindowStyle = 7  # 최소화한 채로 시작
+        sc.Save()
+        log("   윈도우를 켜면 자동으로 시작되도록 등록했습니다")
+    except Exception as e:
+        log(f"   (자동 시작 등록 건너뜀: {e})")
+
+
 def watch():
     self_update()
+    ensure_autostart()
     cfg = load_config()
     if not cfg["sync_key"]:
         print("먼저 설정하세요:  python shopmine_alert.py --setup")
