@@ -1,5 +1,7 @@
--- 1단계 설정용 SQL — Supabase 대시보드 → SQL Editor → New query 에 전체를 붙여 넣고 Run
--- (migrations/ 폴더의 두 파일을 순서대로 합친 것 + 맨 아래 대표님 계정 등록)
+-- 모바일 앱 설정 SQL (한 번만 실행) — Supabase 대시보드 → SQL Editor → New query 에 전체를 붙여 넣고 Run
+-- 실행 전: Authentication → Users → Add user 로 대표님 계정(이메일 + 비밀번호, Auto Confirm 체크)을 먼저 만들고,
+--          맨 아래 '여기에-이메일' 을 그 이메일로 바꾸세요.
+-- 실행 후: 결과 표에 나오는 sync_key 값을 발주 자동화의 [연동 키 입력]에 붙여 넣으세요.
 
 -- 모바일 주문 알림 앱 — 기본 테이블
 -- 쇼핑몰 API에서 직접 가져온 주문을 저장하고, 팀원 권한별로 읽게 합니다.
@@ -131,9 +133,41 @@ create policy b2b_sales_update on public.b2b_sales
 
 alter publication supabase_realtime add table public.b2b_sales;
 
+-- 매출 보고 — 발주 자동화가 계산한 날짜별 보고서(매출 · 매입 · 수수료 · 부가세 · 순이익)를 받아 둡니다.
+-- draft     : 보고서를 만들기만 한 상태 (진행 중 / 확인 중)
+-- confirmed : '이력에 저장'까지 누른 마감 확정
+create table if not exists public.report_snapshots (
+  report_date date primary key,
+  status      text not null check (status in ('draft', 'confirmed')),
+  data        jsonb not null,
+  updated_at  timestamptz not null default now()
+);
+
+alter table public.report_snapshots enable row level security;
+
+-- 팀원이면 누구나 읽기 (보기 전용 포함)
+create policy report_snapshots_read on public.report_snapshots
+  for select using (public.my_role() is not null);
+
+alter publication supabase_realtime add table public.report_snapshots;
+
+-- 서버 함수만 읽는 비밀값 (RLS 를 켜고 정책을 두지 않아 앱 · 공개 키로는 읽을 수 없음).
+-- BALJOO_SYNC_KEY: 발주 자동화 → 폰 앱 연동 키. 대시보드 Secrets 에 같은 이름이 있으면 그 값이 우선합니다.
+create extension if not exists pgcrypto;
+create table if not exists public.app_secrets (
+  name  text primary key,
+  value text not null
+);
+alter table public.app_secrets enable row level security;
+insert into public.app_secrets (name, value)
+values ('BALJOO_SYNC_KEY', encode(gen_random_bytes(18), 'hex'))
+on conflict (name) do nothing;
+
 -- ── 대표님 계정을 관리자로 등록 ─────────────────────────────
--- 먼저 Authentication → Users → Add user 로 이메일 계정을 만든 뒤,
--- 아래 '여기에-이메일' 을 그 이메일로 바꿔서 이 부분만 다시 실행하세요.
 insert into public.members (user_id, name, role)
 select id, '대표', 'admin' from auth.users where email = '여기에-이메일'
 on conflict (user_id) do update set role = 'admin';
+
+-- ── 결과 확인: 등록된 팀원 수 + 발주 자동화에 넣을 연동 키 ─────
+select (select count(*) from public.members) as members,
+       (select value from public.app_secrets where name = 'BALJOO_SYNC_KEY') as sync_key;

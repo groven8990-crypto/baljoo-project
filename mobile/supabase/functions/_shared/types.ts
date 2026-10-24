@@ -43,3 +43,13 @@ export function secret(name: string): string {
   if (!v) throw new Error(`비밀값 ${name} 이(가) 설정되지 않았습니다`);
   return v;
 }
+
+// 발주 자동화 연동 키: 대시보드 Secrets 의 BALJOO_SYNC_KEY → 없으면 app_secrets 테이블 값
+// deno-lint-ignore no-explicit-any
+export async function syncKey(db: any): Promise<string> {
+  const env = Deno.env.get("BALJOO_SYNC_KEY");
+  if (env) return env;
+  const { data } = await db.from("app_secrets").select("value").eq("name", "BALJOO_SYNC_KEY").maybeSingle();
+  if (!data?.value) throw new Error("연동 키가 설정되지 않았습니다");
+  return data.value;
+}

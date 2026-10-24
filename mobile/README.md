@@ -18,36 +18,44 @@
 | `supabase/migrations/…_b2b_sales.sql` | 문자매출(직거래) 테이블 — 폰 · 발주 사이트 공용 |
 | `supabase/functions/b2b-sync` | 발주 사이트 '직거래 주문 추가' → 문자매출 저장 |
 | `supabase/migrations/…_report_snapshots.sql` · `functions/report-sync` | 발주 자동화가 만든 매출 보고서(매출 · 매입 · 수수료 · 부가세 · 순이익)를 받아 현황 · 보고서 · 순마진 화면에 씀 |
-| `supabase/dashboard/` | 대시보드에 그대로 붙여 넣는 설정 파일 (`step1.sql` · `step2.sql` · 함수 한 파일본) |
+| `supabase/dashboard/` | 대시보드에 그대로 붙여 넣는 설정 파일 (`setup.sql` · 함수 한 파일본) |
 | `../src/mobile/` | 폰 앱 — 현황 · 보고서 · 순마진 (공통) + B2B · CS (담당자) · 설정 |
 
 ## 설정 순서
 
-1. **테이블 만들기** — Supabase SQL Editor 에서 `dashboard/step1.sql` → `dashboard/step2.sql` 순서로 실행
-   (발주 자동화가 이미 쓰는 `byanyksnvrqfrkeylvll` 프로젝트를 그대로 씁니다)
-2. **VAPID 키 만들기** — `npx web-push generate-vapid-keys`
-3. **비밀값 등록** — Supabase → Edge Functions → Secrets
-   - `CRON_SECRET`, `BALJOO_SYNC_KEY` (각각 아무 긴 문자열), `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (`mailto:메일주소`)
-   - 쿠팡: `COUPANG_<REF>_ACCESS_KEY`, `COUPANG_<REF>_SECRET_KEY`, `COUPANG_<REF>_VENDOR_ID`
-   - 네이버: `NAVER_<REF>_CLIENT_ID`, `NAVER_<REF>_CLIENT_SECRET`
-4. **함수 배포** — 대시보드 Edge Functions → Via Editor 에 `dashboard/b2b-sync.ts`, `dashboard/report-sync.ts` 를 각각 붙여 넣고 배포,
-   두 함수 모두 **Verify JWT 끄기** (CLI 라면 `supabase functions deploy <이름> --no-verify-jwt`). 주문 알림용 `collect-orders` 는 쇼핑몰 키 발급 후
-5. **쇼핑몰 계정 등록** (예: 쿠팡 로또상회, 비밀값 이름이 `COUPANG_LOTTO_…` 일 때)
+### 오늘 바로 쓰기 (문자매출 · 현황 · 보고서 · 순마진) — 대시보드에서 3가지
+1. **계정 만들기** — Authentication → Users → Add user → 이메일 · 비밀번호 입력, **Auto Confirm User 체크**
+   (팀원도 같은 방법으로 만들고, 아래 SQL 의 이메일 · 이름 · 권한만 바꿔 실행)
+2. **SQL 한 번 실행** — SQL Editor → New query 에 `dashboard/setup.sql` 전체를 붙여 넣고,
+   맨 아래 `'여기에-이메일'` 을 1번 이메일로 바꿔 Run → 결과 표의 **sync_key** 값을 복사
+3. **함수 2개 만들기** — Edge Functions → Deploy a new function → Via Editor 에
+   `dashboard/b2b-sync.ts`(이름 `b2b-sync`), `dashboard/report-sync.ts`(이름 `report-sync`) 를 각각 붙여 넣고 배포,
+   각 함수 Details 에서 **Verify JWT 끄기**
+
+그다음 발주 자동화 → 직거래 주문 카드의 `📱 모바일 앱 연동 [연동 키 입력]` 에 sync_key 를 붙여 넣으면,
+직거래 주문과 매출 보고서(보고서 생성 = 진행 중, '💾 이력에 저장' = 마감 확정)가 자동으로 폰 앱에 올라갑니다.
+
+폰 앱 주소: `https://groven8990-crypto.github.io/baljoo-project/mobile/` (main 에 합쳐지면 GitHub Pages 로 배포)
+아이폰은 Safari → 공유 → 홈 화면에 추가, 안드로이드는 Chrome → 설치
+
+팀원 추가 SQL (권한: `admin` 담당자 · `staff` 실무 · `viewer` 보기 전용):
+```sql
+insert into members (user_id, name, role)
+select id, '이름', 'viewer' from auth.users where email = '팀원이메일'
+on conflict (user_id) do update set name = excluded.name, role = excluded.role;
+```
+
+### 나중에 — 신규 주문 푸시 (쇼핑몰 API 키 발급 후)
+1. VAPID 키 만들기 — `npx web-push generate-vapid-keys`, 공개키는 `src/mobile/config.js` 에도 입력
+2. Edge Functions → Secrets: `CRON_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`(`mailto:메일주소`),
+   쿠팡 `COUPANG_<REF>_ACCESS_KEY` · `_SECRET_KEY` · `_VENDOR_ID`, 네이버 `NAVER_<REF>_CLIENT_ID` · `_CLIENT_SECRET`
+3. `collect-orders` 배포 (`supabase functions deploy collect-orders --no-verify-jwt`)
+4. 쇼핑몰 계정 등록 (예: 비밀값 이름이 `COUPANG_LOTTO_…` 일 때)
    ```sql
    insert into channel_accounts (id, platform, store_name, business, secret_ref, enabled)
    values ('coupang-lotto', 'coupang', '로또상회', '그로븐', 'LOTTO', true);
    ```
-6. **예약 실행** — `schedule.sql` 의 `<PROJECT_REF>`, `<CRON_SECRET>` 을 바꿔서 실행
-7. **앱 설정** — `src/mobile/config.js` 에 VAPID 공개키 입력 (주소 · 공개 키는 이미 들어 있음) 후 main 에 올리면
-   GitHub Pages `…/mobile/` 주소로 배포됩니다
-8. **팀원 초대** — Supabase → Authentication → Invite user 로 메일 초대 후
-   ```sql
-   insert into members (user_id, name, role) values ('<auth.users 의 id>', '대표', 'admin');
-   ```
-
-9. **발주 자동화 연동** — 발주 자동화 → 직거래 주문 카드의 `📱 모바일 앱 연동 [연동 키 입력]` 에
-   `BALJOO_SYNC_KEY` 와 같은 값을 한 번 넣으면, 이후 직거래 주문을 추가할 때마다 폰 앱 B2B 탭에 자동으로 올라갑니다.
-   같은 키로 **매출 보고서도 자동 전송**됩니다 — 매출 보고 탭에서 보고서를 만들면 '진행 중', '💾 이력에 저장'을 누르면 '마감 확정'
+5. `schedule.sql` 의 `<PROJECT_REF>`, `<CRON_SECRET>` 을 바꿔 실행 (5분마다 수집)
 
 ## 동작 메모
 

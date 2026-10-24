@@ -96,11 +96,12 @@ nav.tabs button[aria-current=page]{color:var(--accent);font-weight:700}
 <body>
 <section id="login" hidden>
   <main style="padding-top:calc(env(safe-area-inset-top) + 48px)">
-    <h1>주문 알림 로그인</h1>
-    <p class="sub">관리자가 초대한 이메일로 로그인 링크를 받습니다.</p>
+    <h1>로그인</h1>
+    <p class="sub">관리자가 만들어 준 이메일 · 비밀번호로 로그인합니다.</p>
     <form id="loginForm" style="display:flex;flex-direction:column;gap:10px">
-      <label>이메일<input id="email" type="email" autocomplete="email" required></label>
-      <button class="btn" type="submit">로그인 링크 받기</button>
+      <label>이메일<input id="email" type="email" autocomplete="username" required></label>
+      <label>비밀번호<input id="password" type="password" autocomplete="current-password" required></label>
+      <button class="btn" type="submit">로그인</button>
     </form>
     <p id="loginMsg" class="notice ok" hidden></p>
   </main>

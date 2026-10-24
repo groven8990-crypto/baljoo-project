@@ -336,14 +336,11 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 
 $('loginForm').onsubmit = async (e) => {
   e.preventDefault();
-  const { error } = await db.auth.signInWithOtp({
-    email: $('email').value.trim(),
-    options: { emailRedirectTo: location.href.split('#')[0], shouldCreateUser: false },
-  });
+  const { error } = await db.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value });
   const m = $('loginMsg');
-  m.hidden = false;
-  m.className = 'notice ' + (error ? 'warn' : 'ok');
-  m.textContent = error ? '로그인 링크를 보내지 못했습니다. 초대받은 이메일인지 확인해 주세요.' : '메일함에서 로그인 링크를 눌러 주세요.';
+  m.hidden = !error;
+  m.className = 'notice warn';
+  m.textContent = error ? '이메일 또는 비밀번호가 맞지 않습니다.' : '';
 };
 $('refresh').onclick = load;
 window.addEventListener('hashchange', () => { if (location.hash === '#orders') showTab('cs'); });
