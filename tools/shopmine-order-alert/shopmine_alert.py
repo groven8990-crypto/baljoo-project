@@ -39,6 +39,7 @@ DEFAULTS = {
     "sync_key": "",
     "watch_dir": str(Path.home() / "Downloads"),
     "window_title": "ShopMine",  # 샵마인 창 제목: "ShopMine::쇼핑몰 통합관리 솔루션[…]"
+    "window_proc": "",           # 샵마인 프로그램 파일 이름 (설정 3번에서 창을 클릭해 기록)
     "interval_min": 10,       # 자동 클릭 간격
     "hours": [7, 23],         # 이 시간대에만 자동 클릭 (폴더 감시는 항상)
     "steps": [],              # [{"key": "f5"} | {"click": [x, y]}, ... ] + 각 단계 뒤 "wait" 초
@@ -140,21 +141,57 @@ def gui():
     return pyautogui, win32con, win32gui
 
 
-def focus_shopmine(title_part):
-    _, win32con, win32gui = gui()
-    found = []
+APP_VERSION = "2026-10-24c"
 
-    # 설정한 글자가 없어도 샵마인 실제 제목("ShopMine::쇼핑몰 통합관리 솔루션…")으로 한 번 더 찾음
-    names = [n for n in (title_part, "ShopMine", "샵마인") if n]
+
+def proc_name(hwnd):
+    """창을 띄운 프로그램 파일 이름 (예: ShopMine.exe). 관리자 권한으로 켜진 프로그램도 읽히도록 최소 권한으로 엶"""
+    import ctypes
+    import win32process
+    try:
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return ""
+        try:
+            buf = ctypes.create_unicode_buffer(1024)
+            size = ctypes.c_ulong(1024)
+            if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                return os.path.basename(buf.value)
+        finally:
+            k32.CloseHandle(h)
+    except Exception:
+        pass
+    return ""
+
+
+def visible_windows():
+    _, _, win32gui = gui()
+    out = []
 
     def cb(hwnd, _):
-        title = win32gui.GetWindowText(hwnd)
-        if win32gui.IsWindowVisible(hwnd) and any(n.lower() in title.lower() for n in names):
-            found.append(hwnd)
+        if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowText(hwnd).strip():
+            out.append((hwnd, win32gui.GetWindowText(hwnd), proc_name(hwnd)))
     win32gui.EnumWindows(cb, None)
-    if not found:
+    return out
+
+
+def find_shopmine(cfg):
+    # 창 제목 · 프로그램 이름 중 하나라도 맞으면 샵마인으로 봄 (제목이 프로그램 안에서 따로 그려지는 경우 대비)
+    names = [n.lower() for n in (cfg.get("window_title"), "ShopMine", "샵마인") if n]
+    procs = [p.lower() for p in (cfg.get("window_proc"), "shopmine") if p]
+    for hwnd, title, proc in visible_windows():
+        if any(n in title.lower() for n in names) or any(p in proc.lower() for p in procs):
+            return hwnd
+    return None
+
+
+def focus_shopmine(cfg):
+    _, win32con, win32gui = gui()
+    hwnd = find_shopmine(cfg)
+    if not hwnd:
         return False
-    hwnd = found[0]
     if win32gui.IsIconic(hwnd):
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
     try:
@@ -165,10 +202,17 @@ def focus_shopmine(title_part):
     return True
 
 
+def report_windows():
+    log("   지금 열려 있는 창 (제목 | 프로그램) — 이 화면을 캡처해서 보내주세요:")
+    for _, title, proc in visible_windows()[:20]:
+        log(f"     {title[:50]} | {proc}")
+
+
 def run_steps(cfg):
     pyautogui, _, _ = gui()
-    if not focus_shopmine(cfg["window_title"]):
-        log(f"⚠ 제목에 '{cfg['window_title']}' 이(가) 들어간 창을 못 찾았습니다 — 샵마인이 켜져 있는지 확인하세요")
+    if not focus_shopmine(cfg):
+        log("⚠ 샵마인 창을 못 찾았습니다 — 샵마인이 켜져 있는지 확인하세요")
+        report_windows()
         return
     log("🖱 샵마인 자동 수집 중 — 마우스를 잠시 건드리지 마세요")
     for s in cfg["steps"]:
@@ -188,9 +232,20 @@ def setup():
     d = input(f"2) 샵마인 엑셀이 저장되는 폴더 [{cfg['watch_dir']}]: ").strip().strip('"')
     if d:
         cfg["watch_dir"] = d
-    t = input(f"3) 샵마인 창 제목에 들어가는 글자 [{cfg['window_title']}]: ").strip()
-    if t:
-        cfg["window_title"] = t
+    if input("3) 샵마인 창을 지금 지정할까요? (y/n) [y]: ").strip().lower() in ("", "y"):
+        _, _, win32gui = gui()
+        print("   5초 안에 샵마인 창을 마우스로 한 번 클릭해서 맨 앞으로 두세요...")
+        for i in range(5, 0, -1):
+            print(f"   {i}...", flush=True)
+            time.sleep(1)
+        hwnd = win32gui.GetForegroundWindow()
+        title, proc = win32gui.GetWindowText(hwnd), proc_name(hwnd)
+        print(f"   기록: {title[:40]} | {proc}")
+        if proc and proc.lower() not in ("cmd.exe", "windowsterminal.exe", "conhost.exe", "powershell.exe"):
+            cfg["window_proc"] = proc
+            cfg["window_title"] = title[:20] or cfg["window_title"]
+        else:
+            print("   ⚠ 이 검은 창이 기록됐습니다. 샵마인 창을 클릭하지 않은 것 같아요 — 기본값으로 둡니다")
 
     if input("\n4) 샵마인 버튼을 자동으로 누르게 할까요? (y/n) [y]: ").strip().lower() in ("", "y"):
         pyautogui, _, _ = gui()
@@ -218,13 +273,34 @@ def setup():
     print("이제 python shopmine_alert.py 로 시작하세요.")
 
 
+UPDATE_URL = "https://groven8990-crypto.github.io/baljoo-project/pc/shopmine_alert.py"
+
+
+def self_update():
+    """켤 때마다 최신 프로그램을 받아 보고, 바뀌었으면 자기 파일을 바꾸고 다시 시작 (다시 설치할 필요 없게)"""
+    try:
+        import random
+        req = urllib.request.Request(f"{UPDATE_URL}?v={random.randint(1, 10**9)}", headers={"Cache-Control": "no-cache"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            new = r.read()
+        me = Path(__file__).resolve()
+        if b"def watch()" in new and new != me.read_bytes():
+            me.write_bytes(new)
+            log("⬆ 새 버전을 받았습니다 — 다시 시작합니다")
+            import subprocess
+            sys.exit(subprocess.call([sys.executable, str(me)] + sys.argv[1:]))
+    except Exception as e:
+        log(f"   (업데이트 확인 건너뜀: {e})")
+
+
 def watch():
+    self_update()
     cfg = load_config()
     if not cfg["sync_key"]:
         print("먼저 설정하세요:  python shopmine_alert.py --setup")
         sys.exit(1)
     sent = load_sent()
-    log(f"👀 시작 — 저장 폴더: {cfg['watch_dir']}")
+    log(f"👀 시작 ({APP_VERSION}) — 저장 폴더: {cfg['watch_dir']}")
     if cfg["steps"]:
         log(f"   샵마인 자동 수집: {cfg['interval_min']}분마다 ({cfg['hours'][0]}시~{cfg['hours'][1]}시)")
     else:
@@ -267,5 +343,7 @@ if __name__ == "__main__":
         setup()
     elif arg == "--test":
         test()
+    elif arg == "--windows":
+        report_windows()
     else:
         watch()
