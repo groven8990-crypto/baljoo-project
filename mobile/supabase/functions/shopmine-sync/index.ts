@@ -3,7 +3,7 @@
 // 헤더 x-sync-key 가 연동 키(BALJOO_SYNC_KEY)와 같아야 합니다.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import * as XLSX from "npm:xlsx@0.18.5";
-import { pushToStaff } from "../_shared/push.ts";
+import { pushToMembers } from "../_shared/push.ts";
 import { alertMessage, parseShopmineRows, ShopmineOrder } from "../_shared/shopmine.ts";
 import { secret, syncKey } from "../_shared/types.ts";
 
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
   // 처음 연결할 때는 이미 쌓인 발송대기 주문이 한꺼번에 울리지 않도록 저장만
   let pushed = 0;
   if (fresh.length && !firstRun) {
-    pushed = await pushToStaff(db, "order", { ...alertMessage(fresh), url: "./#orders", tag: "order-shopmine" });
+    pushed = await pushToMembers(db, "order", { ...alertMessage(fresh), url: "./#orders", tag: "order-shopmine" });
   }
   await db.from("channel_accounts").update({ last_synced_at: new Date().toISOString(), last_error: null }).eq("id", ACCOUNT);
   return Response.json({ rows: parsed.length, new: (inserted ?? []).length, pushed, first_run: firstRun });

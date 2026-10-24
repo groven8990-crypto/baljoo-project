@@ -3,7 +3,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import { fetchCoupang } from "../_shared/coupang.ts";
 import { fetchNaver } from "../_shared/naver.ts";
-import { pushToStaff } from "../_shared/push.ts";
+import { pushToMembers } from "../_shared/push.ts";
 import { Adapter, ChannelAccount, NormalizedOrder, secret } from "../_shared/types.ts";
 
 const ADAPTERS: Partial<Record<ChannelAccount["platform"], Adapter>> = {
@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       // 처음 켠 계정은 과거 주문이 한꺼번에 울리지 않도록 알림 없이 저장만
       let sent = 0;
       if (fresh.length && !firstRun) {
-        sent = await pushToStaff(db, "order", { ...message(account, fresh), url: "./#orders", tag: `order-${account.id}` });
+        sent = await pushToMembers(db, "order", { ...message(account, fresh), url: "./#orders", tag: `order-${account.id}` });
       }
       await db.from("channel_accounts").update({ last_synced_at: now.toISOString(), last_error: null }).eq("id", account.id);
       report[account.id] = { fetched: fetched.length, new: fresh.length, pushed: sent };

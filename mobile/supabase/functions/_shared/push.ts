@@ -21,13 +21,12 @@ async function configure(db: SupabaseClient) {
   configured = true;
 }
 
-// pref 가 켜진 관리자·실무 팀원 폰 전체에 보냅니다. 만료된 구독은 지웁니다.
-export async function pushToStaff(db: SupabaseClient, pref: string, msg: PushMessage): Promise<number> {
+// pref 가 켜진 팀원(담당자 · 실무 · 보기 전용) 폰 전체에 보냅니다. 만료된 구독은 지웁니다.
+export async function pushToMembers(db: SupabaseClient, pref: string, msg: PushMessage): Promise<number> {
   await configure(db);
   const { data: subs, error } = await db
     .from("push_subscriptions")
-    .select("id, endpoint, p256dh, auth, prefs, members!inner(role)")
-    .in("members.role", ["admin", "staff"]);
+    .select("id, endpoint, p256dh, auth, prefs, members!inner(role)");
   if (error) throw error;
   let sent = 0;
   for (const s of subs ?? []) {
