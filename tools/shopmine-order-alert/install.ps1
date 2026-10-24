@@ -44,7 +44,8 @@ if ($LASTEXITCODE -ne 0) { Fail '부품 설치 실패 — 인터넷 연결을 �
 Step '[3/4] 알림 프로그램 받는 중...'
 New-Item -ItemType Directory -Force -Path $Dir | Out-Null
 $script = Join-Path $Dir 'shopmine_alert.py'
-Invoke-WebRequest -UseBasicParsing "$Base/shopmine_alert.py" -OutFile $script
+# 주소 끝에 매번 다른 숫자를 붙여 예전에 받아 둔(캐시된) 파일이 아닌 최신 파일을 받음
+Invoke-WebRequest -UseBasicParsing "$Base/shopmine_alert.py?v=$(Get-Random)" -Headers @{ 'Cache-Control' = 'no-cache' } -OutFile $script
 # 바탕화면 아이콘: cmd /k 로 열어서 프로그램이 끝나도 창(안내 문구)이 남아 있게 함
 $shell = New-Object -ComObject WScript.Shell
 $desktop = [Environment]::GetFolderPath('Desktop')
