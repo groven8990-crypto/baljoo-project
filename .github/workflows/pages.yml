@@ -29,7 +29,7 @@ jobs:
           enablement: true
       # 샵마인 PC 알림 프로그램도 같이 올려서, PC 설치 파일이 여기서 받아 가게 함 (…/pc/)
       - name: Add PC alert tool
-        run: mkdir -p src/pc && cp tools/shopmine-order-alert/shopmine_alert.py tools/shopmine-order-alert/install.bat src/pc/
+        run: mkdir -p src/pc && cp tools/shopmine-order-alert/shopmine_alert.py tools/shopmine-order-alert/install.bat tools/shopmine-order-alert/install.ps1 src/pc/
       - name: Upload src as Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
