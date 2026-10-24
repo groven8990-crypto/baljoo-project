@@ -135,6 +135,11 @@ nav.tabs button[aria-current=page]{color:var(--accent);font-weight:700}
   <main>
     <div id="pushBox"></div>
     <div class="card"><b>폰에 설치하기</b><span class="meta" style="line-height:1.7">아이폰: Safari 로 열기 → 공유 버튼 → 홈 화면에 추가<br>안드로이드: Chrome 으로 열기 → 설치 (또는 ⋮ → 홈 화면에 추가)</span></div>
+    <form class="card" id="pwForm" style="display:flex;flex-direction:column;gap:8px"><b>비밀번호 변경</b>
+      <label>새 비밀번호 (8자 이상)<input id="newPw" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button class="btn" type="submit">변경</button>
+      <p class="notice" id="pwMsg" hidden></p>
+    </form>
     <button class="btn ghost" id="logout" type="button">로그아웃</button>
   </main>
 </div>
