@@ -57,3 +57,36 @@ Deno.test("매출 보고 스냅샷 → 숫자만 남기고 개인정보는 버�
   assertEquals(typeof parseReportBody({ status: "x", snapshot: {} }), "string");
   assertEquals(typeof parseReportBody({ status: "draft", snapshot: { date: "2026/10/21", profitRows: [] } }), "string");
 });
+
+import * as XLSX from "npm:xlsx@0.18.5";
+import { alertMessage, kstIso, parseShopmineRows } from "../_shared/shopmine.ts";
+
+Deno.test("샵마인 엑셀 → 주문 (금액 AB-AI+AH, 이름 마스킹, 같은 상품 줄 구분)", () => {
+  const H = Array.from({ length: 36 }, (_, i) => `열${i}`);
+  Object.assign(H, { 0: "별칭(쇼핑몰계정)", 1: "판매자상품코드", 2: "주문번호", 3: "상품명", 4: "선택사항", 5: "수량", 6: "구매자", 7: "주소", 8: "주문일시" });
+  const row = (no: string, amt: number) => {
+    const r: (string | number)[] = Array(36).fill("");
+    Object.assign(r, { 0: "쿠팡-로또상회", 1: "GA01", 2: no, 3: "깐마늘", 4: "1kg", 5: 2, 6: "김철수", 7: "경기도 연천군 전곡읍 1", 8: "2026-10-24 09:12:33" });
+    r[27] = amt; r[34] = 1000; r[33] = 3000;
+    return r;
+  };
+  const ws = XLSX.utils.aoa_to_sheet([["샵마인 발송대기"], H, row("A1", 20000), row("A1", 20000), row("B2", 10000), []]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+  const bytes = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  const back = XLSX.read(new Uint8Array(bytes), { type: "array" });
+  const rows = XLSX.utils.sheet_to_json(back.Sheets[back.SheetNames[0]], { header: 1, defval: "", raw: true }) as unknown[][];
+  const o = parseShopmineRows(rows);
+  if (typeof o === "string") throw new Error(o);
+  assertEquals(o.length, 3);
+  assertEquals(o[0].platform, "쿠팡-로또상회");
+  assertEquals(o[0].amount, 22000);
+  assertEquals(o[0].buyer_masked, "김**");
+  assertEquals(o[0].receiver_region, "경기도 연천군");
+  assertEquals(o[0].ordered_at, "2026-10-24T00:12:33.000Z");
+  assertEquals([o[0].external_item_id, o[1].external_item_id], ["깐마늘|1kg#1", "깐마늘|1kg#2"]);
+  assertEquals(typeof parseShopmineRows([["아무거나"]]), "string");
+  assertEquals(alertMessage(o).title, "[쿠팡-로또상회] 신규 주문 3건");
+  assertEquals(alertMessage([o[0], { ...o[2], platform: "11번가" }]).body, "쿠팡-로또상회 1 · 11번가 1");
+  assertEquals(kstIso(45589.5), "2024-10-24T03:00:00.000Z");
+});
