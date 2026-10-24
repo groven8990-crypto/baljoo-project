@@ -4682,6 +4682,30 @@ async function _mobileSyncPending(){
   const since = new Date(Date.now() - 7*86400e3).toISOString().slice(0,10);
   for (const o of loadJgOrders().filter(o => !o.mobile_synced && (o.order_date||'') >= since)) await _mobileSyncOne(o);
   renderMobileSyncStatus();
+  await _mobileSyncHistory();
+}
+// 키를 처음 넣었을 때(또는 바꿨을 때) '이력에 저장'해 둔 지난 매출 보고서를 폰 앱에 한 번에 올림 —
+// 그래야 폰 앱 현황 · 보고서 · 순마진이 연동 첫날부터 비어 있지 않음. 다 보내면 그 키로는 다시 안 보냄
+const LS_MOBILE_HIST_SENT = 'yb_mobile_hist_sent';
+async function _mobileSyncHistory(){
+  const key = _mobileSyncKey();
+  if (!key || localStorage.getItem(LS_MOBILE_HIST_SENT) === key) return;
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem('yb_sales_history')||'[]'); } catch(e){}
+  let ok = 0;
+  for (const snap of hist) {
+    if (!snap || !snap.date) { ok++; continue; }
+    try {
+      const r = await fetch(_SB_URL + '/functions/v1/report-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-sync-key': key },
+        body: JSON.stringify({ status: 'confirmed', snapshot: _mobileReportPayload(snap) }),
+      });
+      if (r.ok) ok++; else console.warn('[모바일 연동] 지난 보고서 전송 실패', snap.date, r.status);
+    } catch(e) { console.warn('[모바일 연동] 지난 보고서 전송 오류', snap.date, e); }
+  }
+  if (ok === hist.length) { try { localStorage.setItem(LS_MOBILE_HIST_SENT, key); } catch(e){} }
+  console.log(`[모바일 연동] 지난 매출 보고서 ${ok}/${hist.length}일 전송`);
 }
 function removeJikgeoraeOrder(orderNo){
   const idx = allOrders.findIndex(o => o.order_no === orderNo);
