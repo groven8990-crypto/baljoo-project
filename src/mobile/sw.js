@@ -26,3 +26,11 @@ self.addEventListener('notificationclick', (e) => {
     await self.clients.openWindow(url);
   })());
 });
+
+// 앱 파일은 매번 서버에 새 버전이 있는지 확인하고 받습니다 (홈 화면 앱이 예전 파일을 붙들고 있어
+// 화면 일부만 새 버전으로 보이는 문제 방지 — 바뀐 게 없으면 304 로 바로 끝남)
+self.addEventListener('fetch', (e) => {
+  const req = e.request;
+  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  e.respondWith(fetch(req, { cache: 'no-cache' }).catch(() => fetch(req)));
+});
