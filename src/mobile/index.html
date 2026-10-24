@@ -99,7 +99,10 @@ nav.tabs button[aria-current=page]{color:var(--accent);font-weight:700}
 .switch[aria-checked=true]{background:#7FC79A}
 .switch[aria-checked=true]::after{left:23px}
 .switch:disabled{opacity:.5}
-.mem{display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line2)}
+.mem{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line2)}
+.mem .acts{flex-basis:100%;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mem .acts button{height:38px;border:1px solid var(--line);border-radius:9px;background:#fff;font:inherit;font-size:13px;color:var(--ink2)}
+.mem .acts .danger{border-color:#F3C1B5;background:#FDEEEA;color:#B4472B;font-weight:700}
 .mem:first-child{border-top:none}
 .mem .who{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .mem select{height:34px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12px;background:#fff;padding:0 6px}

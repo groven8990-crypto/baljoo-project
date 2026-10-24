@@ -99,7 +99,8 @@ async function renderTeam() {
     el.className = 'mem';
     el.innerHTML = `<div class="who"><span class="name" data-f="n"></span><span class="meta" data-f="e"></span></div>
       <select aria-label="권한"><option value="viewer">보기 전용</option><option value="admin">담당자</option></select>
-      <button class="more" type="button">⋯</button>`;
+      <button class="more" type="button" aria-expanded="false">관리</button>
+      <div class="acts" hidden><button type="button" data-a="reset">비밀번호 초기화</button><button type="button" data-a="remove" class="danger">삭제 (퇴사)</button></div>`;
     el.querySelector('[data-f=n]').textContent = m.user_id === user.id ? `${m.name} (나)` : m.name;
     el.querySelector('[data-f=e]').textContent = m.email;
     const sel = el.querySelector('select');
@@ -109,13 +110,16 @@ async function renderTeam() {
       try { await team({ action: 'role', user_id: m.user_id, role: sel.value }); toast(`${m.name} → ${ROLE_LABEL[sel.value]}`); } catch (e) { toast(e.message); renderTeam(); }
     };
     const more = el.querySelector('.more');
+    const acts = el.querySelector('.acts');
     more.hidden = m.user_id === user.id;
-    more.onclick = async () => {
-      const pick = prompt(`${m.name}\n1 = 비밀번호 초기화\n2 = 팀원 삭제`);
-      try {
-        if (pick === '1') { const { password } = await team({ action: 'reset', user_id: m.user_id }); showPassword(m.name, m.email, password); }
-        if (pick === '2' && confirm(`${m.name} 계정을 삭제할까요? 되돌릴 수 없습니다.`)) { await team({ action: 'remove', user_id: m.user_id }); toast('삭제했습니다'); renderTeam(); }
-      } catch (e) { toast(e.message); }
+    more.onclick = () => { acts.hidden = !acts.hidden; more.setAttribute('aria-expanded', String(!acts.hidden)); };
+    acts.querySelector('[data-a=reset]').onclick = async () => {
+      if (!confirm(`${m.name}님 비밀번호를 새 임시 비밀번호로 바꿀까요?`)) return;
+      try { const { password } = await team({ action: 'reset', user_id: m.user_id }); showPassword(m.name, m.email, password); } catch (e) { toast(e.message); }
+    };
+    acts.querySelector('[data-a=remove]').onclick = async () => {
+      if (!confirm(`${m.name} 계정을 삭제할까요?\n바로 로그인 · 조회 · 알림이 모두 막히고, 되돌릴 수 없습니다.`)) return;
+      try { await team({ action: 'remove', user_id: m.user_id }); toast(`${m.name} 계정을 삭제했습니다`); renderTeam(); } catch (e) { toast(e.message); }
     };
     return el;
   }));
