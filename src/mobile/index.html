@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="주문알림">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>발주 자동화 모바일</title>
+<style>
+:root{--bg:#F6F7F9;--card:#FFFFFF;--line:#E5E7EB;--line2:#F1F3F6;--ink:#1F2937;--ink2:#4B5563;--ink3:#6B7280;--accent:#3B5BAA;--accentT:#E8F0FE;--accentD:#2A4380;--ok:#1E7B45;--okT:#E6F6EC;--warn:#8A4D0B;--warnT:#FFF3E0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;-webkit-font-smoothing:antialiased}
+header{position:sticky;top:0;z-index:2;background:var(--card);border-bottom:1px solid var(--line);padding:calc(env(safe-area-inset-top) + 14px) 16px 10px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+h1{margin:0;font-size:20px}
+.sub{font-size:12px;color:var(--ink3)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-top:10px}
+.chip{flex:none;height:34px;padding:0 12px;border-radius:17px;border:1px solid var(--line);background:#fff;color:var(--ink2);font:inherit;font-size:13px}
+.chip[aria-pressed=true]{border-color:var(--accent);background:var(--accentT);color:var(--accentD);font-weight:700}
+.sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--bg);border-bottom:1px solid var(--line)}
+.sum div{padding:10px 8px;text-align:center}
+.sum b{display:block;font-size:15px}
+.sum span{font-size:11px;color:var(--ink3)}
+main{padding:12px 12px calc(env(safe-area-inset-bottom) + 90px);display:flex;flex-direction:column;gap:8px}
+.card{background:var(--card);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:5px}
+.card.new{box-shadow:0 0 0 2px var(--accentT)}
+.tag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px;background:var(--accentT);color:var(--accentD)}
+.name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.amt{font-size:14px;font-weight:700;white-space:nowrap}
+.meta{font-size:12px;color:var(--ink3)}
+.empty{padding:48px 0;text-align:center;color:var(--ink3);font-size:14px}
+.btn{height:46px;border-radius:12px;border:none;background:var(--accent);color:#fff;font:inherit;font-size:15px;font-weight:700;width:100%}
+.btn.ghost{background:#fff;color:var(--ink);border:1px solid #D1D5DB;font-weight:500}
+.notice{border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6}
+.notice.warn{background:var(--warnT);color:var(--warn)}
+.notice.ok{background:var(--okT);color:var(--ok)}
+input{height:46px;border:1px solid #D1D5DB;border-radius:12px;padding:0 12px;font:inherit;font-size:15px;width:100%}
+label{font-size:13px;color:var(--ink2);display:flex;flex-direction:column;gap:6px}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:#fff;border-top:1px solid var(--line);padding:6px 6px calc(env(safe-area-inset-bottom) + 8px);z-index:3}
+nav.tabs svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;background:var(--line2);border-radius:10px;padding:3px;margin-top:10px}
+.seg button{height:34px;border:none;border-radius:8px;background:none;font:inherit;font-size:13px;color:var(--ink2)}
+.seg button[aria-pressed=true]{background:#fff;color:var(--ink);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.gear{width:40px;height:40px;border:none;background:none;color:var(--ink2);display:flex;align-items:center;justify-content:center}
+.gear svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;background:var(--line2);color:var(--ink2)}
+.badge.admin{background:var(--accentT);color:var(--accentD)}
+.pill{align-self:flex-start;font-size:12px;font-weight:500;padding:4px 10px;border-radius:12px}
+.pill.done{background:var(--okT);color:var(--ok)}.pill.check{background:var(--warnT);color:var(--warn)}.pill.live,.pill.none{background:var(--accentT);color:var(--accentD)}
+.big{font-size:26px;font-weight:700}
+.green{color:var(--ok)}.orange{color:var(--warn)}
+.bar{height:8px;border-radius:4px;background:var(--line2);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.chart{height:96px;display:flex;gap:3px;align-items:flex-end}
+.chart button{flex:1;min-width:0;height:96px;border:none;padding:0;background:none;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:2px}
+.chart .col{width:100%;border-radius:3px 3px 0 0;background:#C9D7F5;display:flex;align-items:flex-end;overflow:hidden}
+.chart .col i{display:block;width:100%;background:#5B7FD0}
+.chart small{font-size:9px;color:var(--ink3);height:11px}
+.tbl{display:grid;gap:4px;font-size:12px;padding:7px 0;border-top:1px solid var(--line2);align-items:baseline}
+.tbl.h{font-size:11px;color:var(--ink3);border-top:none;padding-top:2px}
+.tbl .r{text-align:right}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px}
+.week button{height:56px;border-radius:12px;border:1px solid transparent;background:none;font:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:var(--ink)}
+.week button[aria-pressed=true]{border-color:var(--accent);background:var(--accentT);color:var(--accentD)}
+.week small{font-size:11px}
+.dot{width:6px;height:6px;border-radius:3px;display:inline-block}
+.dot.done{background:#7FC79A}.dot.check{background:#F0B46E}.dot.live{background:#9CB4E8}.dot.none{background:transparent}
+.legend{display:flex;justify-content:center;gap:12px;font-size:11px;color:var(--ink2);margin-top:6px}
+.bizhead{margin:-12px -14px 0;padding:12px 14px;border-radius:14px 14px 0 0;display:flex;flex-direction:column;gap:8px}
+details{border-top:1px solid var(--line2)}
+summary{list-style:none;padding:10px 0;cursor:pointer;display:flex;flex-direction:column;gap:4px}
+summary::-webkit-details-marker{display:none}
+summary .chev{transition:transform .15s;color:var(--ink3)}
+details[open] summary .chev{transform:rotate(90deg)}
+#viewReport header{position:static}
+.lowtag{font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px}
+nav.tabs button{height:48px;border:none;background:none;font:inherit;font-size:12px;color:var(--ink3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+nav.tabs button[aria-current=page]{color:var(--accent);font-weight:700}
+.form{display:flex;flex-direction:column;gap:8px}
+.form .g3{display:grid;grid-template-columns:.55fr 1fr 1fr;gap:6px}
+.form input{height:40px;font-size:14px;border-radius:9px;padding:0 9px;min-width:0}
+.form label{font-size:11px;gap:2px;min-width:0}
+.src{white-space:nowrap;flex:none;font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px;background:var(--line2);color:var(--ink2)}
+.src.phone{background:var(--accentT);color:var(--accentD)}
+.del{width:36px;height:36px;border:none;background:none;color:var(--ink3);font-size:18px}
+.datebar{display:flex;align-items:center;justify-content:space-between}
+.datebar button{width:44px;height:44px;border:none;background:none;font-size:20px;color:var(--ink2)}
+.toast{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 16px);background:var(--ink);color:#fff;border-radius:12px;padding:12px 14px;font-size:14px;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none}
+.toast.show{opacity:1;transform:none}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<section id="login" hidden>
+  <main style="padding-top:calc(env(safe-area-inset-top) + 48px)">
+    <h1>로그인</h1>
+    <p class="sub">관리자가 만들어 준 이메일 · 비밀번호로 로그인합니다.</p>
+    <form id="loginForm" style="display:flex;flex-direction:column;gap:10px">
+      <label>이메일<input id="email" type="email" autocomplete="username" required></label>
+      <label>비밀번호<input id="password" type="password" autocomplete="current-password" required></label>
+      <button class="btn" type="submit">로그인</button>
+    </form>
+    <p id="loginMsg" class="notice ok" hidden></p>
+  </main>
+</section>
+
+<section id="app" hidden>
+<div id="viewHome" hidden>
+  <header>
+    <div class="row"><div><div class="sub" id="homeSub"></div><h1>매출 현황</h1></div><span class="hdr-right"></span></div>
+    <div class="seg" id="homeSeg"></div>
+  </header>
+  <main id="homeMain"></main>
+</div>
+<div id="viewReport" hidden>
+  <header>
+    <div class="row"><h1>보고서</h1><span class="hdr-right"></span></div>
+    <div class="seg" id="repSeg"></div>
+    <div class="datebar" style="margin-top:6px"><button id="rPrev" type="button" aria-label="이전">‹</button><div style="text-align:center"><b id="rTitle"></b><div class="sub" id="rSub"></div></div><button id="rNext" type="button" aria-label="다음">›</button></div>
+    <div id="rWeek"></div>
+  </header>
+  <main id="repMain"></main>
+</div>
+<div id="viewMargin" hidden>
+  <header>
+    <div class="row"><div><div class="sub" id="marSub"></div><h1>품목별 순마진</h1></div><span class="hdr-right"></span></div>
+  </header>
+  <main id="marMain"></main>
+</div>
+<div id="viewSettings" hidden>
+  <header><div class="row"><div><div class="sub" id="setWho"></div><h1>설정</h1></div></div></header>
+  <main>
+    <div id="pushBox"></div>
+    <div class="card"><b>폰에 설치하기</b><span class="meta" style="line-height:1.7">아이폰: Safari 로 열기 → 공유 버튼 → 홈 화면에 추가<br>안드로이드: Chrome 으로 열기 → 설치 (또는 ⋮ → 홈 화면에 추가)</span></div>
+    <button class="btn ghost" id="logout" type="button">로그아웃</button>
+  </main>
+</div>
+<div id="viewCS" hidden>
+  <header>
+    <div class="row">
+      <div><div class="sub" id="today"></div><h1>오늘 들어온 주문</h1></div>
+      <button class="chip" id="refresh" aria-label="새로고침">새로고침</button>
+    </div>
+    <div class="chips" id="filters"></div>
+  </header>
+  <div class="sum">
+    <div><b id="sCount">0건</b><span>주문</span></div>
+    <div><b id="sQty">0개</b><span>수량</span></div>
+    <div><b id="sAmt">0원</b><span>결제금액</span></div>
+  </div>
+  <main>
+    <div id="list"></div>
+  </main>
+</div>
+<div id="viewB2B">
+  <header>
+    <div class="row">
+      <div><div class="sub" id="b2bWho"></div><h1>B2B 매출</h1></div>
+    </div>
+    <div class="datebar">
+      <button id="dPrev" type="button" aria-label="전날">‹</button>
+      <b id="dLabel"></b>
+      <button id="dNext" type="button" aria-label="다음날">›</button>
+    </div>
+  </header>
+  <main>
+    <div class="card">
+      <button class="btn" id="openForm" type="button">+ 문자매출 추가</button>
+      <form class="form" id="saleForm" hidden>
+        <div class="row"><b>문자매출 추가</b><span class="meta">→ 그로븐 매출</span></div>
+        <label>품목 · 거래처<input id="fItem" placeholder="예: 깐마늘 (김사장님)" required></label>
+        <div class="g3">
+          <label>건수<input id="fQty" inputmode="numeric" value="1" required></label>
+          <label>매출액<input id="fSales" inputmode="numeric" placeholder="0" required></label>
+          <label>매입액<input id="fBuy" inputmode="numeric" placeholder="모르면 비움"></label>
+        </div>
+        <div class="row">
+          <span class="meta" id="fPreview" style="color:var(--ok)">순이익 —</span>
+          <span style="display:flex;gap:6px">
+            <button class="btn ghost" id="cancelForm" type="button" style="width:auto;height:40px;padding:0 12px;font-size:13px">취소</button>
+            <button class="btn" type="submit" style="width:auto;height:40px;padding:0 16px;font-size:13px">저장</button>
+          </span>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <div class="row"><b id="b2bCount">문자매출 0건</b><span class="meta" id="b2bTotal"></span></div>
+      <div id="b2bList"></div>
+      <span class="meta">폰에서 넣어도, 발주 자동화 사이트의 '직거래 주문 추가'로 넣어도 여기에 모입니다.</span>
+    </div>
+  </main>
+</div>
+<nav class="tabs" aria-label="메뉴" id="tabs"></nav>
+</section>
+
+<section id="noRole" hidden>
+  <main style="padding-top:calc(env(safe-area-inset-top) + 48px)">
+    <p class="notice warn" id="noRoleMsg"></p>
+    <button class="btn ghost" id="logout2" type="button">로그아웃</button>
+  </main>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
