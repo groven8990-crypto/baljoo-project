@@ -144,8 +144,12 @@ def focus_shopmine(title_part):
     _, win32con, win32gui = gui()
     found = []
 
+    # 설정한 글자가 없어도 샵마인 실제 제목("ShopMine::쇼핑몰 통합관리 솔루션…")으로 한 번 더 찾음
+    names = [n for n in (title_part, "ShopMine", "샵마인") if n]
+
     def cb(hwnd, _):
-        if win32gui.IsWindowVisible(hwnd) and title_part in win32gui.GetWindowText(hwnd):
+        title = win32gui.GetWindowText(hwnd)
+        if win32gui.IsWindowVisible(hwnd) and any(n.lower() in title.lower() for n in names):
             found.append(hwnd)
     win32gui.EnumWindows(cb, None)
     if not found:
