@@ -109,6 +109,7 @@ const standalone = window.matchMedia('(display-mode: standalone)').matches || na
 
 async function renderPushBox(userId) {
   const box = $('pushBox');
+  if (!VAPID_PUBLIC_KEY) { box.innerHTML = ''; return; }
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     box.innerHTML = isIOS && !standalone
       ? '<p class="notice warn">알림을 받으려면 Safari 공유 버튼 → <b>홈 화면에 추가</b> 후, 홈 화면 아이콘으로 열어 주세요.</p>'
@@ -144,13 +145,135 @@ async function renderPushBox(userId) {
   };
 }
 
+// ── B2B 탭: 문자매출 입력 · 목록 ───────────────────────────
+let me = null;
+let userId = null;
+let b2bRows = [];
+let day = kstToday();
+
+function kstToday() {
+  return new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+}
+function shiftDay(d, n) {
+  return new Date(Date.parse(d + 'T00:00:00Z') + n * 86400e3).toISOString().slice(0, 10);
+}
+const num = (v) => parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0;
+
+function renderB2B() {
+  const dt = new Date(day + 'T00:00:00Z');
+  $('dLabel').textContent = dt.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', timeZone: 'UTC' }) + (day === kstToday() ? ' · 오늘' : '');
+  $('dNext').disabled = day >= kstToday();
+  const total = b2bRows.reduce((a, r) => a + r.sales, 0);
+  $('b2bCount').textContent = `문자매출 ${b2bRows.length}건`;
+  $('b2bTotal').textContent = `합계 ${won(total)}원`;
+  const list = $('b2bList');
+  if (!b2bRows.length) {
+    list.innerHTML = '<div class="empty" style="padding:20px 0">이 날 들어온 문자매출이 없습니다</div>';
+    return;
+  }
+  list.replaceChildren(...b2bRows.map((r) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.cssText = 'padding:10px 0;border-top:1px solid var(--line2);align-items:center';
+    row.innerHTML = `
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+        <span class="name" data-f="item"></span>
+        <span style="display:flex;gap:6px;align-items:center"><span data-f="src"></span><span class="meta" data-f="who"></span></span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+        <span class="amt" data-f="sales"></span><span class="meta" data-f="profit"></span>
+      </div>
+      <button class="del" type="button" aria-label="삭제">×</button>`;
+    const set = (f, v) => { row.querySelector(`[data-f="${f}"]`).textContent = v; };
+    set('item', `${r.item} ${r.qty}건`);
+    const src = row.querySelector('[data-f="src"]');
+    src.className = 'src' + (r.source === 'phone' ? ' phone' : '');
+    src.textContent = r.source === 'phone' ? '폰 입력' : '발주 사이트';
+    const time = new Date(r.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' });
+    set('who', r.source === 'phone' ? `${r.created_by_name || ''} · ${time}` : time);
+    set('sales', `${won(r.sales)}원`);
+    const p = row.querySelector('[data-f="profit"]');
+    if (r.buy === null) { p.textContent = '매입 미입력'; p.style.color = 'var(--warn)'; }
+    else { p.textContent = `순이익 ${won(r.sales - r.buy)}`; p.style.color = 'var(--ok)'; }
+    row.querySelector('.del').onclick = async () => {
+      if (!confirm(`${r.item} ${won(r.sales)}원을 매출에서 뺄까요?`)) return;
+      const { error } = await db.from('b2b_sales').update({ deleted_at: new Date().toISOString() }).eq('id', r.id);
+      if (error) { toast('삭제하지 못했습니다'); return; }
+      toast('매출에서 뺐습니다');
+      loadB2B();
+    };
+    return row;
+  }));
+}
+
+async function loadB2B() {
+  const { data, error } = await db.from('b2b_sales').select('*')
+    .eq('sale_date', day).is('deleted_at', null).order('created_at', { ascending: false });
+  if (error) { toast('문자매출을 불러오지 못했습니다'); return; }
+  b2bRows = data || [];
+  renderB2B();
+}
+
+function toggleForm(open) {
+  $('saleForm').hidden = !open;
+  $('openForm').hidden = open;
+  if (open) $('fItem').focus();
+}
+
+function updatePreview() {
+  const s = num($('fSales').value);
+  const b = $('fBuy').value.trim() ? num($('fBuy').value) : null;
+  $('fPreview').textContent = !s ? '순이익 —' : b === null ? '매입 미입력' : `순이익 ${won(s - b)}원 (${((s - b) / s * 100).toFixed(1)}%)`;
+}
+
+async function saveSale(e) {
+  e.preventDefault();
+  const item = $('fItem').value.trim();
+  const qty = num($('fQty').value) || 1;
+  const sales = num($('fSales').value);
+  const buy = $('fBuy').value.trim() ? num($('fBuy').value) : null;
+  if (!item || !sales) { toast('품목과 매출액을 넣어 주세요'); return; }
+  // 발주 사이트에서 이미 넣은 같은 건이 있으면 한 번 더 확인
+  const dup = b2bRows.find((r) => r.sales === sales && r.item.replace(/\s/g, '') === item.replace(/\s/g, ''));
+  if (dup && !confirm(`같은 날 같은 품목·금액이 이미 있습니다 (${dup.source === 'phone' ? '폰 입력' : '발주 사이트'}). 그래도 추가할까요?`)) return;
+  const { error } = await db.from('b2b_sales').insert({
+    sale_date: day, business: '그로븐', client: '직거래', item, qty, sales, buy,
+    source: 'phone', created_by: userId, created_by_name: me.name,
+  });
+  if (error) { toast('저장하지 못했습니다: ' + error.message); return; }
+  $('saleForm').reset();
+  $('fQty').value = '1';
+  updatePreview();
+  toggleForm(false);
+  toast('문자매출을 추가했습니다');
+  loadB2B();
+}
+
+function listenB2B() {
+  db.channel('b2b-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'b2b_sales' }, ({ new: r }) => {
+      if (r && r.sale_date === day) loadB2B();
+    })
+    .subscribe();
+}
+
+// ── 탭 ──────────────────────────────────────────────────────
+function showTab(tab) {
+  $('viewB2B').hidden = tab !== 'b2b';
+  $('viewCS').hidden = tab !== 'cs';
+  document.querySelectorAll('nav.tabs button').forEach((b) => {
+    if (b.dataset.tab === tab) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+}
+
 // ── 시작 ────────────────────────────────────────────────────
 let startedFor = null;
 async function start(session) {
   if (!session) { startedFor = null; show('login'); return; }
   if (startedFor === session.user.id) return;
   startedFor = session.user.id;
-  const { data: me } = await db.from('members').select('name, role').eq('user_id', session.user.id).maybeSingle();
+  userId = session.user.id;
+  ({ data: me } = await db.from('members').select('name, role').eq('user_id', session.user.id).maybeSingle());
   if (!me || me.role === 'viewer') {
     $('noRoleMsg').textContent = !me
       ? '아직 팀원으로 등록되지 않은 계정입니다. 관리자에게 등록을 요청해 주세요.'
@@ -159,9 +282,12 @@ async function start(session) {
     return;
   }
   $('today').textContent = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', timeZone: 'Asia/Seoul' }) + ` · ${me.name}`;
+  $('b2bWho').textContent = `${me.name} · 담당자`;
   show('app');
-  await load();
+  showTab(location.hash === '#orders' ? 'cs' : 'b2b');
+  await Promise.all([load(), loadB2B()]);
   listenRealtime();
+  listenB2B();
   renderPushBox(session.user.id);
 }
 
@@ -179,8 +305,16 @@ $('loginForm').onsubmit = async (e) => {
   m.textContent = error ? '로그인 링크를 보내지 못했습니다. 초대받은 이메일인지 확인해 주세요.' : '메일함에서 로그인 링크를 눌러 주세요.';
 };
 $('refresh').onclick = load;
+document.querySelectorAll('nav.tabs button').forEach((b) => { b.onclick = () => showTab(b.dataset.tab); });
+window.addEventListener('hashchange', () => { if (location.hash === '#orders') showTab('cs'); });
+$('openForm').onclick = () => toggleForm(true);
+$('cancelForm').onclick = () => toggleForm(false);
+$('saleForm').onsubmit = saveSale;
+for (const id of ['fSales', 'fBuy']) $(id).oninput = updatePreview;
+$('dPrev').onclick = () => { day = shiftDay(day, -1); loadB2B(); };
+$('dNext').onclick = () => { if (day < kstToday()) { day = shiftDay(day, 1); loadB2B(); } };
 $('logout').onclick = $('logout2').onclick = async () => { await db.auth.signOut(); location.reload(); };
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('app').hidden) load(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('app').hidden) { load(); loadB2B(); } });
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   document.body.innerHTML = '<main><p class="notice warn">config.js 에 Supabase 주소와 키를 먼저 넣어 주세요.</p></main>';

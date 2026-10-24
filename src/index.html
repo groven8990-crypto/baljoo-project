@@ -3221,6 +3221,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   try { _autoRestoreGrinchemUpload(); } catch(e){ console.warn('또또컴퍼니 업로드 자동 복원 실패:', e); }
   // 직거래 주문은 샵마인 파일 업로드 여부와 무관하게 항상 복원(저장돼있는 주문을 allOrders에 끼워 넣음)
   try { _syncJikgeoraeOrdersIntoAllOrders(); } catch(e){ console.warn('직거래 주문 자동 복원 실패:', e); }
+  try { renderMobileSyncStatus(); _mobileSyncPending(); } catch(e){ console.warn('모바일 연동 재전송 실패:', e); }
   // 복원할 또또컴퍼니 주문이 없는 완전 빈 상태에서도 "주문이 없어요" 안내문이라도 보이게 —
   // 안 해주면 처음 보는 사람 눈엔 카드 안이 그냥 텅 비어 보여서 뭘 해야 하는지 알 수 없음
   try { renderGrinchemTrackingList(); } catch(e){}
@@ -4560,6 +4561,7 @@ function addJikgeoraeOrder(){
     select_opt: option, disp_opt:'',
     qty, code_qty:1,
     order_no: '직거래'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+    jg_co: co, jg_unit: unit,
     buyer:'', buyer_phone:'', carrier:'',
     order_amt: amt,
     order_date: _localISO(),
@@ -4572,6 +4574,7 @@ function addJikgeoraeOrder(){
   const jgList = loadJgOrders();
   jgList.push(order);
   saveJgOrders(jgList);
+  _mobileSyncOne(order).then(renderMobileSyncStatus);
 
   if (!order.vendor_key) {
     if (errEl) errEl.textContent = `'${vendor}' 코드로 매칭이 안 됐어요 — 발주처명을 다시 확인해주세요. (주문은 일단 추가됨)`;
@@ -4627,6 +4630,58 @@ function renderJikgeoraeOrderList(){
     </div>`;
   }).join('');
   el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">등록된 직거래 주문 — 발주처에 전달 전이면 계속 쌓여요, 보낸 뒤엔 직접 제거하세요 (${entries.length}건 · 매출 ${totalSales.toLocaleString()}원)</div>${rows}`;
+}
+// ── 모바일 앱 연동 — 직거래(문자)매출을 폰 앱 서버(b2b_sales)로도 보냄 ──────────────
+// 연동 키(비밀값 BALJOO_SYNC_KEY 와 같은 값)를 한 번 넣어두면 직거래 주문을 추가할 때마다 자동 전송.
+// 아래 '제거'는 발주처에 보낸 뒤 목록에서 치우는 용도라 서버 매출은 지우지 않음(매출 삭제는 폰 앱에서).
+const LS_MOBILE_SYNC_KEY = 'yb_mobile_sync_key';
+function _mobileSyncKey(){ try{ return localStorage.getItem(LS_MOBILE_SYNC_KEY)||''; }catch{ return ''; } }
+function setMobileSyncKey(){
+  const cur = _mobileSyncKey();
+  const v = prompt('모바일 앱 연동 키를 입력하세요 (비우면 연동 끔)', cur);
+  if (v === null) return;
+  try { v.trim() ? localStorage.setItem(LS_MOBILE_SYNC_KEY, v.trim()) : localStorage.removeItem(LS_MOBILE_SYNC_KEY); } catch(e){}
+  renderMobileSyncStatus();
+  _mobileSyncPending();
+}
+function renderMobileSyncStatus(){
+  const el = document.getElementById('jgMobileSync');
+  if (!el) return;
+  const on = !!_mobileSyncKey();
+  const pending = loadJgOrders().filter(o => !o.mobile_synced).length;
+  el.innerHTML = `📱 모바일 앱 연동: <b style="color:${on?'var(--success)':'var(--text3)'}">${on?'켜짐':'꺼짐'}</b>`
+    + (on && pending ? ` · 전송 대기 ${pending}건` : '')
+    + ` <button class="btn btn-sm" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="setMobileSyncKey()">${on?'키 변경':'연동 키 입력'}</button>`;
+}
+async function _mobileSyncOne(order){
+  const key = _mobileSyncKey();
+  if (!key || !order || order.mobile_synced) return false;
+  const unit = Number(order.jg_unit)||0;
+  try {
+    const r = await fetch(_SB_URL + '/functions/v1/b2b-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-sync-key': key },
+      body: JSON.stringify({
+        order_no: order.order_no, order_date: order.order_date,
+        business: order.jg_co || (order.alias === '로또상회' ? '그로븐' : '옐로우브릿지'),
+        client: order.recv_name, item: order.product || order.item_name,
+        qty: order.qty, sales: Number(order.order_amt)||0, buy: unit > 0 ? unit * (Number(order.qty)||1) : null,
+      }),
+    });
+    if (!r.ok) { console.warn('[모바일 연동] 전송 실패', r.status, await r.text()); return false; }
+    const list = loadJgOrders();
+    const it = list.find(o => o.order_no === order.order_no);
+    if (it) { it.mobile_synced = true; saveJgOrders(list); }
+    order.mobile_synced = true;
+    return true;
+  } catch(e) { console.warn('[모바일 연동] 전송 오류', e); return false; }
+}
+// 인터넷이 끊겼거나 키를 나중에 넣은 경우를 위해, 아직 못 보낸 최근 7일 주문을 다시 보냄
+async function _mobileSyncPending(){
+  if (!_mobileSyncKey()) return;
+  const since = new Date(Date.now() - 7*86400e3).toISOString().slice(0,10);
+  for (const o of loadJgOrders().filter(o => !o.mobile_synced && (o.order_date||'') >= since)) await _mobileSyncOne(o);
+  renderMobileSyncStatus();
 }
 function removeJikgeoraeOrder(orderNo){
   const idx = allOrders.findIndex(o => o.order_no === orderNo);
@@ -16598,6 +16653,7 @@ function reconExportXlsx() {
     <div id="jgError" style="font-size:12px;color:var(--danger);margin-bottom:8px"></div>
     <button class="btn btn-primary" onclick="addJikgeoraeOrder()">+ 직거래 주문 추가</button>
     <div id="jgStatus" style="margin-top:8px;font-size:12px;color:var(--text2)"></div>
+    <div id="jgMobileSync" style="margin-top:6px;font-size:12px;color:var(--text2)"></div>
     <div id="jgEntryList" style="margin-top:10px"></div>
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text1)">⭐ 단골 고객 관리</div>
