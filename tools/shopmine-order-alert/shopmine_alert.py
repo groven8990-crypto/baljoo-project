@@ -141,7 +141,7 @@ def gui():
     return pyautogui, win32con, win32gui
 
 
-APP_VERSION = "2026-10-24c"
+APP_VERSION = "2026-10-24d"
 
 
 def proc_name(hwnd):
@@ -188,18 +188,20 @@ def find_shopmine(cfg):
 
 
 def focus_shopmine(cfg):
+    """샵마인 창을 찾아 최대화해서 맨 앞으로. 창 왼쪽 위 좌표를 돌려줌 (못 찾으면 None)
+    — 버튼 위치는 창 기준으로 기록하므로, 창이 어디로 옮겨져 있어도 같은 버튼을 누름"""
     _, win32con, win32gui = gui()
     hwnd = find_shopmine(cfg)
     if not hwnd:
-        return False
-    if win32gui.IsIconic(hwnd):
-        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        return None
+    win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
     try:
         win32gui.SetForegroundWindow(hwnd)
     except Exception:
         pass
-    time.sleep(0.8)
-    return True
+    time.sleep(1.0)
+    left, top, _, _ = win32gui.GetWindowRect(hwnd)
+    return left, top
 
 
 def report_windows():
@@ -210,7 +212,8 @@ def report_windows():
 
 def run_steps(cfg):
     pyautogui, _, _ = gui()
-    if not focus_shopmine(cfg):
+    origin = focus_shopmine(cfg)
+    if not origin:
         log("⚠ 샵마인 창을 못 찾았습니다 — 샵마인이 켜져 있는지 확인하세요")
         report_windows()
         return
@@ -218,12 +221,15 @@ def run_steps(cfg):
     for s in cfg["steps"]:
         if "key" in s:
             pyautogui.press(s["key"])
-        elif "click" in s:
+        elif "click_rel" in s:
+            pyautogui.click(origin[0] + s["click_rel"][0], origin[1] + s["click_rel"][1])
+        elif "click" in s:  # 예전 설정(화면 절대 좌표)
             pyautogui.click(*s["click"])
         time.sleep(s.get("wait", 3))
 
 
 def setup():
+    self_update()
     cfg = load_config()
     print("=== 발주 알리미 · 샵마인 연동 설정 ===\n")
     k = input(f"1) 연동 키 (발주 자동화와 같은 키){' [그대로 두려면 Enter]' if cfg['sync_key'] else ''}: ").strip()
@@ -254,14 +260,27 @@ def setup():
             w = input("   수집이 끝날 때까지 기다릴 초 [60]: ").strip()
             steps.append({"key": "f5", "wait": int(w or 60)})
         print("\n   이제 누를 버튼을 순서대로 기록합니다 (예: 엑셀파일생성 → 저장/확인).")
-        print("   샵마인 화면에서 버튼 위에 마우스를 올려 두고, 이 창을 클릭하지 말고 키보드로 Enter 를 누르세요.")
+        _, _, win32gui = gui()
+        me = win32gui.GetForegroundWindow()  # 이 검은 창 — 샵마인을 키운 뒤 다시 앞으로 가져와 Enter 를 받기 위해
+        origin = focus_shopmine(cfg)
+        if not origin:
+            print("   ⚠ 샵마인 창을 못 찾았습니다. 샵마인을 켠 뒤 설정을 다시 실행해 주세요.")
+            report_windows()
+            return
+        try:
+            win32gui.SetForegroundWindow(me)
+        except Exception:
+            pass
+        print("   샵마인 창을 화면 가득 키웠습니다 (자동 수집 때도 똑같이 키운 뒤 누릅니다).")
+        print("   샵마인 버튼 위에 마우스를 올려 두고(클릭 X), 키보드 Enter 를 '한 번' 누르세요.")
         while True:
             a = input(f"   [{len(steps) + 1}번째] 버튼 위에 마우스 → Enter (끝이면 q): ").strip().lower()
             if a == "q":
                 break
             x, y = pyautogui.position()
             w = input(f"     ({x}, {y}) 기록 — 누른 뒤 기다릴 초 [5]: ").strip()
-            steps.append({"click": [x, y], "wait": int(w or 5)})
+            steps.append({"click_rel": [x - origin[0], y - origin[1]], "wait": int(w or 5)})
+            print("     ※ 버튼이 하나 더 있을 때만 다음 버튼 위에 마우스 → Enter, 없으면 q")
         cfg["steps"] = steps
         m = input(f"\n5) 몇 분마다 자동으로 누를까요? [{cfg['interval_min']}]: ").strip()
         if m:
