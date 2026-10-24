@@ -1,5 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY } from './config.js';
+import { initViews, invalidate, renderHome, renderReport, renderMargin } from './views.js';
 
 const $ = (id) => document.getElementById(id);
 const won = (n) => (n || 0).toLocaleString('ko-KR');
@@ -258,12 +259,46 @@ function listenB2B() {
 }
 
 // ── 탭 ──────────────────────────────────────────────────────
+// 담당자(관리자 · 실무)와 보기 전용이 같은 현황 · 보고서 · 순마진을 쓰고, 담당자만 B2B · CS 탭이 더 있습니다.
+const ICON = {
+  home: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  report: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>',
+  margin: '<path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/>',
+  b2b: '<path d="M3 21h18M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/>',
+  cs: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+};
+const LABEL = { home: '현황', report: '보고서', margin: '순마진', b2b: 'B2B', cs: 'CS' };
+const VIEW = { home: 'viewHome', report: 'viewReport', margin: 'viewMargin', b2b: 'viewB2B', cs: 'viewCS', settings: 'viewSettings' };
+const RENDER = { home: renderHome, report: renderReport, margin: renderMargin };
+let tabs = [];
+let current = 'home';
+
+function buildTabs(isStaff) {
+  tabs = isStaff ? ['home', 'report', 'margin', 'b2b', 'cs'] : ['home', 'report', 'margin'];
+  $('tabs').innerHTML = tabs.map((t) => `<button type="button" data-tab="${t}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t]}</svg>${LABEL[t]}</button>`).join('');
+  $('tabs').querySelectorAll('button').forEach((b) => { b.onclick = () => showTab(b.dataset.tab); });
+  const gear = `<span style="display:flex;align-items:center;gap:2px"><span class="badge${isStaff ? ' admin' : ''}">${isStaff ? '담당자' : '보기 전용'}</span><button class="gear" type="button" aria-label="설정"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button></span>`;
+  document.querySelectorAll('.hdr-right').forEach((el) => { el.innerHTML = gear; el.querySelector('.gear').onclick = () => showTab('settings'); });
+}
+
 function showTab(tab) {
-  $('viewB2B').hidden = tab !== 'b2b';
-  $('viewCS').hidden = tab !== 'cs';
-  document.querySelectorAll('nav.tabs button').forEach((b) => {
+  if (tab !== 'settings' && !tabs.includes(tab)) tab = 'home';
+  current = tab;
+  for (const [k, id] of Object.entries(VIEW)) $(id).hidden = k !== tab;
+  $('tabs').querySelectorAll('button').forEach((b) => {
     if (b.dataset.tab === tab) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
+  window.scrollTo(0, 0);
+  RENDER[tab]?.();
+}
+
+// 발주 자동화가 보고서를 새로 보내거나 문자매출이 바뀌면, 보고 있는 화면을 다시 그립니다
+function listenReports() {
+  const refresh = (date) => { invalidate(date); RENDER[current]?.(); };
+  db.channel('reports-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'report_snapshots' }, ({ new: r, old: o }) => refresh((r || o)?.report_date))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'b2b_sales' }, ({ new: r, old: o }) => refresh((r || o)?.sale_date))
+    .subscribe();
 }
 
 // ── 시작 ────────────────────────────────────────────────────
@@ -274,21 +309,27 @@ async function start(session) {
   startedFor = session.user.id;
   userId = session.user.id;
   ({ data: me } = await db.from('members').select('name, role').eq('user_id', session.user.id).maybeSingle());
-  if (!me || me.role === 'viewer') {
-    $('noRoleMsg').textContent = !me
-      ? '아직 팀원으로 등록되지 않은 계정입니다. 관리자에게 등록을 요청해 주세요.'
-      : '주문 알림은 관리자·실무 권한에서만 볼 수 있습니다. 매출 보고서 화면은 다음 단계에서 열립니다.';
+  if (!me) {
+    $('noRoleMsg').textContent = '아직 팀원으로 등록되지 않은 계정입니다. 관리자에게 등록을 요청해 주세요.';
     show('noRole');
     return;
   }
-  $('today').textContent = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', timeZone: 'Asia/Seoul' }) + ` · ${me.name}`;
+  const isStaff = me.role === 'admin' || me.role === 'staff';
+  $('setWho').textContent = `${me.name} · ${isStaff ? '담당자' : '보기 전용'}`;
   $('b2bWho').textContent = `${me.name} · 담당자`;
+  $('today').textContent = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', timeZone: 'Asia/Seoul' }) + ` · ${me.name}`;
   show('app');
-  showTab(location.hash === '#orders' ? 'cs' : 'b2b');
-  await Promise.all([load(), loadB2B()]);
-  listenRealtime();
-  listenB2B();
-  renderPushBox(session.user.id);
+  buildTabs(isStaff);
+  initViews(db, me.role, showTab);
+  showTab(location.hash === '#orders' && isStaff ? 'cs' : 'home');
+  listenReports();
+  if (isStaff) {
+    await Promise.all([load(), loadB2B()]);
+    listenRealtime();
+    listenB2B();
+  }
+  if (isStaff) renderPushBox(session.user.id);
+  else $('pushBox').innerHTML = '<p class="notice ok">마감 보고 알림은 다음 단계에서 켤 수 있습니다.</p>';
 }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
@@ -305,7 +346,6 @@ $('loginForm').onsubmit = async (e) => {
   m.textContent = error ? '로그인 링크를 보내지 못했습니다. 초대받은 이메일인지 확인해 주세요.' : '메일함에서 로그인 링크를 눌러 주세요.';
 };
 $('refresh').onclick = load;
-document.querySelectorAll('nav.tabs button').forEach((b) => { b.onclick = () => showTab(b.dataset.tab); });
 window.addEventListener('hashchange', () => { if (location.hash === '#orders') showTab('cs'); });
 $('openForm').onclick = () => toggleForm(true);
 $('cancelForm').onclick = () => toggleForm(false);
@@ -314,7 +354,12 @@ for (const id of ['fSales', 'fBuy']) $(id).oninput = updatePreview;
 $('dPrev').onclick = () => { day = shiftDay(day, -1); loadB2B(); };
 $('dNext').onclick = () => { if (day < kstToday()) { day = shiftDay(day, 1); loadB2B(); } };
 $('logout').onclick = $('logout2').onclick = async () => { await db.auth.signOut(); location.reload(); };
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('app').hidden) { load(); loadB2B(); } });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || $('app').hidden) return;
+  invalidate();
+  RENDER[current]?.();
+  if (me && me.role !== 'viewer') { load(); loadB2B(); }
+});
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   document.body.innerHTML = '<main><p class="notice warn">config.js 에 Supabase 주소와 키를 먼저 넣어 주세요.</p></main>';

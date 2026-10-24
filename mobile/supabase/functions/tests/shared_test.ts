@@ -37,3 +37,23 @@ Deno.test("발주 사이트 직거래 주문 → b2b_sales 행", () => {
   assertEquals(typeof parseSyncBody({ order_no: "abc", order_date: "2026-10-21", business: "그로븐", item: "x", qty: 1, sales: 1 }), "string");
   assertEquals(typeof parseSyncBody({ order_no: "직거래1", order_date: "2026-10-21", business: "디네트", item: "x", qty: 1, sales: 1 }), "string");
 });
+
+import { parseReportBody } from "../_shared/report.ts";
+
+Deno.test("매출 보고 스냅샷 → 숫자만 남기고 개인정보는 버림", () => {
+  const r = parseReportBody({
+    status: "confirmed",
+    snapshot: {
+      date: "2026-10-21", totalSales: 1128220, totalCnt: 26, adTotal: 0,
+      profitRows: [{ brand: "그로븐", isB2B: false, item: "깐마늘", option: "20kg", count: 2, sales: 317980, purchase: 260000, fee: 38158, vat: 0, profit: 19822, orderDetail: [{ recv_name: "김철수" }] }],
+      grAgg: { platMap: { 쿠팡: { count: 2, sales: 317980, comp: { x: 1 } } } },
+    },
+  });
+  if (typeof r === "string") throw new Error(r);
+  assertEquals(r.status, "confirmed");
+  assertEquals(r.data.rows[0].profit, 19822);
+  assertEquals("orderDetail" in r.data.rows[0], false);
+  assertEquals(r.data.plat["그로븐"]["쿠팡"], { count: 2, sales: 317980 });
+  assertEquals(typeof parseReportBody({ status: "x", snapshot: {} }), "string");
+  assertEquals(typeof parseReportBody({ status: "draft", snapshot: { date: "2026/10/21", profitRows: [] } }), "string");
+});

@@ -20789,6 +20789,32 @@ function srDinetteSection(agg){
 }
 
 // ─ 이력 누적 ─
+// 모바일 앱 연동 — 매출 보고서(매출 · 매입 · 수수료 · 부가세 · 순이익)를 폰 앱 서버로도 보냄.
+// 보고서를 만들면 draft(진행 중), '이력에 저장'하면 confirmed(마감 확정). 연동 키가 없으면 아무것도 안 함.
+// 고객 이름 등 상세(orderDetail)는 빼고 숫자만 보냄
+let _mobileReportTimer = null;
+function _mobileReportPayload(snap){
+  const plat = agg => ({ platMap: Object.fromEntries(Object.entries((agg&&agg.platMap)||{}).map(([k,v]) => [k, { count: v.count, sales: v.sales }])) });
+  return {
+    date: snap.date, totalSales: snap.totalSales, totalCnt: snap.totalCnt, adTotal: snap.adTotal || 0,
+    profitRows: (snap.profitRows||[]).map(r => ({ brand: r.brand, isB2B: !!r.isB2B, b2bName: r.b2bName || '', item: r.item, option: r.option,
+      count: r.count, sales: r.sales, purchase: r.purchase, fee: r.fee, vat: r.vat, profit: r.profit })),
+    grAgg: plat(snap.grAgg), ybAgg: plat(snap.ybAgg),
+  };
+}
+function _mobileSyncReport(snap, status){
+  const key = (typeof _mobileSyncKey === 'function') ? _mobileSyncKey() : '';
+  if (!key || !snap || !snap.date) return;
+  const send = () => fetch(_SB_URL + '/functions/v1/report-sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-sync-key': key },
+    body: JSON.stringify({ status, snapshot: _mobileReportPayload(snap) }),
+  }).then(r => { if (!r.ok) console.warn('[모바일 연동] 보고서 전송 실패', r.status); })
+    .catch(e => console.warn('[모바일 연동] 보고서 전송 오류', e));
+  // 보고서는 화면을 다시 그릴 때마다 만들어지므로 draft 는 잠깐 모았다가 한 번만 보냄
+  if (status === 'draft') { clearTimeout(_mobileReportTimer); _mobileReportTimer = setTimeout(send, 3000); }
+  else { clearTimeout(_mobileReportTimer); send(); }
+}
 const SR_HISTORY_KEY = 'yb_sales_history';
 function srLoadHistory(){
   try { return JSON.parse(localStorage.getItem(SR_HISTORY_KEY)||'[]'); }
@@ -20799,6 +20825,7 @@ function srSaveSnapshot(snap){
   all.push(snap);
   all.sort((a,b)=>a.date<b.date?-1:1);
   try { localStorage.setItem(SR_HISTORY_KEY, JSON.stringify(all)); } catch(e){}
+  _mobileSyncReport(snap, 'confirmed');
 }
 
 function srRender(){
@@ -20906,6 +20933,7 @@ function srRender(){
     adTotal, adByBiz,
     savedAt: Date.now()
   };
+  _mobileSyncReport(_srLastSnapshot, 'draft');
   const saveBtn = document.getElementById('srSaveBtn'); if (saveBtn) saveBtn.disabled = false;
   const sumAmt = totalSales > 0 ? '' : ' <span style="color:var(--warn);font-size:11px">(주문금액 0 — AB/AH/AI 컬럼이 다른 위치일 수 있어요)</span>';
   const already = srLoadHistory().some(s => s.date === dateStr);
