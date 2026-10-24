@@ -141,7 +141,7 @@ def gui():
     return pyautogui, win32con, win32gui
 
 
-APP_VERSION = "2026-10-24d"
+APP_VERSION = "2026-10-24e"
 
 
 def proc_name(hwnd):
@@ -181,8 +181,15 @@ def find_shopmine(cfg):
     # 창 제목 · 프로그램 이름 중 하나라도 맞으면 샵마인으로 봄 (제목이 프로그램 안에서 따로 그려지는 경우 대비)
     names = [n.lower() for n in (cfg.get("window_title"), "ShopMine", "샵마인") if n]
     procs = [p.lower() for p in (cfg.get("window_proc"), "shopmine") if p]
-    for hwnd, title, proc in visible_windows():
-        if any(n in title.lower() for n in names) or any(p in proc.lower() for p in procs):
+    # 이 프로그램을 띄운 검은 창(제목에 "...shopmine_alert.py" 가 들어감)은 제외
+    skip = ("cmd.exe", "windowsterminal.exe", "conhost.exe", "powershell.exe", "pwsh.exe",
+            "openconsole.exe", "python.exe", "pythonw.exe", "explorer.exe")
+    wins = [w for w in visible_windows() if w[2].lower() not in skip and "shopmine_alert" not in w[1].lower()]
+    for hwnd, title, proc in wins:  # 프로그램 이름이 맞는 창을 먼저
+        if any(p in proc.lower() for p in procs):
+            return hwnd
+    for hwnd, title, proc in wins:
+        if any(n in title.lower() for n in names):
             return hwnd
     return None
 
