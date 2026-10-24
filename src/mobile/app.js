@@ -329,8 +329,7 @@ async function start(session) {
     listenRealtime();
     listenB2B();
   }
-  if (isStaff) renderPushBox(session.user.id);
-  else $('pushBox').innerHTML = '<p class="notice ok">마감 보고 알림은 다음 단계에서 켤 수 있습니다.</p>';
+  renderPushBox(session.user.id); // 신규 주문 알림은 보기 전용 팀원도 받음
 }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
