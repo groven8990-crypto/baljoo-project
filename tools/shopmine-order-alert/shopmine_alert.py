@@ -38,7 +38,7 @@ POLL_SEC = 20         # 폴더 확인 주기
 DEFAULTS = {
     "sync_key": "",
     "watch_dir": str(Path.home() / "Downloads"),
-    "window_title": "샵마인",
+    "window_title": "ShopMine",  # 샵마인 창 제목: "ShopMine::쇼핑몰 통합관리 솔루션[…]"
     "interval_min": 10,       # 자동 클릭 간격
     "hours": [7, 23],         # 이 시간대에만 자동 클릭 (폴더 감시는 항상)
     "steps": [],              # [{"key": "f5"} | {"click": [x, y]}, ... ] + 각 단계 뒤 "wait" 초
