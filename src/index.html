@@ -5995,7 +5995,11 @@ const LS_GMAIL_TPL         = 'yb_gmail_tpl';
 const LS_GMAIL_BCC         = 'yb_gmail_bcc';
 const LS_SEND_HISTORY      = 'yb_send_history';
 const LS_INV_GMAIL_SENDER  = 'yb_inv_gmail_sender';
-const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly';
+// drive.readonly → drive(전체)로 올림 — 또또컴퍼니/디네트 발주 메일 자동 다운로드본을 사장님이
+// 이미 갖고 계신 "발주관리" 드라이브 폴더 안 거래처별 하위 폴더에 올려야 하는데, 그 폴더는 이
+// 앱이 만든 게 아니라 기존에 있던 폴더라 drive.file로는 접근이 안 됨. 스코프가 바뀌면 기존
+// 토큰은 무효 처리되어(gmailTokenValid의 scope 비교) 자동으로 재동의 화면이 한 번 뜸
+const GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive';
 const LS_EXP_SHEET_ID = 'yb_exp_sheet_id';
 const LS_EXP_DELETED  = 'yb_exp_deleted_keys'; // 삭제된 항목 키 블랙리스트
 let _gmailTokenClient = null;
@@ -20407,11 +20411,64 @@ async function _autoGmailDownloadAsFile(item, token){
   const type = /\.xlsx$/i.test(item.filename) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/vnd.ms-excel';
   return new File([new Blob([bytes], {type})], item.filename, {type});
 }
+// 구글 드라이브 "발주관리" 폴더 안의 거래처별 하위 폴더(예: 또또, 디네트)에도 다운로드본을
+// 올려둠 — 사장님이 나중에 정산할 때 샵마인 파일처럼 한곳에서 보기 편하게. 폴더 id는 매번
+// 검색하면 느리니 한 번 찾으면 캐시해두고, 업로드가 404로 실패하면(폴더 이동/삭제) 캐시를
+// 지우고 한 번만 다시 찾아봄
+const LS_AUTO_GMAIL_DRIVE_FOLDER = 'yb_auto_gmail_drive_folder_cache';
+function _autoGmailDriveFolderCacheLoad(){
+  try { return JSON.parse(localStorage.getItem(LS_AUTO_GMAIL_DRIVE_FOLDER)||'{}'); } catch { return {}; }
+}
+function _autoGmailDriveFolderCacheSet(subKw, folderId){
+  const c = _autoGmailDriveFolderCacheLoad();
+  c[subKw] = folderId;
+  try { localStorage.setItem(LS_AUTO_GMAIL_DRIVE_FOLDER, JSON.stringify(c)); } catch(e){}
+}
+async function _driveFindVendorFolder(subKw, token){
+  const cache = _autoGmailDriveFolderCacheLoad();
+  if (cache[subKw]) return cache[subKw];
+  const fq = encodeURIComponent(`name contains '${INV_DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const fResp = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${fq}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+    { headers: { Authorization: 'Bearer ' + token } }
+  );
+  if (!fResp.ok) throw new Error('발주관리 폴더 검색 실패 ' + fResp.status);
+  const parents = (await fResp.json()).files || [];
+  for (const parent of parents) {
+    const sq = encodeURIComponent(`'${parent.id}' in parents and name contains '${subKw}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const sResp = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${sq}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
+    if (!sResp.ok) continue;
+    const subs = (await sResp.json()).files || [];
+    if (subs.length) { _autoGmailDriveFolderCacheSet(subKw, subs[0].id); return subs[0].id; }
+  }
+  throw new Error(`"${INV_DRIVE_FOLDER_NAME}" 안에 "${subKw}" 폴더를 못 찾음`);
+}
+async function _driveUploadFile(file, folderId, token){
+  const metadata = { name: file.name, parents: [folderId] };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+  form.append('file', file);
+  const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+    body: form,
+  });
+  if (!resp.ok) {
+    const err = new Error('드라이브 업로드 실패 ' + resp.status);
+    err.status = resp.status;
+    throw err;
+  }
+  return resp.json();
+}
 // 발주처별 자동 체크 시간대 — "전후"라 여유 있게 넓은 창으로 잡음(또또 10시·12시 두 번 다
-// 커버하려고 09:30~13:00). 창이 넓어도 msgId로 중복 방지되니 같은 메일을 두 번 반영할 위험은 없음
+// 커버하려고 09:30~13:00). 창이 넓어도 msgId로 중복 방지되니 같은 메일을 두 번 반영할 위험은 없음.
+// driveSubKw는 "발주관리" 폴더 안에서 이 거래처 하위 폴더를 찾을 키워드
 const AUTO_GMAIL_VENDORS = [
-  { name:'또또컴퍼니', kw: () => '그린켐', hourStart:9.5,  hourEnd:13,   load: file => srLoadGrinchemFiles([file]) },
-  { name:'디네트',     kw: () => dinetteGetSenderKw(), hourStart:12.5, hourEnd:14, load: file => srLoadDinette(file) },
+  { name:'또또컴퍼니', kw: () => '그린켐', driveSubKw:'또또', hourStart:9.5,  hourEnd:13,   load: file => srLoadGrinchemFiles([file]) },
+  { name:'디네트',     kw: () => dinetteGetSenderKw(), driveSubKw:'디네트', hourStart:12.5, hourEnd:14, load: file => srLoadDinette(file) },
 ];
 async function _autoGmailCheckOnce(){
   if (!gmailTokenValid() && !gmailGetToken()) return;  // Gmail 연결 이력 자체가 없으면 조용히 건너뜀(동의창 안 띄움)
@@ -20427,16 +20484,33 @@ async function _autoGmailCheckOnce(){
       const seen = _autoGmailSeenLoad();
       const fresh = items.filter(it => !seen.has(it.msgId));
       if (!fresh.length) continue;
-      let okCount = 0;
+      let okCount = 0, driveOkCount = 0;
       for (const it of fresh) {
         try {
           const file = await _autoGmailDownloadAsFile(it, token);
           v.load(file);
           _autoGmailSeenAdd(it.msgId);
           okCount++;
+          // 드라이브 업로드는 부가 기능 — 실패해도 앱 반영 자체(위 v.load)는 이미 끝났으니
+          // 여기서 막히지 않게 별도로 감쌈. 폴더를 못 찾는 실패가 반복되면 캐시만 지우고 계속 진행
+          try {
+            let folderId = await _driveFindVendorFolder(v.driveSubKw, token);
+            try { await _driveUploadFile(file, folderId, token); driveOkCount++; }
+            catch(e) {
+              if (e.status === 404) {
+                _autoGmailDriveFolderCacheSet(v.driveSubKw, '');
+                folderId = await _driveFindVendorFolder(v.driveSubKw, token);
+                await _driveUploadFile(file, folderId, token);
+                driveOkCount++;
+              } else throw e;
+            }
+          } catch(e) { console.warn('[자동 발주 가져오기] 드라이브 업로드 실패', v.name, it.filename, e.message); }
         } catch(e) { console.warn('[자동 발주 가져오기]', v.name, it.filename, e.message); }
       }
-      if (okCount > 0) _poShowToast(`✅ ${v.name} 발주 메일 자동 반영됨 (${okCount}건)`);
+      if (okCount > 0) {
+        const driveNote = driveOkCount > 0 ? ` · 드라이브 저장 ${driveOkCount}건` : '';
+        _poShowToast(`✅ ${v.name} 발주 메일 자동 반영됨 (${okCount}건)${driveNote}`);
+      }
     } catch(e) {
       console.warn('[자동 발주 가져오기]', v.name, e.message);
     }
