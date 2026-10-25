@@ -20351,6 +20351,99 @@ async function srDinetteGmailLoadAttachment(idx){
     console.error('[srDinetteGmailLoadAttachment]', e);
   }
 }
+// ── 또또컴퍼니/디네트 발주 메일 자동 체크 ──────────────────────────────────
+// 사장님 요청: 또또컴퍼니는 보통 10시·12시 전후, 디네트는 1시 전후로 발주 메일이 오는데
+// (주문이 없으면 메일 자체가 안 옴), 프로그램이 켜져 있는 동안 그 시간대엔 자동으로 Gmail을
+// 확인해서 찾으면 사람이 버튼 안 눌러도 바로 반영. "전후"라 시간대를 넉넉히 잡고 주기적으로
+// 확인하되, 같은 메일(msgId)을 두 번 반영하지 않도록 처리한 메일 id를 기억해둠
+const LS_AUTO_GMAIL_SEEN = 'yb_auto_gmail_seen_msgids';
+function _autoGmailSeenLoad(){
+  try { return new Set(JSON.parse(localStorage.getItem(LS_AUTO_GMAIL_SEEN)||'[]')); }
+  catch { return new Set(); }
+}
+function _autoGmailSeenAdd(id){
+  const set = _autoGmailSeenLoad();
+  set.add(id);
+  const arr = [...set].slice(-500);  // 무한정 안 쌓이게 최근 500개만 유지
+  try { localStorage.setItem(LS_AUTO_GMAIL_SEEN, JSON.stringify(arr)); } catch(e){}
+}
+// 오늘 받은메일함에서 키워드(발신자/제목/파일명)가 들어간 첨부파일 찾기 — 디네트 수동 검색
+// (srDinetteGmailFetch)과 같은 로직을 공용으로 뺌
+async function _autoGmailFindAttachments(kw, token){
+  const _now = new Date();
+  const todayFmt = `${_now.getFullYear()}/${String(_now.getMonth()+1).padStart(2,'0')}/${String(_now.getDate()).padStart(2,'0')}`;
+  const q = `in:inbox has:attachment after:${todayFmt}`;
+  const sResp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=30&q=' + encodeURIComponent(q), { headers:{Authorization:'Bearer '+token} });
+  if (!sResp.ok) throw new Error('검색 실패 ' + sResp.status);
+  const sData = await sResp.json();
+  const msgs = sData.messages || [];
+  if (!msgs.length) return [];
+  const details = await Promise.all(msgs.slice(0,20).map(m =>
+    fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+m.id+'?format=full', {headers:{Authorization:'Bearer '+token}})
+      .then(r=>r.ok?r.json():null).catch(()=>null)));
+  const items = [];
+  for (const msg of details){
+    if (!msg || !msg.payload) continue;
+    const hds = msg.payload.headers || [];
+    const from    = (hds.find(h=>h.name==='From')||{}).value || '';
+    const subject = (hds.find(h=>h.name==='Subject')||{}).value || '(제목없음)';
+    const parts = _gmailFindXlsxParts(msg.payload);
+    for (const part of parts){
+      const fn = part.filename || '';
+      if (!(from.includes(kw) || subject.includes(kw) || fn.includes(kw))) continue;
+      items.push({ msgId: msg.id, attachId: part.body.attachmentId, filename: fn });
+    }
+  }
+  return items;
+}
+async function _autoGmailDownloadAsFile(item, token){
+  const attResp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+item.msgId+'/attachments/'+item.attachId, { headers:{Authorization:'Bearer '+token} });
+  if (!attResp.ok) throw new Error('첨부파일 다운로드 실패 ' + attResp.status);
+  const attData = await attResp.json();
+  const b64 = (attData.data||'').replace(/-/g,'+').replace(/_/g,'/');
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const type = /\.xlsx$/i.test(item.filename) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/vnd.ms-excel';
+  return new File([new Blob([bytes], {type})], item.filename, {type});
+}
+// 발주처별 자동 체크 시간대 — "전후"라 여유 있게 넓은 창으로 잡음(또또 10시·12시 두 번 다
+// 커버하려고 09:30~13:00). 창이 넓어도 msgId로 중복 방지되니 같은 메일을 두 번 반영할 위험은 없음
+const AUTO_GMAIL_VENDORS = [
+  { name:'또또컴퍼니', kw: () => '그린켐', hourStart:9.5,  hourEnd:13,   load: file => srLoadGrinchemFiles([file]) },
+  { name:'디네트',     kw: () => dinetteGetSenderKw(), hourStart:12.5, hourEnd:14, load: file => srLoadDinette(file) },
+];
+async function _autoGmailCheckOnce(){
+  if (!gmailTokenValid() && !gmailGetToken()) return;  // Gmail 연결 이력 자체가 없으면 조용히 건너뜀(동의창 안 띄움)
+  const now = new Date();
+  const h = now.getHours() + now.getMinutes()/60;
+  for (const v of AUTO_GMAIL_VENDORS) {
+    if (h < v.hourStart || h > v.hourEnd) continue;
+    try {
+      const token = await gmailRequestToken();
+      const kw = v.kw();
+      if (!kw) continue;
+      const items = await _autoGmailFindAttachments(kw, token);
+      const seen = _autoGmailSeenLoad();
+      const fresh = items.filter(it => !seen.has(it.msgId));
+      if (!fresh.length) continue;
+      let okCount = 0;
+      for (const it of fresh) {
+        try {
+          const file = await _autoGmailDownloadAsFile(it, token);
+          v.load(file);
+          _autoGmailSeenAdd(it.msgId);
+          okCount++;
+        } catch(e) { console.warn('[자동 발주 가져오기]', v.name, it.filename, e.message); }
+      }
+      if (okCount > 0) _poShowToast(`✅ ${v.name} 발주 메일 자동 반영됨 (${okCount}건)`);
+    } catch(e) {
+      console.warn('[자동 발주 가져오기]', v.name, e.message);
+    }
+  }
+}
+setInterval(() => { _autoGmailCheckOnce().catch(()=>{}); }, 10*60*1000);
+setTimeout(() => { _autoGmailCheckOnce().catch(()=>{}); }, 15*1000);  // 앱 켠 직후에도 그 시간대면 바로 한 번 확인
 // ─ 깐마늘 리뷰주문 (발주서의 노란색 채움 = 리뷰) ─
 const srReviewSet = new Set();        // 'grobn||홍길동' / 'yb||홍길동'
 const srReviewFileMeta = [];          // [{name, brand, count, err?}]
