@@ -8840,6 +8840,14 @@ function rematchAllOrders(){
     o.opt_mapped=parsed.optMapped||false;
     o.opt_needs_check=parsed.optNeedsCheck||false;
     o.mapped_code=parsed.mappedCode||'';
+    // 그린켐(또또컴퍼니) 마그네슘은 수량(1/2/3개)마다 매입단가가 완전히 다른데(묶음할인,
+    // _grinchemPriceKey와 같은 이유), 옵션명이 비어있어서 매입/순이익의 매입단가표 키
+    // (srPurchaseKey)가 수량 상관없이 전부 한 행으로 합쳐짐 — 그러면 먼저 등록된 수량의
+    // 단가가 다른 수량에도 그대로 적용돼버려 순이익이 틀어짐. 옵션명에 수량을 넣어서
+    // 수량별로 매입단가표 행이 분리되게 함
+    if (/^그린켐/.test(o.order_no||'') && /마그네슘/.test(o.item_name||'')) {
+      o.option_name = o.qty + '개';
+    }
     // 개별 주문 단위 직접수정 — 코드 단위 override보다 우선 적용. 같은 코드를 쓰는 다른
     // 주문에는 영향 없이 이 주문 한 건만 고칠 때 씀
     const oov = applyOrderOverride(o.order_no);
