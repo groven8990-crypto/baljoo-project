@@ -3,7 +3,7 @@ name: Deploy web page (GitHub Pages)
 on:
   push:
     branches: [main]
-    paths: ["src/**", "tools/shopmine-order-alert/**"]
+    paths: ["src/**", "tools/shopmine-order-alert/**", "tools/order-collector/**", "mobile/supabase/functions/_shared/**"]
   workflow_dispatch:
 
 permissions:
@@ -30,6 +30,12 @@ jobs:
       # 샵마인 PC 알림 프로그램도 같이 올려서, PC 설치 파일이 여기서 받아 가게 함 (…/pc/)
       - name: Add PC alert tool
         run: mkdir -p src/pc && cp tools/shopmine-order-alert/shopmine_alert.py tools/shopmine-order-alert/install.bat tools/shopmine-order-alert/install.ps1 src/pc/
+      # 오라클 서버 주문 수집기 (…/vm/) — 쿠팡 · 네이버 조회 코드는 서버 함수와 같은 파일을 씀
+      - name: Add order collector
+        run: |
+          mkdir -p src/vm/shared
+          cp tools/order-collector/collector.ts tools/order-collector/install.sh src/vm/
+          cp mobile/supabase/functions/_shared/{types,naver,coupang}.ts src/vm/shared/
       - name: Upload src as Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
