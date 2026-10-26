@@ -34,7 +34,8 @@
       {
         "provider": "github",
         "owner": "groven8990-crypto",
-        "repo": "baljoo-project"
+        "repo": "baljoo-project",
+        "releaseType": "release"
       }
     ],
     "files": [
