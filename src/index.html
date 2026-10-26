@@ -9324,6 +9324,9 @@ const VENDOR_COURIER_DEFAULT = {
   '도매꾹': '롯데택배',
   '늘푸른': '롯데택배',
   '에이팩': '롯데택배', '사무실': '롯데택배',
+  '생선상륙': '한진택배',
+  '참맛더드림': '로젠택배',
+  '마그네슘': '경동택배',
 };
 
 // ─── 거래처별 택배사 커스텀 매핑 (localStorage: invCarrierMap) ───────────
@@ -9345,7 +9348,7 @@ function invLookupCourier(fname, vendorHint) {
     }
   }
   // 하드코딩 기본 매핑 — 파일명 먼저, 없으면 vendorHint
-  const known = ['푸드앤','푸드엔','일비','거풍푸드','거풍','남부파머스','최고집','공덕농협','공덕','현해랑','도매꾹','늘푸른'];
+  const known = ['푸드앤','푸드엔','일비','거풍푸드','거풍','남부파머스','최고집','공덕농협','공덕','현해랑','도매꾹','늘푸른','생선상륙','참맛더드림','마그네슘'];
   for (const v of known) {
     if (fname.includes(v)) return {courier: VENDOR_COURIER_DEFAULT[v] || '롯데택배', matchedKey: v};
   }
