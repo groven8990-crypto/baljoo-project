@@ -21549,13 +21549,8 @@ function srBuildProfitRows(orders){
     // 매입가 = 일반 수량 × 매입단가 + 리뷰 수량 × 리뷰단가 (리뷰단가 미입력시 매입단가로 폴백)
     // 모든 값 Number 강제 변환 + NaN→0 fallback 으로 NaN 전파 방지
     const _unit       = Number(r.unit) || 0;
-    const _qtySum     = Number(r.qtySum) || 0;
-    const _reviewQty  = Number(r.reviewQty) || 0;
-    r.reviewQty   = _reviewQty;   // 후속 표시용으로도 보정값 사용
     r.reviewCount = Number(r.reviewCount) || 0;
     const _effReviewUnit = (Number(r.reviewUnit) > 0) ? Number(r.reviewUnit) : _unit;
-    const _realQty = Math.max(0, _qtySum - _reviewQty);
-    r.itemCost = _realQty * _unit + _reviewQty * _effReviewUnit;
     // 같은 주문번호가 여러 줄로 나뉜 경우(예: 도매꾹 "화이트,그레이" 옵션 분리처럼 한 주문이
     // 옵션별로 여러 사람별계산 줄로 쪼개짐)엔 order_no만으로 박스수 보정 키를 잡으면 두 줄이
     // 같은 저장 슬롯을 공유해서 한쪽을 고치면 다른 쪽도 같이 바뀌어버림 → 발생 순번을 붙여 구분
@@ -21571,10 +21566,19 @@ function srBuildProfitRows(orders){
       });
     }
     let shipTotal = 0;
+    let itemCostSum = 0, qtySumNew = 0, reviewQtyNew = 0;
     for (const d of r.orderDetail) {
-      const computed = r.consol > 0 ? Math.max(1, Math.ceil(d.units / r.consol)) : 1;
       // 주문별 수동 보정 적용
       const ov = ovDB[srOverrideKey(r.key, d.order_no)] || {};
+      // 매입수량(중량/개수) 수동 보정 — 목전지처럼 옵션 텍스트에서 중량을 자동으로 못 읽어내는
+      // 경우를 위해, 그 주문만 "매입수량" 칸에 직접 숫자(예: kg)를 입력하면 자동 계산값 대신 씀.
+      // 박스수/매입원가/배송비 전부 이 숫자를 기준으로 다시 계산됨
+      d.unitsComputed = d.units;
+      d.unitsOverridden = (ov.units != null && !isNaN(ov.units) && ov.units > 0);
+      d.units = d.unitsOverridden ? Number(ov.units) : d.unitsComputed;
+      qtySumNew += d.units;
+      if (d.isReview) reviewQtyNew += d.units;
+      const computed = r.consol > 0 ? Math.max(1, Math.ceil(d.units / r.consol)) : 1;
       d.boxesComputed = computed;
       d.boxesOverridden = (ov.boxes != null && !isNaN(ov.boxes));
       d.boxes = d.boxesOverridden ? Number(ov.boxes) : computed;
@@ -21589,6 +21593,7 @@ function srBuildProfitRows(orders){
         d.salesAmt = _newAmt;
       }
       d.itemCost = d.units * (d.isReview ? _effReviewUnit : r.unit);
+      itemCostSum += d.itemCost;
       // 배송비: shipTiers 가 있으면 박스별 수량에 따라 단계 적용, 없으면 박스수 × shipFee
       if (Array.isArray(r.shipTiers) && r.shipTiers.length) {
         const tiers = r.shipTiers.slice().sort((a,b)=>(a.qty||0)-(b.qty||0));
@@ -21604,6 +21609,9 @@ function srBuildProfitRows(orders){
       d.totalCost = d.itemCost + d.shipCost;
       shipTotal += d.shipCost;
     }
+    r.qtySum = qtySumNew;
+    r.reviewQty = reviewQtyNew;
+    r.itemCost = itemCostSum;
     r.shipTotal = shipTotal;
     r.purchase = r.itemCost + shipTotal;
     // 그로븐 = 면세사업자, 옐로우브릿지/기타 = 과세 (행별 taxable 체크박스로 제어)
@@ -22384,10 +22392,17 @@ function srBuildDetailInnerHtml(r){
     const restoreBtn = d.boxesOverridden ? `<button type="button" onclick="srRestoreDetailBox(this)" data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}" title="자동 계산으로 되돌리기 (${d.boxesComputed}박스)" style="border:none;background:none;cursor:pointer;color:#7C3AED;font-size:11px;padding:0 4px">↺</button>` : '';
     const salesOvTag = d.salesAmtOverridden ? `<span style="font-size:9px;color:#2563EB;margin-left:2px" title="자동 계산값: ${d.salesAmtComputed.toLocaleString()}원">✏️</span>` : '';
     const salesRestoreBtn = d.salesAmtOverridden ? `<button type="button" onclick="srRestoreDetailSales(this)" data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}" title="자동 계산으로 되돌리기 (${d.salesAmtComputed.toLocaleString()}원)" style="border:none;background:none;cursor:pointer;color:#2563EB;font-size:11px;padding:0 4px">↺</button>` : '';
+    const unitsOvTag = d.unitsOverridden ? `<span style="font-size:9px;color:#B45309;margin-left:2px" title="자동 계산값: ${d.unitsComputed}">✏️</span>` : '';
+    const unitsRestoreBtn = d.unitsOverridden ? `<button type="button" onclick="srRestoreDetailUnits(this)" data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}" title="자동 계산으로 되돌리기 (${d.unitsComputed})" style="border:none;background:none;cursor:pointer;color:#B45309;font-size:11px;padding:0 4px">↺</button>` : '';
     return `<tr style="background:${d.boxesOverridden?'#F3E8FF':(i%2===0?'#fff':'#FAFAFA')}">
       <td style="padding:5px 8px;font-size:11px">${escHtml(d.recv_name)}</td>
       <td style="padding:5px 8px;text-align:right;font-size:11px">${d.qty}</td>
-      <td style="padding:5px 8px;text-align:right;font-size:11px;color:#7B4B00">${d.units}</td>
+      <td style="padding:3px 6px;text-align:right;font-size:11px;white-space:nowrap">
+        <input type="number" min="0" step="1" value="${d.units}"
+          data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}"
+          oninput="srOnDetailUnitsChange(this)"
+          style="width:55px;padding:2px 5px;font-size:11px;text-align:right;border:1px solid #D1D5DB;border-radius:3px;font-variant-numeric:tabular-nums;color:#7B4B00;${d.unitsOverridden?'background:#FFFBEB;color:#B45309;font-weight:600':''}">${unitsOvTag}${unitsRestoreBtn}
+      </td>
       <td style="padding:3px 6px;text-align:right;font-size:11px;white-space:nowrap">
         <input type="number" min="0" step="1" value="${d.salesAmt}"
           data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}"
@@ -22406,7 +22421,7 @@ function srBuildDetailInnerHtml(r){
     </tr>`;
   }).join('');
   const totalBoxes = r.orderDetail.reduce((s,d)=>s+d.boxes,0);
-  const formula = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">계산식: <b>박스수</b> = ceil(매입수량 ÷ ${r.consol||'없음'}) · <b>매입가</b> = 매입수량 × ${r.unit.toLocaleString()}원 · <b>배송비</b> = 박스수 × ${r.shipFee.toLocaleString()}원 <span style="color:#2563EB;margin-left:6px">· 매출액 칸에 직접 입력하면 그 주문의 매출(자동계산 대신)로 쓰임</span><span style="color:#7C3AED;margin-left:6px">· 박스수에 직접 입력하면 그 주문만 수동 보정</span></div>`;
+  const formula = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">계산식: <b>박스수</b> = ceil(매입수량 ÷ ${r.consol||'없음'}) · <b>매입가</b> = 매입수량 × ${r.unit.toLocaleString()}원 · <b>배송비</b> = 박스수 × ${r.shipFee.toLocaleString()}원 <span style="color:#B45309;margin-left:6px">· 매입수량 칸에 직접 입력하면 자동 계산(옵션명에서 중량/개수 추출) 대신 그 숫자를 씀 — 목전지처럼 옵션이 "-"거나 틀리게 읽힌 주문을 바로잡을 때 사용</span><span style="color:#2563EB;margin-left:6px">· 매출액 칸에 직접 입력하면 그 주문의 매출(자동계산 대신)로 쓰임</span><span style="color:#7C3AED;margin-left:6px">· 박스수에 직접 입력하면 그 주문만 수동 보정</span></div>`;
   return `<div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">📋 ${escHtml(r.brand)} · ${escHtml(_srVendorName(r.vendor))} · ${escHtml(r.item)} · ${escHtml(r.option)} — 사람별 계산</div>
     ${formula}
     <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #E5E7EB;border-radius:4px">
@@ -22520,6 +22535,33 @@ function srRestoreDetailSales(btn){
   const ovDB = srLoadOverridesDB();
   const k = srOverrideKey(rowKey, orderNo);
   if (ovDB[k]) { delete ovDB[k].salesAmt; if (!Object.keys(ovDB[k]).length) delete ovDB[k]; srSaveOverridesDB(ovDB); }
+  srUpdateProfitIncremental(rowKey);
+}
+// 매입수량(중량/개수) 수동 보정 — 옵션명에서 자동으로 중량을 못 읽어낸 주문(예: 목전지)을
+// 그 주문만 직접 숫자로 바로잡음. boxes/salesAmt 보정과 같은 저장소에 units로 같이 저장.
+function srOnDetailUnitsChange(input){
+  const rowKey = input.getAttribute('data-rowkey');
+  const orderNo = input.getAttribute('data-orderno');
+  if (rowKey == null) return;
+  const ovDB = srLoadOverridesDB();
+  const k = srOverrideKey(rowKey, orderNo);
+  const raw = input.value;
+  if (raw === '' || isNaN(parseFloat(raw)) || parseFloat(raw) <= 0) {
+    if (ovDB[k]) { delete ovDB[k].units; if (!Object.keys(ovDB[k]).length) delete ovDB[k]; srSaveOverridesDB(ovDB); }
+  } else {
+    const v = Math.max(0, parseFloat(raw));
+    ovDB[k] = ovDB[k] || {};
+    ovDB[k].units = v;
+    srSaveOverridesDB(ovDB);
+  }
+  srUpdateProfitIncremental(rowKey);
+}
+function srRestoreDetailUnits(btn){
+  const rowKey = btn.getAttribute('data-rowkey');
+  const orderNo = btn.getAttribute('data-orderno');
+  const ovDB = srLoadOverridesDB();
+  const k = srOverrideKey(rowKey, orderNo);
+  if (ovDB[k]) { delete ovDB[k].units; if (!Object.keys(ovDB[k]).length) delete ovDB[k]; srSaveOverridesDB(ovDB); }
   srUpdateProfitIncremental(rowKey);
 }
 
