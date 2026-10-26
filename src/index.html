@@ -20279,7 +20279,7 @@ const SR_B2B_GMAIL_CONFIGS = {
               kw: () => dinetteGetSenderKw(), kwMissingMsg:'먼저 코드 관리 → Gmail 설정에서 디네트 발신 키워드를 등록해 주세요.',
               load: file => srLoadDinette(file), driveSubKw:'디네트' },
   grinchem: { statusElId:'srGrinchemGmailStatus', listElId:'srGrinchemGmailList', itemsVar:'_srGrinchemGmailItems', tokenVar:'_srGrinchemGmailToken',
-              kw: () => '그린켐', kwMissingMsg:'',
+              kw: () => '또또', kwMissingMsg:'',
               load: file => srLoadGrinchemFiles([file]), driveSubKw:'또또' },
 };
 async function srB2BGmailFetch(vendorKey){
@@ -20471,7 +20471,7 @@ async function _driveUploadWithRetry(subKw, file, token){
 // 커버하려고 09:30~13:00). 창이 넓어도 msgId로 중복 방지되니 같은 메일을 두 번 반영할 위험은 없음.
 // driveSubKw는 "발주관리" 폴더 안에서 이 거래처 하위 폴더를 찾을 키워드
 const AUTO_GMAIL_VENDORS = [
-  { name:'또또컴퍼니', kw: () => '그린켐', driveSubKw:'또또', hourStart:9.5,  hourEnd:13,   load: file => srLoadGrinchemFiles([file]) },
+  { name:'또또컴퍼니', kw: () => '또또', driveSubKw:'또또', hourStart:9.5,  hourEnd:13,   load: file => srLoadGrinchemFiles([file]) },
   { name:'디네트',     kw: () => dinetteGetSenderKw(), driveSubKw:'디네트', hourStart:12.5, hourEnd:14, load: file => srLoadDinette(file) },
 ];
 async function _autoGmailCheckOnce(){
