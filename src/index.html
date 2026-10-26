@@ -19738,8 +19738,21 @@ const GRINCHEM_BAKDAE_SPEC_BY_RANGE = [
   { re:/33\s*[-~]\s*35\s*cm/, spec2:'33~35cm', spec1:'2P+' },
   { re:/37\s*cm\s*이상/, spec2:'37cm이상', spec1:'P+' },
 ];
-function _grinchemKnownPriceFor(itemText){
+function _grinchemKnownPriceFor(itemText, orderQty){
   const t = String(itemText||'');
+  // 마그네슘 — 수량(1/2/3개)별 묶음할인 판매가(옐로우브릿지 납품단가표 26.10.16 기준, 사장님 확인)
+  // + 매입원가(개당 3,896원) + 배송비(주문당 고정 3,300원)로 매입단가 계산. 다른 품목과 달리
+  // 매입단가표(PRICE_TABS.b2bgc)에 안 기대고 직접 계산 — 수량에 따라 배송비가 나뉘어
+  // 개당 단가 자체가 달라지는 구조라 고정 단가표로는 표현이 안 됨
+  if (t.includes('마그네슘')) {
+    const MG_SALE_TOTAL_BY_QTY = {1:11800, 2:19100, 3:26400};
+    const n = Number(orderQty) || 0;
+    const saleTotal = MG_SALE_TOTAL_BY_QTY[n];
+    if (!saleTotal) return null;  // 1~3개 외 수량은 모름 — 수동 등록 필요
+    const price = Math.round(saleTotal / n);          // 판매단가(개당)
+    const cost  = Math.round(3896 + 3300 / n);         // 매입단가(개당) = 원가3,896 + 배송비3,300(주문당 고정)÷수량
+    return { price, cost };
+  }
   const qtyM = t.match(/(\d+)\s*미/);
   const qty = qtyM ? qtyM[1] : null;
   if (!qty) return null;
@@ -19816,13 +19829,17 @@ function _srProcessGrinchemStaged(){
   let idx = 0;
   const newOrders = [];  // rematchAllOrders 이후 vendor_key로 매입단가(cost)를 등록해야 하니 잠시 보관
   for (const r of srGrinchemStagedRows) {
-    const key = _grinchemNormItem(r.item);
+    // 마그네슘은 수량(1/2/3개)마다 매출·매입단가가 완전히 다른 비선형 가격이라(묶음 할인),
+    // 품목명 텍스트만으로 키를 잡으면 수량이 다른 주문이 같은 등록칸으로 묶여서 마진이
+    // 틀어짐 — 품목명에 "마그네슘"이 있으면 수량도 키에 포함해서 수량별로 따로 등록되게 함
+    const isMagnesium = /마그네슘/.test(r.item);
+    const key = _grinchemNormItem(r.item) + (isMagnesium ? ('|qty:'+r.qty) : '');
     if (!key) continue;
     let saved = prices[key];
     // 아직 등록 안 된 품목이면, 매입단가표(또또컴퍼니 납품단가)에서 규격·수량까지 정확히 일치하는
     // 값을 찾아 자동으로 채워줌 — 사람이 직접 하나하나 다시 입력할 필요 없게
     if (!saved || !saved.price) {
-      const known = _grinchemKnownPriceFor(r.item);
+      const known = _grinchemKnownPriceFor(r.item, r.qty);
       if (known) {
         prices[key] = { price: known.price, cost: known.cost, registeredAt: Date.now(), auto: true };
         saved = prices[key];
