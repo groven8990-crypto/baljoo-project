@@ -8848,6 +8848,17 @@ function rematchAllOrders(){
     if (/^그린켐/.test(o.order_no||'') && /마그네슘/.test(o.item_name||'')) {
       o.option_name = o.qty + '개';
     }
+    // 목전지(MAC컴퍼니)도 중량(2/3/4/5kg)마다 매입/판매단가가 다른데, 선택사항·노출옵션명
+    // 둘 다 비어서 들어오는 주문이 있어(쿠팡 쪽 export 형식 차이) 옵션명이 빈 채로 남으면
+    // 매입단가표(srPurchaseKey)에서 중량 상관없이 전부 한 행으로 합쳐져 순이익이 틀어짐 —
+    // 상품명 등 다른 소스에서라도 중량을 찾아 옵션명을 채워줌(주문금액 계산 때 kg을 찾는
+    // 방식과 동일: 옵션명→선택사항→노출옵션명→상품명 순)
+    if (o.vendor_key === 'MAC컴퍼니' && !/(\d+)\s*kg/i.test(o.option_name||'')) {
+      for (const s of [o.option_name, o.select_opt, o.disp_opt, o.product]) {
+        const m = String(s||'').match(/(\d+)\s*kg/i);
+        if (m) { o.option_name = m[1]+'kg'; break; }
+      }
+    }
     // 개별 주문 단위 직접수정 — 코드 단위 override보다 우선 적용. 같은 코드를 쓰는 다른
     // 주문에는 영향 없이 이 주문 한 건만 고칠 때 씀
     const oov = applyOrderOverride(o.order_no);
