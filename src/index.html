@@ -4045,7 +4045,9 @@ function handleFile(file, onDone) {
               if (m) { _mjKg = parseInt(m[1]); break; }
             }
             const _mjTier = {2:19900, 3:28900, 4:37900, 5:58630}[_mjKg];
-            if (_mjTier != null) order_amt = _mjTier;
+            // 한 주문 줄에 같은 중량을 여러 개 산 경우(수량>1) 고정가도 그만큼 곱해야 함 —
+            // 안 그러면 1개 산 것처럼 매출이 축소됨
+            if (_mjTier != null) order_amt = _mjTier * (parseInt(r[C.qt])||1);
           }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
@@ -8848,12 +8850,11 @@ function rematchAllOrders(){
     if (/^그린켐/.test(o.order_no||'') && /마그네슘/.test(o.item_name||'')) {
       o.option_name = o.qty + '개';
     }
-    // 목전지(MAC컴퍼니)도 중량(2/3/4/5kg)마다 매입/판매단가가 다른데, 선택사항·노출옵션명
-    // 둘 다 비어서 들어오는 주문이 있어(쿠팡 쪽 export 형식 차이) 옵션명이 빈 채로 남으면
-    // 매입단가표(srPurchaseKey)에서 중량 상관없이 전부 한 행으로 합쳐져 순이익이 틀어짐 —
-    // 상품명 등 다른 소스에서라도 중량을 찾아 옵션명을 채워줌(주문금액 계산 때 kg을 찾는
-    // 방식과 동일: 옵션명→선택사항→노출옵션명→상품명 순)
-    if (o.vendor_key === 'MAC컴퍼니' && !/(\d+)\s*kg/i.test(o.option_name||'')) {
+    // 목전지(MAC컴퍼니)는 중량(2/3/4/5kg)마다 매입/판매단가가 다른데, 선택사항·노출옵션명
+    // 형식이 주문마다 들쭉날쭉해서("2kg 1개" / "2kg x 1개" / 상품명에만 중량이 있는 경우 등)
+    // 옵션명을 그대로 쓰면 같은 중량인데도 매입단가표(srPurchaseKey)에서 다른 행으로 쪼개지거나
+    // (반대로) 빈 옵션으로 전부 한 행에 뭉쳐서 순이익이 틀어짐 — 항상 "Nkg" 형태로 통일해서 매김
+    if (o.vendor_key === 'MAC컴퍼니') {
       for (const s of [o.option_name, o.select_opt, o.disp_opt, o.product]) {
         const m = String(s||'').match(/(\d+)\s*kg/i);
         if (m) { o.option_name = m[1]+'kg'; break; }
@@ -13075,7 +13076,9 @@ function handleFileAdd(file, onDone){
               if (m) { _mjKg = parseInt(m[1]); break; }
             }
             const _mjTier = {2:19900, 3:28900, 4:37900, 5:58630}[_mjKg];
-            if (_mjTier != null) order_amt = _mjTier;
+            // 한 주문 줄에 같은 중량을 여러 개 산 경우(수량>1) 고정가도 그만큼 곱해야 함 —
+            // 안 그러면 1개 산 것처럼 매출이 축소됨
+            if (_mjTier != null) order_amt = _mjTier * (parseInt(r[C.qt])||1);
           }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
@@ -21220,8 +21223,12 @@ function srBrandFromAlias(alias){
   if (a.includes('자꾸가게') || a.includes('옐로우브릿지')) return '옐로우브릿지';
   return '기타';
 }
-// 1건 주문이 실제로 몇 매입단위(팩/봉/개)인지 계산
+// 1건 주문이 실제로 몇 매입단위(팩/봉/개/kg)인지 계산
 //  - 동일/깐마늘: 1건 = kg 봉 N개 (옵션 2kg → 2봉)
+//  - 목전지(MAC컴퍼니): 매입단가가 "1kg당" 가격이라, 1건 = 중량(kg) — 수량(qty) 칸은 1로 고정돼
+//    들어오고 무게는 옵션명(2kg/3kg/4kg/5kg)에만 있어서, 그냥 qty×code_qty(=1)로 계산하면
+//    4kg 주문도 "1개"로 잡혀 매입원가가 1/4로 축소되는 버그가 있었음(사장님이 순이익이 너무
+//    많이 남는다고 확인) — 옵션명에서 중량을 읽어 그만큼 곱해줌
 //  - 그 외: 1건 = code_qty 팩/개 (예: '13개,140g' → code_qty=13)
 function srPurchaseUnits(o){
   if (o.vendor_key === '동일') {
@@ -21229,6 +21236,11 @@ function srPurchaseUnits(o){
     const m = n.option.match(/(\d+)/);
     const kg = m ? parseInt(m[1]) : 1;
     return (Number(o.qty)||1) * (kg || 1);
+  }
+  if (o.vendor_key === 'MAC컴퍼니') {
+    const m = String(o.option_name||'').match(/(\d+)\s*kg/i);
+    const kg = m ? parseInt(m[1]) : 1;
+    return (Number(o.qty)||1) * kg;
   }
   return (Number(o.qty)||1) * (Number(o.code_qty)||1);
 }
