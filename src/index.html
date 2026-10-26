@@ -5842,12 +5842,13 @@ function expQuickFromOrder(gk){
 
   // 매입단가표에 단가가 등록돼있으면 이 발주 건의 총 매입가(=매입단가×수량 + 배송비)를 자동 계산해서 채움.
   // srBuildProfitRows는 (전달한 orders와 무관하게) 디네트 B2B 행을 항상 덧붙이므로 그건 반드시 제외.
-  // 단, "직거래"는 이 발주처(vendor)한테 실제로 같이 매입하는 거라 지출결의서 금액에 포함시켜야 함
-  // — 디네트처럼 완전히 별개의 B2B 거래처(다른 곳에 파는 물량)가 아니라, 바로 이 발주처한테서
-  // 사입해서 우리가 직접 고객에게 파는 거라 같은 지출결의서 한 장에 합쳐져야 맞음.
+  // 단, "직거래"·"그린켐"(또또컴퍼니)은 이 발주처(vendor)한테 실제로 같이 매입하는 거라 지출결의서
+  // 금액에 포함시켜야 함 — 디네트처럼 완전히 별개의 B2B 거래처(다른 곳에 파는 물량)가 아니라,
+  // 바로 이 발주처한테서 사입해서 우리가 직접(직거래) 또는 또또컴퍼니 통해 고객에게 파는 거라
+  // 같은 지출결의서 한 장에 합쳐져야 맞음(사장님이 그린켐 매입/판매단가 전부 등록해준 뒤 요청).
   let purchaseTotal = 0, noPriceCnt = 0, priceRowCnt = 0;
   try {
-    const rows = (typeof srBuildProfitRows === 'function') ? srBuildProfitRows(orders).filter(r => !r.isB2B || r.b2bName === '직거래') : [];
+    const rows = (typeof srBuildProfitRows === 'function') ? srBuildProfitRows(orders).filter(r => !r.isB2B || r.b2bName === '직거래' || r.b2bName === '그린켐') : [];
     rows.forEach(r => {
       priceRowCnt++;
       purchaseTotal += Math.round(r.purchase || 0);
