@@ -19661,6 +19661,12 @@ const LS_GRINCHEM_ITEM_PRICE = 'yb_grinchem_item_price';
 function loadGrinchemItemPrices(){ try{ return JSON.parse(localStorage.getItem(LS_GRINCHEM_ITEM_PRICE)||'{}'); }catch{ return {}; } }
 function saveGrinchemItemPrices(m){ try{ localStorage.setItem(LS_GRINCHEM_ITEM_PRICE, JSON.stringify(m||{})); }catch(e){} }
 function _grinchemNormItem(name){ return String(name||'').trim().replace(/\s+/g,' '); }
+// 마그네슘은 수량(1/2/3개)마다 비선형 가격이라 품목명만으로는 등록 키가 안 되고 수량도 같이
+// 섞어야 함 — 단가 저장(_srProcessGrinchemStaged)과 등록된 단가 목록 표시(renderGrinchemRegisteredList)
+// 양쪽이 똑같이 이 함수로 키를 만들어야 서로 어긋나서 등록해놓고도 목록에 안 뜨는 일이 없음
+function _grinchemPriceKey(item, qty){
+  return _grinchemNormItem(item) + (/마그네슘/.test(item||'') ? ('|qty:'+qty) : '');
+}
 // 또또컴퍼니 발주서도 샵마인 파일처럼 새로고침하면 브라우저 메모리(srGrinchemStagedRows)에만
 // 있던 게 통째로 사라지던 문제 — 샵마인 업로드 이력과 같은 방식으로 오늘 날짜 파일을 저장해뒀다가
 // 페이지를 열면 자동으로 다시 읽어들임(_autoRestoreGrinchemUpload, DOMContentLoaded에서 호출)
@@ -19830,11 +19836,7 @@ function _srProcessGrinchemStaged(){
   let idx = 0;
   const newOrders = [];  // rematchAllOrders 이후 vendor_key로 매입단가(cost)를 등록해야 하니 잠시 보관
   for (const r of srGrinchemStagedRows) {
-    // 마그네슘은 수량(1/2/3개)마다 매출·매입단가가 완전히 다른 비선형 가격이라(묶음 할인),
-    // 품목명 텍스트만으로 키를 잡으면 수량이 다른 주문이 같은 등록칸으로 묶여서 마진이
-    // 틀어짐 — 품목명에 "마그네슘"이 있으면 수량도 키에 포함해서 수량별로 따로 등록되게 함
-    const isMagnesium = /마그네슘/.test(r.item);
-    const key = _grinchemNormItem(r.item) + (isMagnesium ? ('|qty:'+r.qty) : '');
+    const key = _grinchemPriceKey(r.item, r.qty);
     if (!key) continue;
     let saved = prices[key];
     // 아직 등록 안 된 품목이면, 매입단가표(또또컴퍼니 납품단가)에서 규격·수량까지 정확히 일치하는
@@ -20016,12 +20018,14 @@ function renderGrinchemRegisteredList(){
   const seen = new Set();
   const items = [];
   for (const r of srGrinchemStagedRows) {
-    const key = _grinchemNormItem(r.item);
+    const key = _grinchemPriceKey(r.item, r.qty);
     if (!key || seen.has(key)) continue;
     const saved = prices[key];
     if (!saved || !saved.price) continue;
     seen.add(key);
-    items.push({ key, item: r.item, saved });
+    // 마그네슘처럼 키에 수량이 섞여 있으면, 같은 품목명이 수량별로 여러 줄 뜨니까 구분되게 표시
+    const label = key.includes('|qty:') ? `${r.item} (수량 ${r.qty}개)` : r.item;
+    items.push({ key, item: label, saved });
   }
   if (!items.length) { el.innerHTML = ''; return; }
   const rows = items.map(({key,item,saved}) => `
