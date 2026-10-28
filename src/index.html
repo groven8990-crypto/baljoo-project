@@ -5526,7 +5526,7 @@ function _seedVendorEmailDefaults(){
   // 쉼표로 구분된 여러 주소로 등록해둠 — gmailSendOne이 'to' 값을 그대로 메일 헤더에 넣기
   // 때문에 쉼표로 구분된 여러 주소를 그대로 지원함(별도 코드 수정 불필요)
   const defaults = {
-    '참맛더드림': 'chammatthe@gmail.com',
+    '참맛더드림': 'daeheng222@naver.com',
     '우리뜰': 'edgehouse2025@naver.com',
     'MAC컴퍼니': 'macfoodsystem@naver.com, rudrms5010@gmail.com, mac.fsm.company@gmail.com',
   };
@@ -5586,6 +5586,23 @@ function _seedVendorEmailDefaults(){
         saveVendorEmails(emails5);
       }
       localStorage.setItem('yb_vendor_email_fix_v4', '1');
+    }
+  }catch(e){}
+
+  // 1회성 정정 v5: 참맛더드림 메일주소가 바뀜 — 예전 chammatthe@gmail.com은 빼고
+  // daeheng222@naver.com으로 교체, 로젠택배 담당자(jungrs4u@naver.com)는 그대로 유지.
+  // 한 번만 실행해서, 이후 사용자가 이메일 란을 직접 수정해도 이 로직이 다시 덮어쓰지 않도록 함.
+  try{
+    if (!localStorage.getItem('yb_vendor_email_fix_v5')) {
+      const emails6 = loadVendorEmails();
+      const oldEmail = 'chammatthe@gmail.com';
+      const newEmail = 'daeheng222@naver.com';
+      const cur6 = String(emails6['참맛더드림']||'');
+      const list6 = cur6.split(',').map(s=>s.trim()).filter(Boolean).filter(e => e !== oldEmail);
+      if (!list6.includes(newEmail)) list6.unshift(newEmail);
+      emails6['참맛더드림'] = list6.join(', ');
+      saveVendorEmails(emails6);
+      localStorage.setItem('yb_vendor_email_fix_v5', '1');
     }
   }catch(e){}
 }
