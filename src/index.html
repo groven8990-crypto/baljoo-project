@@ -21880,6 +21880,10 @@ function srUpdateProfitIncremental(changedKey){
             <span style="font-size:10px;opacity:.7;margin-left:6px">플랫폼 수수료 없음 (직거래)</span>
           </span>`;
       }
+      // 발주처별 요약 표(생선상륙/일비/참맛더드림 등 소계)도 같이 갱신 — 이게 빠지면
+      // 상세표는 바뀌는데 이 요약표만 옛날 숫자로 남아서 사장님이 보기엔 안 맞아 보임
+      const b2bSumEl = document.querySelector(`.sr-b2b-summary-table[data-biz="${bizSel}"][data-b2b-name="${b2bNameSel}"]`);
+      if (b2bSumEl && myB2bRows.length) b2bSumEl.innerHTML = _srBuildB2BSummaryTableHtml(myB2bRows);
     }
   }
   // 3) 상단 5개 카드
@@ -22159,17 +22163,11 @@ function _srBuildB2BSectionHtml(biz, b2bRows, _theads, _buildFooter){
   }
   return Object.entries(byName).map(([nm, rows]) => _srBuildOneB2BSectionHtml(biz, nm, rows, _theads, _buildFooter)).join('');
 }
-function _srBuildOneB2BSectionHtml(biz, b2bName, b2bRows, _theads, _buildFooter){
-  const TB = b2bRows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=(r.fee||0);s.vat+=(r.vat||0);s.profit+=r.profit;s.count+=r.count;return s;},{sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
-  let _prev = null;
-  const b2bTrs = b2bRows.map((r,i)=>{
-    const gk = String(r.vendor||'');
-    const first = (gk !== _prev); _prev = gk;
-    return _srBuildDetailRowHtml(r, i, first);
-  }).join('');
-  const pc = TB.profit >= 0 ? '#5DE3B3' : '#FECACA';
-  // 발주처별 요약 테이블 (그로븐 섹션과 동일한 형식) — 이 섹션은 이미 거래처(b2bName) 하나로
-  // 고정돼 있으니 발주처(매입처) 기준으로만 묶으면 됨
+// B2B "발주처별 요약" 표(생선상륙/일비/참맛더드림 등 매입처별 소계 + B2B 합계) — 초기 렌더와
+// srUpdateProfitIncremental 둘 다 여기서 똑같이 만들어 써야, 매입단가 수정했을 때 이 요약표도
+// 바로 갱신됨(예전엔 이 표만 따로 안 갱신돼서 상세표 합계랑 안 맞게 보이는 버그가 있었음)
+function _srBuildB2BSummaryTableHtml(b2bRows){
+  const TB = b2bRows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.profit+=r.profit;s.count+=r.count;return s;},{sales:0,purchase:0,profit:0,count:0});
   const byGroup = {};
   for (const r of b2bRows) {
     const k = String(r.vendor||'');
@@ -22186,7 +22184,7 @@ function _srBuildOneB2BSectionHtml(biz, b2bName, b2bRows, _theads, _buildFooter)
     <td style="padding:9px 14px;text-align:right;font-size:12px;color:#191F28;font-variant-numeric:tabular-nums;border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.purchase.toLocaleString()}원${_vpct(m.purchase,m.sales)}</td>
     <td style="padding:9px 14px;text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:${m.profit>=0?'#06B981':'#F04452'};border-bottom:1px solid #F2F4F6;white-space:nowrap">${m.profit.toLocaleString()}원${_vpct(m.profit,m.sales)}</td>
   </tr>`).join('');
-  const summaryTable = `<table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #ECEEF1;border-radius:0 0 0 0;overflow:hidden">
+  return `<table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #ECEEF1;border-radius:0 0 0 0;overflow:hidden">
     <thead><tr style="background:${HBG}">
       <th style="padding:10px 14px;text-align:left;font-size:11px;color:${HFG};border-bottom:1px solid #ECEEF1;font-weight:600">발주처</th>
       <th style="padding:10px 14px;text-align:right;font-size:11px;color:${HFG};border-bottom:1px solid #ECEEF1;font-weight:600">주문건수</th>
@@ -22203,6 +22201,17 @@ function _srBuildOneB2BSectionHtml(biz, b2bName, b2bRows, _theads, _buildFooter)
       <td style="padding:10px 14px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;color:${TB.profit>=0?'#06B981':'#F04452'}">${TB.profit.toLocaleString()}원${_vpct(TB.profit,TB.sales)}</td>
     </tr></tfoot>
   </table>`;
+}
+function _srBuildOneB2BSectionHtml(biz, b2bName, b2bRows, _theads, _buildFooter){
+  const TB = b2bRows.reduce((s,r)=>{s.sales+=r.sales;s.purchase+=r.purchase;s.fee+=(r.fee||0);s.vat+=(r.vat||0);s.profit+=r.profit;s.count+=r.count;return s;},{sales:0,purchase:0,fee:0,vat:0,profit:0,count:0});
+  let _prev = null;
+  const b2bTrs = b2bRows.map((r,i)=>{
+    const gk = String(r.vendor||'');
+    const first = (gk !== _prev); _prev = gk;
+    return _srBuildDetailRowHtml(r, i, first);
+  }).join('');
+  const pc = TB.profit >= 0 ? '#5DE3B3' : '#FECACA';
+  const summaryTable = _srBuildB2BSummaryTableHtml(b2bRows);
   return `<div style="margin-top:14px" data-b2b-biz="${escHtml(biz)}" data-b2b-name="${escHtml(b2bName)}">
     <div class="sr-b2b-header" data-biz="${escHtml(biz)}" data-b2b-name="${escHtml(b2bName)}"
       style="background:#0D9488;color:#fff;padding:10px 16px;font-weight:700;font-size:14px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -22214,7 +22223,7 @@ function _srBuildOneB2BSectionHtml(biz, b2bName, b2bRows, _theads, _buildFooter)
         <span style="font-size:10px;opacity:.7;margin-left:6px">플랫폼 수수료 없음 (직거래)</span>
       </span>
     </div>
-    ${summaryTable}
+    <div class="sr-b2b-summary-table" data-biz="${escHtml(biz)}" data-b2b-name="${escHtml(b2bName)}">${summaryTable}</div>
     <div class="sr-biz-detail-section">
     <div style="margin-top:8px;font-size:11px;color:var(--text3)">📋 ${escHtml(_b2bDisplayName(b2bName))} B2B 상세 — 매입단가/배송비 입력. ▶ 누르면 건별 확인.</div>
     <div style="overflow-x:auto;margin-top:4px">
