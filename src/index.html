@@ -6759,16 +6759,33 @@ function renderGmailSettingsArea(){
           </div>`;
         })()}
       </div>
-      ${recent.length?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:6px">📋 최근 발송 이력 (${hist.length}건 중 최근 5건)</div>
-        <div style="font-size:11px">${recent.map(h => {
-          const dt = new Date(h.ts);
-          const tstr = dt.toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-          const icon = h.status==='sent'?'✅':'❌';
-          return `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${icon} ${escHtml(tstr)} · ${escHtml(h.vendor)} → ${escHtml(h.to||'-')}${h.error?` <span style="color:var(--danger)">(${escHtml(h.error.slice(0,60))})</span>`:''}</div>`;
-        }).join('')}</div>
+      ${hist.length?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          📋 발송 이력 (${hist.length}건)
+          <input class="inp" id="gmailSendHistSearch" placeholder="발주처로 검색 (예: 마그네슘) — 비우면 최근 5건" oninput="_renderGmailSendHistList()" style="flex:1;min-width:180px;font-size:11px;padding:4px 8px">
+        </div>
+        <div id="gmailSendHistList" style="font-size:11px">${_gmailSendHistListHtml(recent)}</div>
       </div>`:''}
     </div>`;
+}
+function _gmailSendHistListHtml(list){
+  return list.map(h => {
+    const dt = new Date(h.ts);
+    const tstr = dt.toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const icon = h.status==='sent'?'✅':'❌';
+    return `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${icon} ${escHtml(tstr)} · ${escHtml(h.vendor)}${h.alias?` <span style="color:var(--text3)">(${escHtml(h.alias)})</span>`:''} → ${escHtml(h.to||'-')}${h.error?` <span style="color:var(--danger)">(${escHtml(h.error.slice(0,60))})</span>`:''}</div>`;
+  }).join('') || '<div style="padding:8px 0;color:var(--text3)">일치하는 발송 이력이 없어요.</div>';
+}
+// 발주처 이름으로 검색하면 최근 5건 제한 없이 전체 이력에서 찾아줌 — 발송했는데 카드 배지가
+// 안 뜬다는 문의가 있을 때, 실제로 로그가 남았는지(성공/실패/아예 기록 자체가 없는지) 바로 확인하기 위함
+function _renderGmailSendHistList(){
+  const q = (document.getElementById('gmailSendHistSearch')?.value || '').trim();
+  const listEl = document.getElementById('gmailSendHistList');
+  if (!listEl) return;
+  const hist = loadSendHistory();
+  if (!q) { listEl.innerHTML = _gmailSendHistListHtml(hist.slice(-5).reverse()); return; }
+  const matched = hist.filter(h => String(h.vendor||'').includes(q) || String(h.to||'').includes(q)).slice(-30).reverse();
+  listEl.innerHTML = _gmailSendHistListHtml(matched);
 }
 // 발주처 단일/그룹 자동 발송
 // ─── 거래처 발주서 자동첨부 (예: 일비 발송 시 받은메일함의 디네트·그린켐 발주서를 함께 첨부) ───
