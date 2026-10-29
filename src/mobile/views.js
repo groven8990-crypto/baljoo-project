@@ -87,6 +87,36 @@ function chart(days, onPick) {
   return { html, bind: (root) => root.querySelectorAll('.chart button').forEach((b) => { b.onclick = () => onPick(b.dataset.d); }) };
 }
 
+// ── 실시간 주문 매출 ───────────────────────────────────────
+// 쿠팡 · 네이버(오라클 서버가 5분마다 수집)와 샵마인으로 들어온 주문 금액 합계. 순이익은 발주 자동화 보고서 기준.
+const PLAT = { coupang: '쿠팡', naver: '네이버', '11st': '11번가', esm: '지마켓/옥션' };
+let liveTimer = null;
+
+async function renderLive() {
+  clearTimeout(liveTimer);
+  const box = $('liveBox');
+  if (!box) return;
+  const today = kstToday();
+  const { data, error } = await db.rpc('live_sales', { p_from: shift(today, -1), p_to: today });
+  if (!$('liveBox')) return;
+  if (error) { box.innerHTML = ''; return; }
+  const sum = (rows) => rows.reduce((a, r) => ({ cnt: a.cnt + Number(r.cnt), amt: a.amt + Number(r.amount) }), { cnt: 0, amt: 0 });
+  const td = (data || []).filter((r) => r.day === today);
+  const t = sum(td), y = sum((data || []).filter((r) => r.day !== today));
+  const stores = td.map((r) => ({ name: [PLAT[r.platform], r.store].filter(Boolean).join(' '), cnt: Number(r.cnt), amt: Number(r.amount), biz: r.business }))
+    .sort((a, b) => b.amt - a.amt);
+  const now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' });
+  box.innerHTML = `<div class="card" style="gap:8px">
+    <div class="row"><b>실시간 주문 매출</b><span class="pill live">${esc(now)} 기준</span></div>
+    <div class="row" style="align-items:flex-end"><div><div class="meta">오늘 주문 ${won(t.cnt)}건</div><div class="big">${won(t.amt)}원</div></div>
+      <div style="text-align:right" class="meta">어제 하루<br><b style="color:var(--ink2)">${won(y.amt)}원 · ${won(y.cnt)}건</b></div></div>
+    ${stores.length ? stores.map((s) => `<div class="tbl" style="grid-template-columns:1.6fr .6fr 1fr"><span>${esc(s.name)} <span class="meta">${esc(s.biz === '-' ? '' : s.biz)}</span></span><span class="r meta">${won(s.cnt)}건</span><b class="r">${won(s.amt)}원</b></div>`).join('')
+      : '<div class="meta">오늘 들어온 주문이 아직 없습니다</div>'}
+    <div class="meta">쿠팡 · 네이버는 5분마다 자동 반영 · 순이익은 발주 자동화 보고서가 올라오면 아래에 표시됩니다</div>
+  </div>`;
+  // 현황 화면을 보고 있는 동안 1분마다 새로 고침
+  liveTimer = setTimeout(() => { if (!document.hidden) renderLive(); else liveTimer = null; }, 60_000);
+}
 // ── 현황 ──────────────────────────────────────────────────
 export async function renderHome() {
   const today = kstToday();
@@ -113,10 +143,10 @@ export async function renderHome() {
   } else {
     rows = days.slice().reverse().map((d) => { const s = modelOf(d); return [`${+d.slice(5, 7)}/${+d.slice(8)} (${dow(d)})${d === today ? ' 진행 중' : ''}`, s.sales, s.profit, d === today]; });
   }
-  $('homeMain').innerHTML = `
+  $('homeMain').innerHTML = `${state.home === '오늘' ? '<div id="liveBox"></div>' : ''}
     <div class="card" style="gap:10px">
       <div class="row" style="align-items:flex-end">
-        <div><div class="meta">총 매출 · ${won(m.count)}건</div><div class="big">${won(m.sales)}원</div></div>
+        <div><div class="meta">${state.home === '오늘' ? '보고서 기준 매출 (전 채널 · 순이익)' : '총 매출'} · ${won(m.count)}건</div><div class="big">${won(m.sales)}원</div></div>
         <div style="text-align:right"><div class="meta green">순이익 ${pct(m.profit, m.sales)}</div><div class="amt green" style="font-size:17px">${won(m.profit)}원</div></div>
       </div>
       <span class="pill ${status[0]}">${esc(status[1])}</span>
@@ -132,6 +162,7 @@ export async function renderHome() {
     <button class="btn" type="button" id="toReport">보고서 보기 (일일 · 이번 달)</button>`;
   c.bind($('homeMain'));
   $('toReport').onclick = () => state.go('report');
+  renderLive();
 }
 
 // ── 보고서 ────────────────────────────────────────────────
