@@ -19787,7 +19787,9 @@ const GRINCHEM_ITEM_VENDOR_KEYWORDS = [
   { kw:'뻥튀기', vendor:'참맛더드림' },
 ];
 function _grinchemResolveVendor(itemText){
-  const t = String(itemText||'');
+  // "순살 갈치"처럼 품목명에 띄어쓰기가 들쭉날쭉 섞여 들어오면 키워드('순살갈치')랑 안 맞아서
+  // 미매칭으로 빠지는 문제가 있었음 — 공백을 지우고 비교해서 띄어쓰기 차이는 무시하도록 함
+  const t = String(itemText||'').replace(/\s+/g, '');
   for (const {kw, vendor} of GRINCHEM_ITEM_VENDOR_KEYWORDS) {
     if (t.includes(kw)) return vendor;
   }
