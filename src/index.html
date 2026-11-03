@@ -2696,6 +2696,8 @@ function detectVendor(vc, productName, selectOpt) {
   const pn = String(productName||'').toLowerCase();
   const so = String(selectOpt||'').toLowerCase();
   if (!c && !pn) return null;
+  // 꿀스틱 선물세트는 판매자상품코드가 "해담별]..."로 들어와도 실제로는 숲속양봉원에 발주함(사장님 확인)
+  if (pn.includes('꿀스틱') || c.includes('꿀스틱')) return '숲속양봉원';
   const codes = loadCodes();
   // 접두사로 발주처를 '추측'해 자동 등록된 항목(auto:true)은 사람이 등록한 게 아니라
   // 그냥 추측을 그대로 박제해둔 것 — 사람이 등록한 것보다 우선순위가 낮아야 함
