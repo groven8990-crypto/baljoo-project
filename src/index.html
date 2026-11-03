@@ -4409,7 +4409,7 @@ function addManualB2BEntry(){
   document.getElementById('mbUnit').value = '';
   document.getElementById('mbSalePrice').value = '';
 
-  renderStep2(); renderUnmatchedHints();
+  renderStep2(); renderUnmatchedHints(); if (typeof renderStep3 === 'function') renderStep3();
   if (typeof renderOmPreview === 'function') renderOmPreview();
   const rpt = document.getElementById('srReport');
   if (rpt && rpt.innerHTML.trim()) srRender();
@@ -4441,7 +4441,7 @@ function removeManualB2BEntry(orderNo){
   allOrders.splice(idx, 1);
   totalCount = Math.max(0, (totalCount||1) - 1);
   rematchAllOrders();
-  renderStep2(); renderUnmatchedHints();
+  renderStep2(); renderUnmatchedHints(); if (typeof renderStep3 === 'function') renderStep3();
   if (typeof renderOmPreview === 'function') renderOmPreview();
   const rpt = document.getElementById('srReport');
   if (rpt && rpt.innerHTML.trim()) srRender();
@@ -4611,7 +4611,7 @@ function addJikgeoraeOrder(){
   document.getElementById('jgSalePrice').value = '';
   document.getElementById('jgMemo').value = '';
 
-  renderStep2(); renderUnmatchedHints();
+  renderStep2(); renderUnmatchedHints(); if (typeof renderStep3 === 'function') renderStep3();
   if (typeof renderOmPreview === 'function') renderOmPreview();
   const rpt = document.getElementById('srReport');
   if (rpt && rpt.innerHTML.trim()) srRender();
@@ -4718,7 +4718,7 @@ function removeJikgeoraeOrder(orderNo){
   totalCount = Math.max(0, (totalCount||1) - 1);
   rematchAllOrders();
   saveJgOrders(loadJgOrders().filter(o => o.order_no !== orderNo));
-  renderStep2(); renderUnmatchedHints();
+  renderStep2(); renderUnmatchedHints(); if (typeof renderStep3 === 'function') renderStep3();
   if (typeof renderOmPreview === 'function') renderOmPreview();
   const rpt = document.getElementById('srReport');
   if (rpt && rpt.innerHTML.trim()) srRender();
@@ -4818,7 +4818,7 @@ function addManualSelfEntry(){
   document.getElementById('myUnit').value = '';
   document.getElementById('mySalePrice').value = '';
 
-  renderStep2(); renderUnmatchedHints();
+  renderStep2(); renderUnmatchedHints(); if (typeof renderStep3 === 'function') renderStep3();
   if (typeof renderOmPreview === 'function') renderOmPreview();
   const rpt = document.getElementById('srReport');
   if (rpt && rpt.innerHTML.trim()) srRender();
@@ -4859,7 +4859,7 @@ function removeManualSelfEntry(batchId){
   if (!removed) return;
   totalCount = Math.max(0, (totalCount||removed) - removed);
   rematchAllOrders();
-  renderStep2(); renderUnmatchedHints();
+  renderStep2(); renderUnmatchedHints(); if (typeof renderStep3 === 'function') renderStep3();
   if (typeof renderOmPreview === 'function') renderOmPreview();
   const rpt = document.getElementById('srReport');
   if (rpt && rpt.innerHTML.trim()) srRender();
