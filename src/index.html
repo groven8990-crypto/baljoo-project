@@ -953,6 +953,7 @@
     <button class="btn" onclick="pickInvSaveFolder()" style="background:var(--bg2);border:1px solid var(--border)">📁 저장 폴더 설정</button>
     <span id="invSaveFolderName" style="font-size:12px;color:var(--text3);align-self:center">저장 폴더 미설정</span>
   </div>
+  <div id="invReadyHint" style="margin-top:8px;font-size:12px;color:var(--warn)"></div>
   <div id="invStatus" style="margin-top:10px;font-size:13px;color:var(--text2)"></div>
 
 </div>
@@ -10609,6 +10610,15 @@ function invCheckReady() {
   const ready = invOrderData && invTrackFiles.length > 0;
   const btn = document.getElementById('invProcessBtn');
   if (btn) btn.disabled = !ready;
+  // 버튼이 왜 꺼져 있는지 바로 보이게 — 운송장만 올리고 샵마인 주문파일이 빠진 경우가 많음
+  const hint = document.getElementById('invReadyHint');
+  if (hint) {
+    const missing = [];
+    if (!invOrderData) missing.push('① 샵마인 주문파일(발송대기)');
+    if (!invTrackFiles.length) missing.push('② 운송장 파일');
+    hint.textContent = (missing.length && (invOrderData || invTrackFiles.length))
+      ? `⚠ 매칭 실행하려면 ${missing.join(', ')}을 먼저 올려주세요.` : '';
+  }
 }
 
 // 주소 정규화 (공백·기호 제거) 및 공통 접두 길이로 유사도 판정 — 동명이인 구분용 (같은 파일 내 비교)
