@@ -4089,7 +4089,11 @@ function handleFile(file, onDone) {
           localStorage.setItem('invOrderName', file.name);
           localStorage.setItem('invOrderSavedAt', _sa);
           localStorage.removeItem('invOrderAppended');
-        } catch(_e) {}
+        } catch(_e) {
+          // 용량 초과로 저장 실패 — 어제 파일 같은 옛 저장본이 남아 있으면 새로고침 때 그게 복원돼버리니
+          // 지워두고, 복원은 업로드 이력(_invRestoreFromUploadHistory)에 맡김
+          ['invOrderB64','invOrderName','invOrderSavedAt','invOrderAppended'].forEach(k => { try { localStorage.removeItem(k); } catch(_){} });
+        }
         if (typeof invShowOrderInfo === 'function') invShowOrderInfo(file.name, invOrderData.length);
         if (typeof invCheckReady === 'function') invCheckReady();
         setSt('✅ 송장입력 탭과 자동 연동됨 (' + invOrderData.length + '건)');
@@ -10139,16 +10143,45 @@ function invClearSavedOrder() {
   invCheckReady();
 }
 
+// 송장입력용 주문파일 저장본(invOrderB64)은 브라우저 저장공간이 차면 저장이 조용히 실패함 —
+// 그러면 새로고침 후 주문파일이 사라져 "매칭 실행"이 갑자기 꺼짐. 발주서 생성 탭 업로드 이력
+// (logUpload)에도 원본 바이트가 남아 있으니, 거기서 24시간 이내 가장 최근 샵마인 파일을 찾아 복원
+function _invRestoreFromUploadHistory(){
+  const hist = (typeof loadUploadHistory === 'function') ? loadUploadHistory() : [];
+  for (const h of hist) {
+    if (!h || !h.fileBytesB64) continue;
+    const ts = Date.parse(h.ts || '');
+    if (!ts || Date.now() - ts > 86400000) continue;
+    try {
+      const bin = atob(h.fileBytesB64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const wb = XLSX.read(bytes.buffer, {type:'array', cellDates:true});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const head = XLSX.utils.sheet_to_json(ws, {header:1, defval:''}).slice(0,5);
+      if (!head.some(r => Array.isArray(r) && r.indexOf('판매자상품코드') >= 0)) continue;
+      invOrderWb = wb;
+      invOrderData = XLSX.utils.sheet_to_json(ws, {defval:'', blankrows:true});
+      invOrderFileName = h.fileName || '샵마인 주문파일';
+      invOrderLoadedAt = String(ts);
+      invShowOrderInfo(invOrderFileName, invOrderData.length);
+      invCheckReady();
+      return true;
+    } catch(e) { console.warn('업로드 이력에서 주문파일 복원 실패:', e); }
+  }
+  return false;
+}
 function invRestoreOrder() {
   const b64 = localStorage.getItem('invOrderB64');
   const fname = localStorage.getItem('invOrderName');
   const savedAt = localStorage.getItem('invOrderSavedAt');
-  if (!b64 || !fname) return;
+  if (!b64 || !fname) { if (!invOrderData) _invRestoreFromUploadHistory(); return; }
   // 24시간 이내만 복원
   if (savedAt && Date.now() - +savedAt > 86400000) {
     localStorage.removeItem('invOrderB64');
     localStorage.removeItem('invOrderName');
     localStorage.removeItem('invOrderSavedAt');
+    if (!invOrderData) _invRestoreFromUploadHistory();
     return;
   }
   // 메모리에 더 최신(또는 같은) 파일이 이미 있으면 옛 저장본으로 덮지 않음
