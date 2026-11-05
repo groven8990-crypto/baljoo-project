@@ -19282,6 +19282,7 @@ function srAggregate(orders){
     // srAggregateDinette(srDinetteRows)가 묶음단가 기준으로 따로 계산해서 totalSales/B2B
     // 카드에 이미 합산되므로(srRender의 dnAgg), 여기서는 그냥 건너뜀
     if (String(o.order_no||'').startsWith('dinette-')) continue;
+    if (o.sr_exclude) continue;  // 0원 등록(누락분 재발송) — 발주서에만 넣고 매출·건수엔 안 잡음
     const amt=(typeof _srSalesAmt==='function')?_srSalesAmt(o):(Number(o.order_amt)||0);totalSales+=amt;
     if (_srIsManualB2B(o)) {
       const bn = String(o.shop_mall).replace(/^B2B-/,'').trim() || '미지정';
@@ -19358,7 +19359,7 @@ function srAggregate(orders){
       }
     }
   }
-  return {totalSales,count:orders.length,platMap,prodMap,garlicMap,b2bMap,regCount,regSales};
+  return {totalSales,count:orders.filter(o=>!o.sr_exclude).length,platMap,prodMap,garlicMap,b2bMap,regCount,regSales};
 }
 function srBrandSection(title, color, agg, opts){
   if(agg.count===0) return '';
@@ -20014,9 +20015,11 @@ function _srProcessGrinchemStaged(){
     const key = _grinchemPriceKey(r.item, r.qty);
     if (!key) continue;
     let saved = prices[key];
+    // 0원 등록(zero) — 거래처가 누락분을 양식만 다시 보낸 경우라 발주서엔 넣되 매출/매입엔 안 잡음
+    const _isReg = _grinchemPriceIsRegistered;
     // 아직 등록 안 된 품목이면, 매입단가표(또또컴퍼니 납품단가)에서 규격·수량까지 정확히 일치하는
     // 값을 찾아 자동으로 채워줌 — 사람이 직접 하나하나 다시 입력할 필요 없게
-    if (!saved || !saved.price) {
+    if (!_isReg(saved)) {
       const known = _grinchemKnownPriceFor(r.item, r.qty);
       if (known) {
         prices[key] = { price: known.price, cost: known.cost, registeredAt: Date.now(), auto: true };
@@ -20024,7 +20027,7 @@ function _srProcessGrinchemStaged(){
         pricesChanged = true;
       }
     }
-    if (!saved || !saved.price) {
+    if (!_isReg(saved)) {
       if (!unregMap[key]) unregMap[key] = { key, item: r.item, count:0, qtySum:0 };
       unregMap[key].count++;
       unregMap[key].qtySum += r.qty;
@@ -20064,9 +20067,10 @@ function _srProcessGrinchemStaged(){
       order_no: `그린켐${idx++}_`+Date.now(),
       buyer:'', buyer_phone:'',
       carrier:'',
-      order_amt: saved.price * r.qty,
+      order_amt: (Number(saved.price)||0) * r.qty,
       order_date: _localISO(),
     };
+    if (saved.zero) order.sr_exclude = true;
     allOrders.push(order);
     newOrders.push({ order, cost: Number(saved.cost)||0 });
   }
@@ -20180,7 +20184,7 @@ function renderGrinchemUnregisteredList(){
       <input type="number" min="0" id="grinchemPriceInput_${i}" placeholder="판매단가(1건당)" style="width:130px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
       <button class="btn btn-sm btn-primary" onclick="registerGrinchemItemPrice(${i})">등록</button>
     </div>`).join('');
-  el.innerHTML = `<div style="font-size:11px;color:#92400E;font-weight:600;margin-bottom:4px">⚠ 처음 보는 품목 — 매입단가·판매단가 등록 필요 (${srGrinchemUnregistered.length}개, 둘 다 있어야 순마진이 계산돼요)</div>${rows}`;
+  el.innerHTML = `<div style="font-size:11px;color:#92400E;font-weight:600;margin-bottom:4px">⚠ 처음 보는 품목 — 매입단가·판매단가 등록 필요 (${srGrinchemUnregistered.length}개, 둘 다 있어야 순마진이 계산돼요 · 누락분 재발송이면 둘 다 0 → 발주서에만 넣고 매출·매입엔 안 잡아요)</div>${rows}`;
 }
 // 매입단가표에서 규격·수량이 정확히 일치해 자동으로 채워졌거나, 사람이 이미 등록해둔 단가를
 // 보여주고 틀렸으면 고쳐서 다시 저장할 수 있게 함 — 지금 올라온 파일에 있는 품목만(전체 등록
@@ -20196,7 +20200,7 @@ function renderGrinchemRegisteredList(){
     const key = _grinchemPriceKey(r.item, r.qty);
     if (!key || seen.has(key)) continue;
     const saved = prices[key];
-    if (!saved || !saved.price) continue;
+    if (!_grinchemPriceIsRegistered(saved)) continue;
     seen.add(key);
     // 마그네슘처럼 키에 수량이 섞여 있으면, 같은 품목명이 수량별로 여러 줄 뜨니까 구분되게 표시
     const label = key.includes('|qty:') ? `${r.item} (수량 ${r.qty}개)` : r.item;
@@ -20205,9 +20209,9 @@ function renderGrinchemRegisteredList(){
   if (!items.length) { el.innerHTML = ''; return; }
   const rows = items.map(({key,item,saved}) => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid #BBF7D0;background:#F0FDF4;border-radius:6px;margin-bottom:4px;font-size:12px">
-      <span style="flex:1;color:#166534">${escHtml(item)}${saved.auto?' <span style="font-size:10px;background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:8px;padding:0 6px">📋자동(매입단가표)</span>':''}</span>
-      <input type="number" min="0" value="${saved.cost||''}" id="grinchemRegCost_${ekey(key)}" placeholder="매입단가" style="width:110px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
-      <input type="number" min="0" value="${saved.price||''}" id="grinchemRegPrice_${ekey(key)}" placeholder="판매단가" style="width:110px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
+      <span style="flex:1;color:#166534">${escHtml(item)}${saved.auto?' <span style="font-size:10px;background:#DCFCE7;color:#166534;border:1px solid #86EFAC;border-radius:8px;padding:0 6px">📋자동(매입단가표)</span>':''}${saved.zero?' <span style="font-size:10px;background:#F3F4F6;color:#4B5563;border:1px solid #D1D5DB;border-radius:8px;padding:0 6px" title="누락분 재발송 — 발주서에만 넣고 매출·매입·건수엔 안 잡아요">0원 · 발주서만</span>':''}</span>
+      <input type="number" min="0" value="${saved.cost ?? ''}" id="grinchemRegCost_${ekey(key)}" placeholder="매입단가" style="width:110px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
+      <input type="number" min="0" value="${saved.price ?? ''}" id="grinchemRegPrice_${ekey(key)}" placeholder="판매단가" style="width:110px;padding:3px 6px;font-size:12px;border:1px solid #D1D5DB;border-radius:3px">
       <button class="btn btn-sm" onclick="updateGrinchemItemPrice('${esc(key)}')">저장</button>
       <button class="btn btn-sm btn-danger" onclick="deleteGrinchemItemPrice('${esc(key)}')" title="단가 등록 취소 — 처음 보는 품목 목록으로 다시 돌아가요">삭제</button>
     </div>`).join('');
@@ -20231,12 +20235,10 @@ function deleteGrinchemItemPrice(key){
 function updateGrinchemItemPrice(key){
   const costEl = document.getElementById('grinchemRegCost_'+ekey(key));
   const priceEl = document.getElementById('grinchemRegPrice_'+ekey(key));
-  const cost = Math.max(0, parseInt(costEl?.value||'0')||0);
-  const price = Math.max(0, parseInt(priceEl?.value||'0')||0);
-  if (!price) { alert('판매단가(또또컴퍼니에게 받는 금액)를 입력해주세요.'); return; }
-  if (!cost) { alert('매입단가(우리가 사입하는 원가)를 입력해주세요 — 순마진 계산에 필요해요.'); return; }
+  const p = _grinchemReadPriceInputs(costEl, priceEl);
+  if (!p) return;
   const prices = loadGrinchemItemPrices();
-  prices[key] = { price, cost, registeredAt: Date.now() };  // 사람이 직접 고친 값이니 자동 표시는 지움
+  prices[key] = { ...p, registeredAt: Date.now() };  // 사람이 직접 고친 값이니 자동 표시는 지움
   saveGrinchemItemPrices(prices);
   _srProcessGrinchemStaged();
   _renderGrinchemUploadInfo();
@@ -20246,17 +20248,31 @@ function updateGrinchemItemPrice(key){
   if (rpt && rpt.innerHTML.trim()) srRender();
   else srRenderProfitPanel(Array.isArray(allOrders) ? allOrders : []);
 }
+// 단가가 "등록된 상태"인지 — 0원 등록(zero)은 등록한 그날만 유효(누락분 재발송은 그때뿐이라,
+// 같은 품목명이 다음에 정상 주문으로 들어오면 0원으로 잘못 잡히지 않고 다시 단가를 물어봄)
+function _grinchemPriceIsRegistered(sv){
+  if (!sv) return false;
+  if (sv.zero) return sv.zeroDate === _localISO();
+  return sv.price > 0 || sv.cost > 0;
+}
+// 매입·판매단가 입력 읽기 — 0원도 허용(빈칸만 안 됨). 둘 다 0원이면 거래처가 누락분 양식만
+// 다시 보낸 경우로 보고 zero 표시 → 발주서에는 넣고 매출·매입·건수엔 안 잡음
+function _grinchemReadPriceInputs(costEl, priceEl){
+  const cRaw = String(costEl?.value ?? '').trim(), pRaw = String(priceEl?.value ?? '').trim();
+  if (pRaw === '') { alert('판매단가(또또컴퍼니에게 받는 금액)를 입력해주세요. 누락분 재발송이면 0을 넣으세요.'); return null; }
+  if (cRaw === '') { alert('매입단가(우리가 사입하는 원가)를 입력해주세요. 누락분 재발송이면 0을 넣으세요.'); return null; }
+  const price = Math.max(0, parseInt(pRaw)||0), cost = Math.max(0, parseInt(cRaw)||0);
+  return (price === 0 && cost === 0) ? { price:0, cost:0, zero:true, zeroDate:_localISO() } : { price, cost };
+}
 function registerGrinchemItemPrice(i){
   const u = srGrinchemUnregistered[i];
   if (!u) return;
   const priceInput = document.getElementById('grinchemPriceInput_'+i);
   const costInput = document.getElementById('grinchemCostInput_'+i);
-  const price = Math.max(0, parseInt(priceInput?.value||'0')||0);
-  const cost = Math.max(0, parseInt(costInput?.value||'0')||0);
-  if (!price) { alert('판매단가(또또컴퍼니에게 받는 금액)를 입력해주세요.'); return; }
-  if (!cost) { alert('매입단가(우리가 사입하는 원가)를 입력해주세요 — 순마진 계산에 필요해요.'); return; }
+  const p = _grinchemReadPriceInputs(costInput, priceInput);
+  if (!p) return;
   const prices = loadGrinchemItemPrices();
-  prices[u.key] = { price, cost, registeredAt: Date.now() };
+  prices[u.key] = { ...p, registeredAt: Date.now() };
   saveGrinchemItemPrices(prices);
   _srProcessGrinchemStaged();
   _renderGrinchemUploadInfo();
@@ -21614,6 +21630,7 @@ function srBuildProfitRows(orders){
     // 매출과도 합쳐지지 않음 — 코드 등록 상태에 따라 품목/옵션명이 달라져서 두 쪽 키가 서로
     // 안 맞기 때문) — 그래서 여기서는 건너뜀
     if (String(o.order_no||'').startsWith('dinette-')) continue;
+    if (o.sr_exclude) continue;  // 0원 등록(누락분 재발송) — 매입/순이익에서도 제외
     // 문자주문 등으로 등록된 B2B 주문 — 같은 발주처/품목이라도 일반 주문과 합쳐지면 안 되니
     // 키에 B2B 거래처명을 붙여서 별도 행으로 만들고, 매입/순이익 화면에서도 디네트처럼 분리 표시
     const isManualB2B = (typeof _srIsManualB2B === 'function') && _srIsManualB2B(o);
