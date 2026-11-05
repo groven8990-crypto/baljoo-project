@@ -2315,7 +2315,12 @@ async function _sbSyncOptMaps() {
 }
 
 // kv_store: 범용 키-값 저장 (계좌관리 등)
-async function _sbSaveKV(key, value) {
+// 이 컴퓨터가 클라우드와 한 번 합치기(_sbSeedSettingsSyncV2) 전에는 아래 설정들을 올리지 않음 —
+// 새 컴퓨터는 켜자마자 기본값만 든 목록을 저장하는데, 저장할 때마다 목록 통째로 올라가서
+// 다른 컴퓨터에서 쌓아둔 전체 목록을 기본값으로 덮어써버렸음
+const _SB_GATED_KV_KEYS = new Set(['vendor_emails','vendor_site_urls','vendor_delivery','vendor_mail_tpl','custom_vendors','custom_formats','sr_vendor_category_override','instant_pay_vendors','bank_info','overrides','product_aliases','fee_override']);
+async function _sbSaveKV(key, value, opts) {
+  if (_SB_GATED_KV_KEYS.has(key) && !(opts && opts.force) && !localStorage.getItem('yb_sb_settings_sync_seed_v2')) return;
   try {
     const r = await fetch(_SB_URL + '/rest/v1/kv_store', {
       method: 'POST',
@@ -2342,40 +2347,77 @@ async function _sbLoadKV(key) {
 // 병합. 같은 키가 양쪽에 있으면 원격(가장 나중에 저장된 쪽) 값으로 덮어쓰고, 한쪽에만 있는
 // 키는 그대로 유지 — 어느 기기에서 등록했든 서로 지우지 않고 합쳐짐
 function _sbMergeMapKV(cloudKey, lsKey) {
-  _sbLoadKV(cloudKey).then(remote => {
+  return _sbLoadKV(cloudKey).then(remote => {
     if (!remote || typeof remote !== 'object' || Array.isArray(remote)) return;
     let local = {}; try { local = JSON.parse(localStorage.getItem(lsKey) || '{}'); } catch(_){}
     localStorage.setItem(lsKey, JSON.stringify(Object.assign({}, local, remote)));
   }).catch(()=>{});
 }
 
-// 발주처 설정류를 클라우드 동기화에 새로 편입시키면서, 지금까지 이 컴퓨터에만 있던 데이터를
-// 한 번 클라우드로 올려줌(이후부턴 save*() 호출마다 자동으로 올라감) — 안 해주면 다른
-// 컴퓨터는 이 컴퓨터가 뭔가 "새로" 수정해주기 전까진 기존 설정을 받아갈 방법이 없음.
-// 빈 값은 올리지 않음(새 컴퓨터가 먼저 열려서 빈 값으로 기존 데이터를 덮어쓰는 것을 방지)
-function _sbSeedSettingsSyncV1(){
-  if (localStorage.getItem('yb_sb_settings_sync_seed_v1')) return;
-  const pushIfNonEmpty = (cloudKey, lsKey) => {
-    try {
-      const raw = localStorage.getItem(lsKey);
-      if (!raw) return;
-      const val = JSON.parse(raw);
-      const empty = val==null || (Array.isArray(val) && !val.length) || (typeof val==='object' && !Array.isArray(val) && !Object.keys(val).length);
-      if (!empty) _sbSaveKV(cloudKey, val).catch(()=>{});
-    } catch(_){}
-  };
-  pushIfNonEmpty('vendor_emails', LS_VENDOR_EMAILS);
-  pushIfNonEmpty('vendor_site_urls', LS_VENDOR_SITE_URLS);
-  pushIfNonEmpty('vendor_delivery', LS_VENDOR_DELIVERY);
-  pushIfNonEmpty('vendor_mail_tpl', LS_VENDOR_MAIL_TPL);
-  pushIfNonEmpty('custom_vendors', LS_CUSTOM_VENDORS);
-  pushIfNonEmpty('custom_formats', LS_CUSTOM_FORMATS);
-  pushIfNonEmpty('sr_vendor_category_override', LS_SR_VENDOR_CAT_OVERRIDE);
-  pushIfNonEmpty('overrides', LS_OVERRIDES);
-  pushIfNonEmpty('instant_pay_vendors', LS_INSTANT_PAY_VENDORS);
-  pushIfNonEmpty('product_aliases', LS_PRODUCT_ALIASES);
-  pushIfNonEmpty('fee_override', LS_FEE_OVERRIDE);
-  localStorage.setItem('yb_sb_settings_sync_seed_v1', '1');
+// 한 번만: 클라우드 값과 이 컴퓨터 값을 합쳐(같은 키는 이 컴퓨터 값 우선) 양쪽에 저장.
+// 즉시결제 거래처처럼 이름 목록인 것은 합집합. 클라우드 접속이 안 되면 다음 실행 때 다시 시도
+async function _sbSeedSettingsSyncV2(){
+  if (localStorage.getItem('yb_sb_settings_sync_seed_v2')) return;
+  const maps = [
+    ['vendor_emails', LS_VENDOR_EMAILS], ['vendor_site_urls', LS_VENDOR_SITE_URLS],
+    ['vendor_delivery', LS_VENDOR_DELIVERY], ['vendor_mail_tpl', LS_VENDOR_MAIL_TPL],
+    ['custom_vendors', LS_CUSTOM_VENDORS], ['custom_formats', LS_CUSTOM_FORMATS],
+    ['sr_vendor_category_override', LS_SR_VENDOR_CAT_OVERRIDE],
+  ];
+  let reachable = false;
+  for (const [ck, lk] of maps) {
+    const remote = await _sbLoadKV(ck);
+    let local = {}; try { local = JSON.parse(localStorage.getItem(lk) || '{}') || {}; } catch(_){}
+    if (remote === null) {
+      // null = 행이 없거나 접속 실패 — 접속 여부는 다른 키 결과로 판단
+    } else reachable = true;
+    const r = (remote && typeof remote === 'object' && !Array.isArray(remote)) ? remote : {};
+    const merged = Object.assign({}, r, local);
+    if (Object.keys(merged).length) {
+      localStorage.setItem(lk, JSON.stringify(merged));
+      await _sbSaveKV(ck, merged, {force:true});
+    }
+  }
+  {
+    const remote = await _sbLoadKV('instant_pay_vendors');
+    let local = []; try { local = JSON.parse(localStorage.getItem(LS_INSTANT_PAY_VENDORS) || '[]') || []; } catch(_){}
+    const merged = [...new Set([...(Array.isArray(remote) ? remote : []), ...local])];
+    if (merged.length) {
+      localStorage.setItem(LS_INSTANT_PAY_VENDORS, JSON.stringify(merged));
+      await _sbSaveKV('instant_pay_vendors', merged, {force:true});
+    }
+  }
+  // 직접수정·상품명 별칭·수수료 예외 목록은 구조가 복잡해 합치지 않고, 클라우드가 비어 있을 때만 올림
+  for (const [ck, lk] of [['overrides', LS_OVERRIDES], ['product_aliases', LS_PRODUCT_ALIASES], ['fee_override', LS_FEE_OVERRIDE]]) {
+    const remote = await _sbLoadKV(ck);
+    if (Array.isArray(remote) && remote.length) continue;
+    let local = []; try { local = JSON.parse(localStorage.getItem(lk) || '[]') || []; } catch(_){}
+    if (Array.isArray(local) && local.length) await _sbSaveKV(ck, local, {force:true});
+  }
+  {
+    // 거래처 계좌: 이름 기준으로 합치고(같은 이름은 이 컴퓨터 값 우선) 클라우드에 올림
+    const remote = await _sbLoadKV('bank_info');
+    const local = (typeof loadBankInfo === 'function') ? loadBankInfo() : [];
+    const byName = new Map();
+    for (const b of (Array.isArray(remote) ? remote : [])) if (b && b.name) byName.set(b.name, b);
+    for (const b of local) if (b && b.name) byName.set(b.name, { ...(byName.get(b.name)||{}), ...b });
+    const merged = [...byName.values()];
+    if (merged.length) {
+      localStorage.setItem(LS_BANK, JSON.stringify(merged));
+      await _sbSaveKV('bank_info', merged, {force:true});
+    }
+  }
+  // 저장이 실제로 들어갔는지 확인하고 나서야 완료 표시(접속 실패면 다음에 다시)
+  const check = await _sbLoadKV('vendor_delivery');
+  if (check || reachable) localStorage.setItem('yb_sb_settings_sync_seed_v2', '1');
+}
+// 클라우드에서 설정을 받아온 뒤 이미 그려진 화면(발주처 전달방식 표·즉시결제·발주서 카드)을 다시 그림
+function _sbRerenderSyncedSettings(){
+  try { if (typeof renderVendorRegistry === 'function') renderVendorRegistry(); } catch(_){}
+  try { if (typeof renderInstantPayRegistry === 'function') renderInstantPayRegistry(); } catch(_){}
+  try { if (typeof renderCustomVendorList === 'function') renderCustomVendorList(); } catch(_){}
+  try { if (typeof renderBankList === 'function') renderBankList(); } catch(_){}
+  try { if (typeof renderStep3 === 'function' && groupedOrders && Object.keys(groupedOrders).length) renderStep3(); } catch(_){}
 }
 
 async function _sbSyncBankInfo() {
@@ -2699,6 +2741,8 @@ function detectVendor(vc, productName, selectOpt) {
   if (!c && !pn) return null;
   // 꿀스틱 선물세트는 판매자상품코드가 "해담별]..."로 들어와도 실제로는 숲속양봉원에 발주함(사장님 확인)
   if (pn.includes('꿀스틱') || c.includes('꿀스틱')) return '숲속양봉원';
+  // 홍어(홍어회)는 전부 일해수산(목포) 제품 — 코드에 일해수산 접두사가 없이 들어와도 일해수산 발주서로
+  if (pn.includes('홍어') || c.includes('홍어')) return '일해수산';
   const codes = loadCodes();
   // 접두사로 발주처를 '추측'해 자동 등록된 항목(auto:true)은 사람이 등록한 게 아니라
   // 그냥 추측을 그대로 박제해둔 것 — 사람이 등록한 것보다 우선순위가 낮아야 함
@@ -3180,19 +3224,27 @@ document.addEventListener('DOMContentLoaded',()=>{
   }).catch(()=>{});
   // 발주처 설정류(이메일/사이트URL/전달방식/전용메일템플릿/사용자등록발주처/커스텀양식/
   // 코드별 직접수정/상품명 별칭) — 다른 컴퓨터에서 등록한 것도 이 브라우저에 합쳐짐
-  try { _sbSeedSettingsSyncV1(); } catch(e){}
-  _sbMergeMapKV('vendor_emails', LS_VENDOR_EMAILS);
-  _sbMergeMapKV('vendor_site_urls', LS_VENDOR_SITE_URLS);
-  _sbMergeMapKV('vendor_delivery', LS_VENDOR_DELIVERY);
-  _sbMergeMapKV('vendor_mail_tpl', LS_VENDOR_MAIL_TPL);
-  _sbMergeMapKV('custom_vendors', LS_CUSTOM_VENDORS);
-  _sbMergeMapKV('custom_formats', LS_CUSTOM_FORMATS);
-  _sbMergeMapKV('sr_vendor_category_override', LS_SR_VENDOR_CAT_OVERRIDE);
+  // v2: kv_store에 접근 정책이 없어서(RLS) v1 업로드가 전부 조용히 거절됐었음 — 정책 추가 후
+  // 다시 한 번, 이번엔 "클라우드 내용과 합친 뒤" 올려서 어느 컴퓨터가 먼저 열려도 서로 안 지워지게 함.
+  // 이 경로에서 병합까지 다 하므로 아래 개별 병합은 v2가 이미 끝난 컴퓨터에서만 돌림
+  const _sbV2Done = !!localStorage.getItem('yb_sb_settings_sync_seed_v2');
+  _sbSeedSettingsSyncV2().then(_sbRerenderSyncedSettings).catch(()=>{});
+  if (_sbV2Done) {
+  Promise.all([
+    _sbMergeMapKV('vendor_emails', LS_VENDOR_EMAILS),
+    _sbMergeMapKV('vendor_site_urls', LS_VENDOR_SITE_URLS),
+    _sbMergeMapKV('vendor_delivery', LS_VENDOR_DELIVERY),
+    _sbMergeMapKV('vendor_mail_tpl', LS_VENDOR_MAIL_TPL),
+    _sbMergeMapKV('custom_vendors', LS_CUSTOM_VENDORS),
+    _sbMergeMapKV('custom_formats', LS_CUSTOM_FORMATS),
+    _sbMergeMapKV('sr_vendor_category_override', LS_SR_VENDOR_CAT_OVERRIDE),
+    _sbLoadKV('instant_pay_vendors').then(remote=>{
+      if (Array.isArray(remote)) localStorage.setItem(LS_INSTANT_PAY_VENDORS, JSON.stringify(remote));
+    }).catch(()=>{}),
+  ]).then(_sbRerenderSyncedSettings).catch(()=>{});
+  }
   _sbLoadKV('overrides').then(remote=>{
     if (Array.isArray(remote)) localStorage.setItem(LS_OVERRIDES, JSON.stringify(remote));
-  }).catch(()=>{});
-  _sbLoadKV('instant_pay_vendors').then(remote=>{
-    if (Array.isArray(remote)) localStorage.setItem(LS_INSTANT_PAY_VENDORS, JSON.stringify(remote));
   }).catch(()=>{});
   _sbLoadKV('product_aliases').then(remote=>{
     if (Array.isArray(remote)) localStorage.setItem(LS_PRODUCT_ALIASES, JSON.stringify(remote));
@@ -5610,6 +5662,22 @@ function _seedVendorEmailDefaults(){
       emails6['참맛더드림'] = list6.join(', ');
       saveVendorEmails(emails6);
       localStorage.setItem('yb_vendor_email_fix_v5', '1');
+    }
+  }catch(e){}
+
+  // 1회성 추가 v6: 일해수산(홍어) 발주는 이메일 hghgam@naver.com 으로 보냄(사장님 요청) — 이미 다른
+  // 주소가 있으면 뒤에 덧붙이고, 전달방식에 이메일을 켬. 한 번만 실행해서 이후 직접 수정은 그대로 둠
+  try{
+    if (!localStorage.getItem('yb_vendor_email_fix_v6')) {
+      const emails7 = loadVendorEmails();
+      const list7 = String(emails7['일해수산']||'').split(',').map(x=>x.trim()).filter(Boolean);
+      if (!list7.includes('hghgam@naver.com')) list7.push('hghgam@naver.com');
+      emails7['일해수산'] = list7.join(', ');
+      saveVendorEmails(emails7);
+      const delivery7 = loadVendorDelivery();
+      const cur7 = Array.isArray(delivery7['일해수산']) ? delivery7['일해수산'] : [];
+      if (!cur7.includes('email')) { delivery7['일해수산'] = [...cur7, 'email']; saveVendorDelivery(delivery7); }
+      localStorage.setItem('yb_vendor_email_fix_v6', '1');
     }
   }catch(e){}
 }
@@ -9388,6 +9456,7 @@ const VENDOR_COURIER_DEFAULT = {
   '생선상륙': '한진택배',
   '참맛더드림': '로젠택배',
   '마그네슘': '경동택배',
+  '일해수산': '롯데택배',
 };
 
 // ─── 거래처별 택배사 커스텀 매핑 (localStorage: invCarrierMap) ───────────
@@ -9409,7 +9478,7 @@ function invLookupCourier(fname, vendorHint) {
     }
   }
   // 하드코딩 기본 매핑 — 파일명 먼저, 없으면 vendorHint
-  const known = ['푸드앤','푸드엔','일비','거풍푸드','거풍','남부파머스','최고집','공덕농협','공덕','현해랑','도매꾹','늘푸른','생선상륙','참맛더드림','마그네슘'];
+  const known = ['푸드앤','푸드엔','일비','거풍푸드','거풍','남부파머스','최고집','공덕농협','공덕','현해랑','도매꾹','늘푸른','생선상륙','참맛더드림','마그네슘','일해수산'];
   for (const v of known) {
     if (fname.includes(v)) return {courier: VENDOR_COURIER_DEFAULT[v] || '롯데택배', matchedKey: v};
   }
