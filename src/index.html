@@ -20029,11 +20029,15 @@ function _srProcessGrinchemStaged(){
         pricesChanged = true;
       }
     }
+    // 단가 미등록이어도 발주는 나가야 하니 발주서 카드엔 넣고, 매출·매입은 단가 등록 전까지 빼둠
+    // (등록하면 이 함수가 다시 돌면서 정상 금액으로 잡힘)
+    let unpriced = false;
     if (!_isReg(saved)) {
       if (!unregMap[key]) unregMap[key] = { key, item: r.item, count:0, qtySum:0 };
       unregMap[key].count++;
       unregMap[key].qtySum += r.qty;
-      continue;
+      unpriced = true;
+      saved = { price:0, cost:0 };
     }
     // 품목명 키워드로 실제 공급 발주처를 찾음(박대/굴비→일비, 순살갈치→생선상륙 등). 못 찾으면
     // 수동 지정값(있으면)을 쓰고, 그것도 없으면 알 수 없는 접두어를 써서 rematchAllOrders가
@@ -20072,7 +20076,8 @@ function _srProcessGrinchemStaged(){
       order_amt: (Number(saved.price)||0) * r.qty,
       order_date: _localISO(),
     };
-    if (saved.zero) order.sr_exclude = true;
+    if (saved.zero || unpriced) order.sr_exclude = true;
+    if (unpriced) order.grinchem_unpriced = true;
     allOrders.push(order);
     newOrders.push({ order, cost: Number(saved.cost)||0 });
   }
@@ -20106,7 +20111,7 @@ function _renderGrinchemUploadInfo(){
   if (!srGrinchemFileNames.length) { info.innerHTML = ''; return; }
   const unregCount = srGrinchemUnregistered.reduce((s,u)=>s+u.count,0);
   const converted = srGrinchemStagedRows.length - unregCount;
-  info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(srGrinchemFileNames.join(', '))} — ${srGrinchemStagedRows.length}건 중 ${converted}건 반영</span>${srGrinchemUnregistered.length ? ` <span style="color:var(--warn)">· 품목 ${srGrinchemUnregistered.length}개 단가 미등록(아래에서 등록)</span>` : ''} <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">전체 제거</button>`;
+  info.innerHTML = `<span style="color:var(--success)">✅ ${escHtml(srGrinchemFileNames.join(', '))} — ${srGrinchemStagedRows.length}건 발주서 반영 · 매출 반영 ${converted}건</span>${srGrinchemUnregistered.length ? ` <span style="color:var(--warn)">· 품목 ${srGrinchemUnregistered.length}개 단가 미등록 — 발주서엔 들어갔고, 아래에서 단가 등록하면 매출에도 잡혀요</span>` : ''} <button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:10px" onclick="srClearGrinchem()">전체 제거</button>`;
 }
 // file: 또또컴퍼니 발주 엑셀 1개. cb: 처리 끝나면(성공/실패 모두) 호출 — 여러 파일을 순서대로
 // 처리할 때 씀(srLoadGrinchemFiles). 같은 날 여러 번 올려도 기존 파일들을 지우지 않고
