@@ -18362,6 +18362,74 @@ function _priceSeedGrinchemB2B(){
   priceSaveStorage(key, rows);
 }
 _priceSeedGrinchemB2B();
+// 또또컴퍼니 납품 단가표 26.11.04 수정본(사장님이 준 엑셀 그대로) — 한 번만 표 전체를 이 내용으로
+// 교체. 납품단가·배송비·합계·과세여부·비고는 새 표 기준, 원가(price)는 기존에 입력돼 있던 값을
+// 같은 제품·규격·수량끼리 이어받음(없으면 PRICE_GC_ILBI_COST). 이후 사용자가 표에서 직접 고친 값은
+// 다시 덮어쓰지 않음
+function _priceSeedGrinchemB2BV20261104(){
+  const FLAG = 'baljoo_priceB2BGc_v20261104';
+  if (localStorage.getItem(FLAG)) return;
+  const key = PRICE_TABS.b2bgc.key;
+  const gcKey = r => [r.name,r.spec1,r.spec2,r.qty].join('|');
+  const oldCost = {};
+  for (const r of priceLoadStorage(key)) if (r && r.price) oldCost[gcKey(r)] = r.price;
+  const base = { origin:'', price:'', total:'', marginAmt:'', marginR:'', tax:'', note:'' };
+  const rows = [
+    {name:'박대',spec1:'4P',spec2:'29cm이하',qty:'5',unit:'미',supplyP:'6200',ship:'4300',total:'10500',tax:'면세',note:'합포장 40팩까지 · 선물용 부직포 +3,000원'},
+    {name:'박대',spec1:'4P',spec2:'29cm이하',qty:'10',unit:'미',supplyP:'11800',ship:'4300',total:'16100',tax:'면세',note:''},
+    {name:'박대',spec1:'3P',spec2:'29~31cm',qty:'5',unit:'미',supplyP:'7800',ship:'4300',total:'12100',tax:'면세',note:''},
+    {name:'박대',spec1:'3P',spec2:'29~31cm',qty:'10',unit:'미',supplyP:'15700',ship:'4300',total:'20000',tax:'면세',note:''},
+    {name:'박대',spec1:'2P+',spec2:'33~35cm',qty:'8',unit:'미',supplyP:'17900',ship:'4300',total:'22200',tax:'면세',note:''},
+    {name:'박대',spec1:'P+',spec2:'37cm이상',qty:'8',unit:'미',supplyP:'24600',ship:'4300',total:'28900',tax:'면세',note:''},
+    {name:'굴비',spec1:'부세',spec2:'23-26cm',qty:'3',unit:'미',supplyP:'14100',ship:'4300',total:'18400',tax:'면세',note:''},
+    {name:'굴비',spec1:'부세',spec2:'23-26cm',qty:'5',unit:'미',supplyP:'23500',ship:'4300',total:'27800',tax:'면세',note:''},
+    {name:'순살갈치',spec1:'국내산(여수)',spec2:'260g내외',qty:'5',unit:'팩',supplyP:'20500',ship:'무료',total:'20500',tax:'면세',note:''},
+    {name:'순살갈치',spec1:'국내산(여수)',spec2:'260g내외',qty:'10',unit:'팩',supplyP:'37000',ship:'무료',total:'37000',tax:'면세',note:''},
+    {name:'굴비',spec1:'법성포 영광 참굴비 (엮음)',spec2:'20미 1.5kg내외',qty:'1',unit:'봉',supplyP:'25900',ship:'무료',total:'25900',tax:'면세',note:''},
+    {name:'안동간고등어',spec1:'80g',spec2:'',qty:'10',unit:'팩',supplyP:'12100',ship:'3300',total:'15400',tax:'면세',note:'건당 배송비 3,300원'},
+    {name:'안동간고등어',spec1:'100g',spec2:'',qty:'10',unit:'팩',supplyP:'14200',ship:'3300',total:'17500',tax:'면세',note:''},
+    {name:'안동간고등어',spec1:'120g',spec2:'',qty:'10',unit:'팩',supplyP:'16000',ship:'3300',total:'19300',tax:'면세',note:''},
+    {name:'안동간고등어',spec1:'140g',spec2:'',qty:'10',unit:'팩',supplyP:'19000',ship:'3300',total:'22300',tax:'면세',note:''},
+    {name:'안동간고등어',spec1:'80g',spec2:'',qty:'13',unit:'팩',supplyP:'15700',ship:'3300',total:'19000',tax:'면세',note:''},
+    {name:'안동간고등어',spec1:'100g',spec2:'',qty:'13',unit:'팩',supplyP:'18400',ship:'3300',total:'21700',tax:'면세',note:''},
+    {name:'안동간고등어',spec1:'120g',spec2:'',qty:'13',unit:'팩',supplyP:'20500',ship:'3300',total:'23800',tax:'면세',note:''},
+    {name:'안동간고등어',spec1:'140g',spec2:'',qty:'13',unit:'팩',supplyP:'24600',ship:'3300',total:'27900',tax:'면세',note:''},
+    {name:'배담온 꿀 스틱 선물세트',spec1:'아카시아꿀 20포 1세트',spec2:'10포×2묶음',qty:'1',unit:'박스',supplyP:'7200',ship:'3000',total:'10200',tax:'면세',note:''},
+    {name:'배담온 꿀 스틱 선물세트',spec1:'아카시아꿀 40포 1세트',spec2:'',qty:'1',unit:'박스',supplyP:'15400',ship:'3000',total:'18400',tax:'면세',note:''},
+    {name:'온반 육개장',spec1:'600g',spec2:'식육추출가공품',qty:'1',unit:'팩',supplyP:'2200',ship:'구간별',total:'',tax:'과세',note:'택배비 1-4팩 3,800 / 5-9팩 4,500 / 10-12팩 5,000'},
+    {name:'온반 고기도가니탕',spec1:'500g',spec2:'식육추출가공품',qty:'1',unit:'팩',supplyP:'2300',ship:'구간별',total:'',tax:'과세',note:'택배비 1-4팩 3,800 / 5-9팩 4,500 / 10-12팩 5,000'},
+    {name:'온반 스지도가니탕',spec1:'500g',spec2:'식육추출가공품',qty:'1',unit:'팩',supplyP:'2000',ship:'구간별',total:'',tax:'과세',note:'택배비 1-4팩 3,800 / 5-9팩 4,500 / 10-12팩 5,000'},
+    {name:'한우사골 고기곰탕',spec1:'600g',spec2:'식육추출가공품',qty:'1',unit:'팩',supplyP:'1800',ship:'구간별',total:'',tax:'과세',note:'택배비 1-4팩 3,800 / 5-9팩 4,500 / 10-12팩 5,000'},
+    {name:'온반 영양곰탕',spec1:'600g',spec2:'식육추출가공품',qty:'1',unit:'팩',supplyP:'2200',ship:'구간별',total:'',tax:'과세',note:'택배비 1-4팩 3,800 / 5-9팩 4,500 / 10-12팩 5,000'},
+    {name:'온반 장터국밥',spec1:'600g',spec2:'식육추출가공품',qty:'1',unit:'팩',supplyP:'2100',ship:'구간별',total:'',tax:'과세',note:'택배비 1-4팩 3,800 / 5-9팩 4,500 / 10-12팩 5,000'},
+    {name:'모아네 뚝배기불고기',spec1:'400g',spec2:'식육추출가공품',qty:'1',unit:'팩',supplyP:'2600',ship:'구간별',total:'',tax:'과세',note:'택배비 1-7팩 3,700 / 8-12팩 4,200'},
+    {name:'가득찬 뼈다귀해장국',spec1:'600g',spec2:'즉석조리식품',qty:'1',unit:'팩',supplyP:'2200',ship:'구간별',total:'',tax:'과세',note:'택배비 1-4팩 3,800 / 5-9팩 4,500 / 10-12팩 5,000'},
+    {name:'온반 짬뽕탕',spec1:'600g',spec2:'즉석조리식품',qty:'1',unit:'팩',supplyP:'2700',ship:'구간별',total:'',tax:'과세',note:'택배비 1-4팩 3,800 / 5-9팩 4,500 / 10-12팩 5,000'},
+    {name:'온반 부대찌개',spec1:'600g',spec2:'즉석조리식품',qty:'1',unit:'팩',supplyP:'2700',ship:'구간별',total:'',tax:'과세',note:'택배비 1-4팩 3,800 / 5-9팩 4,500 / 10-12팩 5,000'},
+    {name:'떡국떡',spec1:'우리쌀 떡국떡',spec2:'1kg',qty:'1',unit:'kg',supplyP:'5300',ship:'4500',total:'9800',tax:'과세',note:''},
+    {name:'떡국떡',spec1:'우리쌀 떡국떡',spec2:'500g',qty:'500',unit:'g',supplyP:'2900',ship:'4500',total:'7400',tax:'과세',note:''},
+    {name:'떡볶이떡',spec1:'우리쌀 떡볶이떡',spec2:'1kg',qty:'1',unit:'kg',supplyP:'5300',ship:'4500',total:'9800',tax:'과세',note:''},
+    {name:'떡국떡',spec1:'유기농 우리쌀 떡국떡',spec2:'500g×3',qty:'1.5',unit:'kg',supplyP:'10600',ship:'4500',total:'15100',tax:'과세',note:''},
+    {name:'떡볶이떡',spec1:'유기농 우리쌀 떡볶이떡',spec2:'500g×3',qty:'1.5',unit:'kg',supplyP:'10600',ship:'4500',total:'15100',tax:'과세',note:''},
+    {name:'포켓누룽지',spec1:'유기농 현미 포켓누룽지',spec2:'480g×2',qty:'1',unit:'세트',supplyP:'21200',ship:'3000',total:'24200',tax:'과세',note:''},
+    {name:'고구마칩',spec1:'달콤바삭 고구마칩',spec2:'60g×8',qty:'1',unit:'세트',supplyP:'18800',ship:'3000',total:'21800',tax:'과세',note:''},
+    {name:'양갱세트',spec1:'군고구마 양갱세트(16개입)',spec2:'45g×16',qty:'1',unit:'세트',supplyP:'22400',ship:'3000',total:'25400',tax:'과세',note:''},
+    {name:'고구마 말랭이',spec1:'군고구마 말랭이',spec2:'50g×12',qty:'1',unit:'세트',supplyP:'22600',ship:'3000',total:'25600',tax:'과세',note:''},
+    {name:'고구마 말랭이',spec1:'군고구마 말랭이',spec2:'100g×10',qty:'1',unit:'세트',supplyP:'35300',ship:'3000',total:'38300',tax:'과세',note:''},
+    {name:'현미 뻥튀기',spec1:'현미+카무트+녹차+현미한입',spec2:'460g',qty:'1',unit:'세트',supplyP:'3960',ship:'2600',total:'6560',tax:'과세',note:''},
+    {name:'현미 뻥튀기',spec1:'오곡+한입카무트+녹차+현미한입',spec2:'440g',qty:'1',unit:'세트',supplyP:'3960',ship:'2600',total:'6560',tax:'과세',note:''},
+    {name:'액티브 트리플샷 마그네슘 450',spec1:'120정, 1통',spec2:'',qty:'1',unit:'개',supplyP:'11800',ship:'무료',total:'11800',tax:'과세',note:''},
+    {name:'액티브 트리플샷 마그네슘 450',spec1:'120정, 1통',spec2:'',qty:'2',unit:'개',supplyP:'19100',ship:'무료',total:'19100',tax:'과세',note:''},
+    {name:'액티브 트리플샷 마그네슘 450',spec1:'120정, 1통',spec2:'',qty:'3',unit:'개',supplyP:'26400',ship:'무료',total:'26400',tax:'과세',note:''},
+  ].map(r => {
+    const k = gcKey(r);
+    const cost = oldCost[k] || (PRICE_GC_ILBI_COST[k] != null ? String(PRICE_GC_ILBI_COST[k]) : '');
+    return Object.assign({}, base, r, { price: cost });
+  });
+  priceSaveStorage(key, rows);
+  localStorage.setItem(FLAG, '1');
+}
+_priceSeedGrinchemB2BV20261104();
 
 (function initPrice(){priceRebuildVendorFilter();priceRender();})();
 // ══════════════════════════════════════════════════════════
