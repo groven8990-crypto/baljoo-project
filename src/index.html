@@ -20625,8 +20625,8 @@ async function srB2BGmailLoadAttachment(vendorKey, idx){
     cfg.load(file);
     statusEl.textContent = '✅ "' + item.filename + '" 업로드 완료';
     try {
-      await _driveUploadWithRetry(cfg.driveSubKw, file, token);
-      statusEl.textContent += ' · 드라이브 저장 완료';
+      const dr = await _driveUploadWithRetry(cfg.driveSubKw, file, token);
+      statusEl.textContent += (dr && dr.skipped) ? ' · 드라이브엔 이미 저장돼 있음' : ' · 드라이브 저장 완료';
     } catch(e) { console.warn('[srB2BGmailLoadAttachment] 드라이브 업로드 실패', vendorKey, e.message); }
   } catch(e) {
     statusEl.textContent = '❌ 오류: ' + e.message;
@@ -20744,14 +20744,36 @@ async function _driveUploadFile(file, folderId, token){
 // 캐시된 폴더 id로 업로드 시도 → 404(폴더 이동/삭제 등)면 캐시만 지우고 한 번 다시 찾아서 재시도.
 // 자동 체크(_autoGmailCheckOnce)와 수동 "Gmail 검색" 목록의 업로드 버튼(srB2BGmailLoadAttachment)
 // 둘 다 이 공용 함수를 씀
+// 같은 메일 첨부를 여러 번 올리면(수동 "업로드" 버튼 반복, 자동 체크, 컴퓨터마다 따로 체크) 드라이브는
+// 같은 이름 파일을 계속 새로 만들어서 PC 동기화 폴더에 "발주서1 (1)/(2)/(3)"처럼 쌓였음 —
+// 같은 이름·같은 크기 파일이 이미 있으면 건너뛰고, 이름은 같은데 크기가 다르면(정말 수정본) 시각을
+// 붙여 따로 저장해서 대조할 수 있게 함
+async function _driveExistingSizes(file, folderId, token){
+  const nm = String(file.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  const q = encodeURIComponent(`'${folderId}' in parents and name='${nm}' and trashed=false`);
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,size)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+    { headers: { Authorization: 'Bearer ' + token } });
+  if (!r.ok) { const e = new Error('드라이브 파일 확인 실패 ' + r.status); e.status = r.status; throw e; }
+  return ((await r.json()).files || []).map(f => Number(f.size));
+}
+async function _driveUploadDedup(file, folderId, token){
+  const sizes = await _driveExistingSizes(file, folderId, token);
+  if (sizes.includes(file.size)) return { skipped: true };
+  if (sizes.length) {
+    const d = new Date(), hhmm = String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0');
+    const renamed = new File([file], file.name.replace(/(\.[^.]+)?$/, m => '_' + hhmm + (m||'')), { type: file.type });
+    return _driveUploadFile(renamed, folderId, token);
+  }
+  return _driveUploadFile(file, folderId, token);
+}
 async function _driveUploadWithRetry(subKw, file, token){
   let folderId = await _driveFindVendorFolder(subKw, token);
-  try { await _driveUploadFile(file, folderId, token); }
+  try { return await _driveUploadDedup(file, folderId, token); }
   catch(e) {
     if (e.status === 404) {
       _autoGmailDriveFolderCacheSet(subKw, '');
       folderId = await _driveFindVendorFolder(subKw, token);
-      await _driveUploadFile(file, folderId, token);
+      return await _driveUploadDedup(file, folderId, token);
     } else throw e;
   }
 }
@@ -20785,7 +20807,7 @@ async function _autoGmailCheckOnce(){
           okCount++;
           // 드라이브 업로드는 부가 기능 — 실패해도 앱 반영 자체(위 v.load)는 이미 끝났으니
           // 여기서 막히지 않게 별도로 감쌈
-          try { await _driveUploadWithRetry(v.driveSubKw, file, token); driveOkCount++; }
+          try { const dr = await _driveUploadWithRetry(v.driveSubKw, file, token); if (!(dr && dr.skipped)) driveOkCount++; }
           catch(e) { console.warn('[자동 발주 가져오기] 드라이브 업로드 실패', v.name, it.filename, e.message); }
         } catch(e) { console.warn('[자동 발주 가져오기]', v.name, it.filename, e.message); }
       }
