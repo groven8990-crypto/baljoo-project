@@ -67,6 +67,12 @@ Deno.serve(async (req) => {
     return Response.json({ ok: true });
   }
 
+  if (b.action === "diag") {
+    // 함수 로그에만 남김 (상태별 건수 · 연결된 스토어 이름 — 주문 내용은 없음)
+    console.log("diag", account.id, JSON.stringify(b.info ?? {}).slice(0, 2000));
+    return Response.json({ ok: true });
+  }
+
   if (b.action === "orders") {
     const orders = (Array.isArray(b.orders) ? b.orders : []).slice(0, 2000)
       .map((o) => clean(o as Record<string, unknown>)).filter((o): o is NormalizedOrder => !!o);

@@ -2,7 +2,7 @@
 // 저장 · 중복 제거 · 폰 알림은 서버(market-ingest)가 합니다.
 // 설정: /etc/baljoo/accounts.json (계정 목록), /etc/baljoo/env (연동 키 · 쇼핑몰 키, systemd 가 환경변수로 넣어 줌)
 import { fetchCoupang } from "./shared/coupang.ts";
-import { fetchNaver } from "./shared/naver.ts";
+import { fetchNaver, naverDiag } from "./shared/naver.ts";
 import { Adapter, ChannelAccount, secret } from "./shared/types.ts";
 
 const INGEST = "https://byanyksnvrqfrkeylvll.supabase.co/functions/v1/market-ingest";
@@ -41,5 +41,13 @@ for (const a of accounts) {
     const msg = (e as Error).message;
     console.log(`⚠️ ${a.id}: ${msg}`);
     await ingest({ action: "error", account_id: a.id, error: msg }).catch(() => {});
+  }
+  // 네이버는 매시 정각 회차에만 진단 정보를 같이 보냄 (주문이 0건으로만 잡히는 원인 확인용)
+  if (a.platform === "naver" && now.getUTCMinutes() < 5) {
+    try {
+      await ingest({ action: "diag", account_id: a.id, info: await naverDiag(account) });
+    } catch (e) {
+      await ingest({ action: "diag", account_id: a.id, info: { error: (e as Error).message.slice(0, 300) } }).catch(() => {});
+    }
   }
 }

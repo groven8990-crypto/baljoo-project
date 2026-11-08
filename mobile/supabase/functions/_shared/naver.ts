@@ -75,3 +75,27 @@ export const fetchNaver: Adapter = async (account, since) => {
   }
   return out;
 };
+
+// 진단용: 최근 72시간 동안 바뀐 상품주문을 상태 종류별로 셉니다 (주문 내용 · 개인정보는 담지 않음).
+// 주문이 있는데 0건으로 잡힐 때, 다른 스토어를 보고 있는지 · 상태 필터 문제인지 가리는 데 씁니다.
+export async function naverDiag(account: { secret_ref: string }) {
+  const ref = account.secret_ref;
+  const accessToken = await token(secret(`NAVER_${ref}_CLIENT_ID`), secret(`NAVER_${ref}_CLIENT_SECRET`));
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const byType: Record<string, number> = {};
+  const now = Date.now();
+  for (let d = 3; d >= 1; d--) {
+    const params = new URLSearchParams({ lastChangedFrom: kstIso(new Date(now - d * 86400_000)) });
+    const res = await fetch(`${HOST}/v1/pay-order/seller/product-orders/last-changed-statuses?${params}`, { headers });
+    if (!res.ok) { byType[`HTTP_${res.status}`] = (byType[`HTTP_${res.status}`] ?? 0) + 1; continue; }
+    for (const s of (await res.json()).data?.lastChangeStatuses ?? []) {
+      byType[s.lastChangedType] = (byType[s.lastChangedType] ?? 0) + 1;
+    }
+  }
+  // 이 키가 어느 스토어(채널)에 연결돼 있는지
+  const ch = await fetch(`${HOST}/v1/seller/channels`, { headers });
+  const channels = ch.ok
+    ? ((await ch.json()) as { channelNo?: number; name?: string; channelType?: string }[]).map((c) => `${c.name}(${c.channelType ?? ""}:${c.channelNo ?? ""})`)
+    : [`HTTP_${ch.status}`];
+  return { byType, channels };
+}
