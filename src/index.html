@@ -20366,6 +20366,12 @@ const LS_GRINCHEM_TRACKING = 'yb_grinchem_tracking';
 function loadGrinchemTracking(){ try{ return JSON.parse(localStorage.getItem(LS_GRINCHEM_TRACKING)||'{}'); }catch{ return {}; } }
 function saveGrinchemTracking(m){ try{ localStorage.setItem(LS_GRINCHEM_TRACKING, JSON.stringify(m||{})); }catch(e){} }
 function _grinchemTrackKey(r){ return [r.recv_name, r.recv_phone, r.item].join('|'); }
+// 또또컴퍼니 주문의 택배사는 실제 공급 발주처 기준으로 고정(일비 롯데·참맛더드림 로젠·생선상륙 한진 등,
+// 송장입력 탭의 VENDOR_COURIER_DEFAULT와 같은 표) — 회신파일 택배사 칸이 비거나 약칭이어도 일정하게
+function _grinchemFixedCourier(item){
+  const v = _grinchemResolveVendor(item);
+  return (v && typeof VENDOR_COURIER_DEFAULT === 'object' && VENDOR_COURIER_DEFAULT[v]) || '';
+}
 function grinchemMatchTrackingFile(file, opts){
   if (!file) return;
   const silent = !!(opts && opts.silent);
@@ -20407,7 +20413,7 @@ function grinchemMatchTrackingFile(file, opts){
         if (!cands || !cands.length) continue;
         const idx = usedIdx[nm] || 0;
         if (idx >= cands.length) continue;
-        tracking[_grinchemTrackKey(r)] = { no: cands[idx].no, courier: cands[idx].courier };
+        tracking[_grinchemTrackKey(r)] = { no: cands[idx].no, courier: _grinchemFixedCourier(r.item) || cands[idx].courier };
         usedIdx[nm] = idx + 1;
         matched++;
       }
@@ -20434,7 +20440,8 @@ function renderGrinchemTrackingList(){
   const tracking = loadGrinchemTracking();
   const COURIERS = ['우체국택배','CJ대한통운','롯데택배','한진택배','로젠택배','경동택배'];
   const rowHtml = (r, i) => {
-    const t = tracking[_grinchemTrackKey(r)] || {};
+    const t0 = tracking[_grinchemTrackKey(r)] || {};
+    const t = { ...t0, courier: t0.courier || _grinchemFixedCourier(r.item) };
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;font-size:12px;flex-wrap:wrap">
       <span style="min-width:64px;font-weight:600">${escHtml(r.recv_name)}</span>
       <span style="flex:1;color:var(--text3);min-width:120px">${escHtml(r.item)} × ${r.qty}</span>
@@ -20501,7 +20508,7 @@ async function grinchemSendTrackingToVendor(){
   // "또또상회"로 고정(실제 발주처는 절대 안 드러나게), 보내는분주소/전화번호는 또또컴퍼니가
   // 준 예시 파일에 공통으로 있던 값 그대로 사용
   const header = ['받는분성명','받는분전화번호','받는분주소(전체, 분할)','품목명','수량','배송메세지','','택배사','운송장번호','보내는분성명','보내는분주소(전체, 분할)','보내는분전화번호'];
-  const data = filled.map(({r,t}) => [r.recv_name, r.recv_phone, r.addr, r.item, r.qty, r.memo||'', '', t.courier||'', t.no, '또또상회', '전라북도 익산시 인북로32길55', '010-5435-0126']);
+  const data = filled.map(({r,t}) => [r.recv_name, r.recv_phone, r.addr, r.item, r.qty, r.memo||'', '', t.courier || _grinchemFixedCourier(r.item), t.no, '또또상회', '전라북도 익산시 인북로32길55', '010-5435-0126']);
   const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '운송장');
