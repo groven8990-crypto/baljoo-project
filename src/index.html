@@ -5998,7 +5998,7 @@ function kakaoSendOne(gk){
   const orders = groupedOrders[gk] || [];
   if (!orders.length) { alert('주문이 없어요.'); return; }
   const today = _localISO();
-  const brand = _brandLabel(a) || a || v;
+  const brand = _vendorFixedStore(v) || _brandLabel(a) || a || v;
   const lines = [`[발주서] ${today} ${v} (${brand})`, `총 ${orders.length}건`, ''];
   orders.forEach((o, i) => {
     const opt = o.select_opt || o.option_name || '';
@@ -7028,7 +7028,7 @@ async function autoSendVendor(vendorName, opts){
     } catch(e) { console.warn('워크북 실패', gk, e); }
   }
   if (!built.length) { alert('발주서 생성에 실패했어요.'); return; }
-  const brands = [...new Set(built.map(b => _brandLabel(b.alias)).filter(Boolean))];
+  const brands = [...new Set(built.map(b => _vendorFixedStore(vendorName) || _brandLabel(b.alias)).filter(Boolean))];
   const primaryBrand = brands.includes('그로븐') ? '그로븐' : (brands[0] || '');
   let subject = _applyTpl(tpl.subject, vendorName, today, primaryBrand, brands);
   const body    = _applyTpl(tpl.body,    vendorName, today, primaryBrand, brands);
@@ -13089,9 +13089,13 @@ function aliasToStore(alias) {
   return map[alias] || alias;
 }
 // 날짜-발주처-발주서_스토어명 형식
+// 발주처한테 보이는 사업자명을 발주처 기준으로 고정해야 하는 경우 — 한마당식품은 식자재코리아에서
+// 받아온 주문(사업자는 그로븐으로 잡힘)이어도 발주서 이름·메일 제목·카톡은 옐로우브릿지로 나가야 함
+// (함수 선언으로 둬야 스크립트 앞쪽 시작 코드에서 makeFileName이 먼저 불려도 안전함)
+function _vendorFixedStore(vendor){ return ({ '한마당식품': '옐로우브릿지' })[vendor] || ''; }
 function makeFileName(vendor, alias) {
   const today = _localISO().slice(2).replace(/-/g,'');  // YYMMDD 6자리 (로컬)
-  const store = aliasToStore(alias);
+  const store = _vendorFixedStore(vendor) || aliasToStore(alias);
   return `${today}-${vendor}-발주서_${store}.xlsx`;
 }
 function renderLoadedFiles(){
