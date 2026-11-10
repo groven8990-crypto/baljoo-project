@@ -2602,6 +2602,15 @@ function _mergeCloudValue(key, cloudRaw, localRaw) {
       // 확인 처리는 한쪽 방향으로만 진행되는 상태라, 합집합으로 합쳐도 안전함
       return JSON.stringify([...new Set([...cloud, ...local])]);
     }
+    if (key === 'yb_bankinfo' && Array.isArray(cloud) && Array.isArray(local)) {
+      // 송금처(계좌) 목록 — 예전엔 클라우드(구글시트) 값으로 통째로 덮어써서, 시트 쪽 사본이 오래돼
+      // 있으면 "재동기화" 한 번에 계좌가 사라졌음(엠에이씨컴퍼니 계좌가 빠진 원인). 이름 기준으로
+      // 합치고 같은 이름은 이 컴퓨터 값을 우선 — 어느 쪽에만 있는 계좌도 안 없어지게 함
+      const map = new Map();
+      for (const b of cloud) if (b && b.name) map.set(b.name, b);
+      for (const b of local) if (b && b.name) map.set(b.name, b);
+      return JSON.stringify([...map.values()]);
+    }
     if (key === 'yb_instant_pay_vendors' && Array.isArray(cloud) && Array.isArray(local)) {
       // 즉시결제 거래처 체크도 한쪽 방향으로만 켜지는 목록이라, 합집합으로 합쳐도 안전함
       // (다른 컴퓨터에서 켜둔 게 이 컴퓨터에서 재동기화 한 번에 없어지지 않게 함)
@@ -13487,6 +13496,20 @@ function _seedMacCompanyBankEntry(){
   }catch(e){}
 }
 _seedMacCompanyBankEntry();
+// 엠에이씨컴퍼니 송금 계좌가 재동기화(구글시트 사본으로 통째 덮어쓰기) 때 빠져버려서 복원 —
+// 11/09까지 지출결의서에 쓰던 계좌 그대로. 한 번만 실행하고, 이미 엠에이씨 계좌가 있으면 안 건드림
+function _restoreMacCompanyBankV2(){
+  try{
+    if (localStorage.getItem('yb_bank_mac_restore_v2')) return;
+    const banks = loadBankInfo();
+    if (!banks.some(b => /엠에이씨/.test(b.name||'') && (b.acct||'').trim())) {
+      banks.push({name:'주식회사 엠에이씨컴퍼니', bank:'기업은행', acct:'010-9199-0109', holder:'(주)엠에이씨컴퍼니', tmemo:'', tnote:'', tpayType:'즉시결제', tev1:false,tev2:true,tev3:false,tev4:false,tev5:false,tev6:false});
+      saveBankInfo(banks);
+    }
+    localStorage.setItem('yb_bank_mac_restore_v2', '1');
+  }catch(e){}
+}
+_restoreMacCompanyBankV2();
 // 생선상륙 주인이 바뀌어서 사업자를 새로 냄(2026-10-06, 신규 등록번호 274-92-02472,
 // 대표 장진희) — 계좌도 NH농협은행으로 새로 바뀌어서 기존 등록된 계좌 정보를 한 번만
 // 덮어씀. 이미 같은 정보로 바꿔놨으면(사용자가 그 후에 또 직접 고쳤어도) 다시 안 건드림.
