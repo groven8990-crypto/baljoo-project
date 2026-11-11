@@ -6593,6 +6593,10 @@ function _htmlEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&
 //   bodyText: 평문 본문 (\n 자동으로 <br>)
 //   attachments: [{name, type, b64}]  → 첨부
 //   inlineImages: [{cid, type, b64}]   → 본문 끝 인라인 이미지 (서명 명함 등)
+function _cleanEmailList(v){
+  const found = String(v||'').match(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g) || [];
+  return [...new Set(found)].join(', ');
+}
 function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages, bcc}){
   const enc2047 = s => '=?UTF-8?B?' + btoa(unescape(encodeURIComponent(s||''))) + '?=';
   // RFC 2231 filename 파라미터 (한글 안전)
@@ -6609,9 +6613,14 @@ function _buildMimeMail({to, from, subject, bodyText, attachments, inlineImages,
   const outerB   = '_outer_'   + Math.random().toString(36).slice(2);
   const relatedB = '_related_' + Math.random().toString(36).slice(2);
   const lines = [];
-  lines.push(`To: ${to}`);
+  // 발주처 이메일 칸에 메모·한글·세미콜론·전각 쉼표·줄바꿈 등이 섞여 있으면 Gmail이 "Invalid To header"로
+  // 거절함 — 실제 메일 주소만 골라서 쉼표로 다시 이어 붙임
+  const toClean = _cleanEmailList(to);
+  if (!toClean) throw new Error(`받는 사람 이메일 주소를 읽을 수 없어요: "${String(to||'')}" — 거래처 이메일 칸을 확인해주세요`);
+  const bccClean = _cleanEmailList(bcc);
+  lines.push(`To: ${toClean}`);
   if (from) lines.push(`From: ${from}`);
-  if (bcc) lines.push(`Bcc: ${bcc}`);
+  if (bccClean) lines.push(`Bcc: ${bccClean}`);
   lines.push(`Subject: ${enc2047(subject)}`);
   lines.push('MIME-Version: 1.0');
   lines.push(`Content-Type: multipart/mixed; boundary="${outerB}"`);
