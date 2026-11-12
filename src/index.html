@@ -4134,7 +4134,13 @@ function handleFile(file, onDone) {
           // 7,980 → 13,300원) 파일 금액대로 쓰면 매출이 부풀려짐 — 실제로 받는 금액인 세트당
           // 7,980원(행사 전 금액)으로 고정. 460g/440g 옵션 모두 같은 가격
           if (vk === '참맛더드림' && pn.includes('뻥튀기') && /자꾸가게/.test(_aliasRaw)) {
-            order_amt = 7980 * (parseInt(r[C.qt])||1);
+            // "460g 2세트"처럼 한 옵션에 여러 세트가 묶인 상품(합포장)은 세트 수만큼 곱함
+            let _ppSets = 1;
+            for (const s of [parsed.optionName, soOne, dop]) {
+              const m = String(s||'').match(/(\d+)\s*세트/);
+              if (m) { _ppSets = parseInt(m[1]) || 1; break; }
+            }
+            order_amt = 7980 * _ppSets * (parseInt(r[C.qt])||1);
           }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
@@ -13277,7 +13283,13 @@ function handleFileAdd(file, onDone){
           // 7,980 → 13,300원) 파일 금액대로 쓰면 매출이 부풀려짐 — 실제로 받는 금액인 세트당
           // 7,980원(행사 전 금액)으로 고정. 460g/440g 옵션 모두 같은 가격
           if (vk === '참맛더드림' && pn.includes('뻥튀기') && /자꾸가게/.test(_aliasRaw)) {
-            order_amt = 7980 * (parseInt(r[C.qt])||1);
+            // "460g 2세트"처럼 한 옵션에 여러 세트가 묶인 상품(합포장)은 세트 수만큼 곱함
+            let _ppSets = 1;
+            for (const s of [parsed.optionName, soOne, dop]) {
+              const m = String(s||'').match(/(\d+)\s*세트/);
+              if (m) { _ppSets = parseInt(m[1]) || 1; break; }
+            }
+            order_amt = 7980 * _ppSets * (parseInt(r[C.qt])||1);
           }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
@@ -21578,6 +21590,14 @@ function srPurchaseUnits(o){
     const m = String(o.option_name||'').match(/(\d+)\s*kg/i);
     const kg = m ? parseInt(m[1]) : 1;
     return (Number(o.qty)||1) * kg;
+  }
+  // 참맛더드림 뻥튀기 "460g 2세트"처럼 옵션 하나에 세트 여러 개가 묶인 합포장 상품 — 코드에 수량이
+  // 안 박혀 있으면(code_qty 1) 옵션의 세트 수만큼 매입수량으로 셈(배송비는 주문당 1박스 그대로)
+  if (o.vendor_key === '참맛더드림' && !(Number(o.code_qty) > 1)) {
+    for (const s of [o.option_name, o.select_opt, o.disp_opt]) {
+      const m = String(s||'').match(/(\d+)\s*세트/);
+      if (m) return (Number(o.qty)||1) * (parseInt(m[1]) || 1);
+    }
   }
   return (Number(o.qty)||1) * (Number(o.code_qty)||1);
 }
