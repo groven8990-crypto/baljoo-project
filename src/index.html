@@ -22044,15 +22044,17 @@ function srOnB2BVendorChange(input){
 function _srBuildTopCardsHtml(T, rows){
   const adTotal = srAdTotalFor('그로븐') + srAdTotalFor('옐로우브릿지') + srAdTotalFor('기타');
   const adjProfit = T.profit - adTotal;
-  // 순이익 금액은 자사 + B2B를 그대로 합산. 마진율은 하나로 합치면 마진이 낮은 B2B가 섞여서
-  // 자사 마진율까지 떨어져 보이니(B2B로 더 벌었는데 줄어든 것처럼 보임) 자사·B2B를 따로 표시.
+  // 순이익 금액은 자사 + B2B를 그대로 합산. 전체 마진율만 보면 마진이 낮은 B2B가 섞여서
+  // 자사 마진율까지 떨어져 보이니(B2B로 더 벌었는데 줄어든 것처럼 보임) 자사·B2B도 따로 표시.
   // 광고비는 자사 판매에 쓰는 돈이라 자사 쪽에서만 뺌
   const _rows = Array.isArray(rows) ? rows : [];
   const _sum = arr => arr.reduce((s,x)=>{s.sales+=x.sales;s.profit+=x.profit;return s;},{sales:0,profit:0});
   const selfT = _sum(_rows.filter(x => !x.isB2B)), b2bT = _sum(_rows.filter(x => x.isB2B));
   const _pct = (v, base) => base > 0 ? (v/base*100).toFixed(1) + '%' : '-';
+  // 전체 마진율(전체 매출 대비)은 다른 카드들과 합이 맞도록 그대로 두고, 그 아래에 자사·B2B를 각각 표시
+  const totalPct = T.sales > 0 ? `<div style="font-size:11px;color:#9CA3AF;margin-top:2px">전체 ${(adjProfit/T.sales*100).toFixed(1)}%</div>` : '';
   const marginLine = _rows.length
-    ? `<div style="font-size:11px;color:#6B7684;margin-top:3px;line-height:1.5;white-space:nowrap">자사 <b style="color:#191F28">${(selfT.profit-adTotal).toLocaleString()}원</b> · 마진율 <b style="color:#191F28">${_pct(selfT.profit-adTotal, selfT.sales)}</b></div>`
+    ? totalPct + `<div style="font-size:11px;color:#6B7684;margin-top:3px;line-height:1.5;white-space:nowrap">자사 <b style="color:#191F28">${(selfT.profit-adTotal).toLocaleString()}원</b> · 마진율 <b style="color:#191F28">${_pct(selfT.profit-adTotal, selfT.sales)}</b></div>`
       + (b2bT.sales > 0 ? `<div style="font-size:11px;color:#6B7684;line-height:1.5;white-space:nowrap">B2B <b style="color:#0D9488">${b2bT.profit.toLocaleString()}원</b> · 마진율 <b style="color:#0D9488">${_pct(b2bT.profit, b2bT.sales)}</b></div>` : '')
     : (T.sales > 0 ? `<div style="font-size:11px;color:#9CA3AF;margin-top:2px">${(adjProfit/T.sales*100).toFixed(1)}%</div>` : '');
   const _p = v => T.sales > 0 ? `<div style="font-size:11px;color:#9CA3AF;margin-top:2px">${(v/T.sales*100).toFixed(1)}%</div>` : '';
