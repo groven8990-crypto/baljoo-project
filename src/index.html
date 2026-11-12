@@ -22244,7 +22244,12 @@ async function srExportDetailOnlyPng(){
   for (const sec of sections){
     // 사업자명 찾기 (상위 [data-biz] 컨테이너)
     const parent = sec.closest('[data-biz]');
-    const biz = parent?.getAttribute('data-biz') || '상세';
+    const bizName = parent?.getAttribute('data-biz') || '상세';
+    // B2B(또또컴퍼니·개인 등) 상세표도 같은 사업자 컨테이너 안에 있어서, 예전엔 파일명이 사업자
+    // 상세표와 똑같이 "매입상세_그로븐.png"로 저장돼 뒤에 저장된 B2B 이미지가 그로븐 파일을 덮어썼음
+    const b2bWrap = sec.closest('[data-b2b-name]');
+    const b2bName = b2bWrap ? (b2bWrap.getAttribute('data-b2b-name') || '') : '';
+    const biz = b2bName ? `${bizName}_B2B(${typeof _b2bDisplayName === 'function' ? _b2bDisplayName(b2bName) : b2bName})` : bizName;
     const tmp = document.createElement('div');
     tmp.style.cssText = 'background:#fff;padding:22px;width:1200px;font-family:"맑은 고딕","Noto Sans KR",sans-serif;position:fixed;left:-9999px;top:0;box-sizing:border-box';
     // 제목
