@@ -17122,6 +17122,19 @@ function reconExportXlsx() {
     </div>
     <div id="wrHistoryBox" style="display:none;margin-top:10px;font-size:12px"></div>
   </div>
+  <div class="card" style="margin-top:14px">
+    <div class="card-title">📈 기간 매출 평균 <span style="font-size:11px;font-weight:400;color:var(--text3)">— 매출 보고용에서 저장된 날짜만 계산돼요</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="date" id="wrAvgFrom" class="inp" style="width:150px;font-size:12px">
+      <span style="font-size:12px;color:var(--text3)">~</span>
+      <input type="date" id="wrAvgTo" class="inp" style="width:150px;font-size:12px">
+      <button class="btn btn-sm" onclick="wrSetAvgRange(1)">최근 1개월</button>
+      <button class="btn btn-sm" onclick="wrSetAvgRange(2)">최근 2개월</button>
+      <button class="btn btn-sm" onclick="wrSetAvgRange(3)">최근 3개월</button>
+      <button class="btn btn-primary btn-sm" onclick="wrRenderPeriodAvg()">계산</button>
+    </div>
+    <div id="wrAvgResult" style="margin-top:10px"></div>
+  </div>
   <div id="wrReport"></div>
   <div class="card" style="margin-top:14px">
     <div class="card-title">📖 사용 방법</div>
@@ -23399,6 +23412,45 @@ function srExportImage(){
 // ══════════════════════════════════════════════════════════
 // 주간 매출 보고용
 // ══════════════════════════════════════════════════════════
+// ── 기간 매출 평균 — 매출 보고용 일별 스냅샷(yb_sales_history)을 골라 기간 합계·일평균·월별을 보여줌 ──
+function _wrIso(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function wrSetAvgRange(months){
+  const end = new Date(); end.setDate(end.getDate()-1);  // 어제까지(오늘은 아직 진행 중)
+  const start = new Date(end); start.setMonth(start.getMonth()-months); start.setDate(start.getDate()+1);
+  document.getElementById('wrAvgFrom').value = _wrIso(start);
+  document.getElementById('wrAvgTo').value = _wrIso(end);
+  wrRenderPeriodAvg();
+}
+function wrRenderPeriodAvg(){
+  const el = document.getElementById('wrAvgResult'); if (!el) return;
+  const from = document.getElementById('wrAvgFrom').value, to = document.getElementById('wrAvgTo').value;
+  if (!from || !to || from > to) { el.innerHTML = '<span style="color:var(--warn);font-size:12px">시작·끝 날짜를 골라주세요.</span>'; return; }
+  const snaps = srLoadHistory().filter(s => s && s.date >= from && s.date <= to).sort((a,b)=>a.date<b.date?-1:1);
+  const calDays = Math.round((new Date(to+'T00:00:00') - new Date(from+'T00:00:00')) / 86400000) + 1;
+  if (!snaps.length) { el.innerHTML = `<span style="color:var(--warn);font-size:12px">${from} ~ ${to} 사이에 저장된 매출 보고가 없어요.</span>`; return; }
+  const v = s => ({ total: Number(s.totalSales)||0, cnt: Number(s.totalCnt)||0, gr: Number(s.grAgg&&s.grAgg.totalSales)||0, yb: Number(s.ybAgg&&s.ybAgg.totalSales)||0,
+    b2b: Math.max(0, (Number(s.totalSales)||0) - (Number(s.selfSales)||0)) });
+  const sum = arr => arr.reduce((a,s)=>{ const x=v(s); a.total+=x.total; a.cnt+=x.cnt; a.gr+=x.gr; a.yb+=x.yb; a.b2b+=x.b2b; return a; }, {total:0,cnt:0,gr:0,yb:0,b2b:0});
+  const T = sum(snaps), n = snaps.length;
+  const w = x => Math.round(x).toLocaleString() + '원';
+  const byMonth = {};
+  snaps.forEach(s => { (byMonth[s.date.slice(0,7)] = byMonth[s.date.slice(0,7)] || []).push(s); });
+  const monthRows = Object.entries(byMonth).map(([m, arr]) => { const M = sum(arr);
+    return `<tr><td style="padding:5px 8px">${m.replace('-','년 ')}월</td><td style="padding:5px 8px;text-align:right">${arr.length}일</td><td style="padding:5px 8px;text-align:right">${w(M.total)}</td><td style="padding:5px 8px;text-align:right;font-weight:700">${w(M.total/arr.length)}</td></tr>`; }).join('');
+  const missing = calDays - n;
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;background:#F8F9FA;border:1px solid #ECEEF1;border-radius:8px;padding:12px">
+      <div><div style="font-size:11px;color:#6B7684">기간 총 매출</div><div style="font-size:17px;font-weight:700;color:#3182F6">${w(T.total)}</div><div style="font-size:11px;color:#9CA3AF">${T.cnt.toLocaleString()}건 · 저장된 ${n}일</div></div>
+      <div><div style="font-size:11px;color:#6B7684">하루 평균 매출</div><div style="font-size:17px;font-weight:700;color:#191F28">${w(T.total/n)}</div><div style="font-size:11px;color:#9CA3AF">저장된 날 기준 · 하루 ${(T.cnt/n).toFixed(1)}건</div></div>
+      <div><div style="font-size:11px;color:#6B7684">달력 기준 하루 평균</div><div style="font-size:17px;font-weight:700;color:#191F28">${w(T.total/calDays)}</div><div style="font-size:11px;color:#9CA3AF">${calDays}일로 나눔${missing>0?` · 보고 없는 날 ${missing}일`:''}</div></div>
+      <div><div style="font-size:11px;color:#6B7684">하루 평균 (사업자별)</div><div style="font-size:12px;color:#191F28;line-height:1.6">그로븐 ${w(T.gr/n)}<br>옐로우브릿지 ${w(T.yb/n)}<br>B2B ${w(T.b2b/n)}</div></div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
+      <thead><tr style="background:#F3F4F6;color:#374151"><th style="padding:5px 8px;text-align:left">월</th><th style="padding:5px 8px;text-align:right">저장된 날</th><th style="padding:5px 8px;text-align:right">매출 합계</th><th style="padding:5px 8px;text-align:right">하루 평균</th></tr></thead>
+      <tbody>${monthRows}</tbody>
+    </table>
+    <div style="font-size:11px;color:var(--text3);margin-top:4px">${snaps[0].date} ~ ${snaps[n-1].date} 저장분 기준. 매출 보고서를 안 만든 날(주말 등)은 "저장된 날 기준" 평균에서 빠져요.</div>`;
+}
 function wrWeekRange(anyDate){
   // 월요일~일요일 범위 계산
   const d = new Date(anyDate);
