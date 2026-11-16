@@ -21919,6 +21919,7 @@ function srBuildProfitRows(orders){
     }
     r.orderDetail.push({
       recv_name: o.recv_name||'(이름없음)',
+      ship_key: (typeof _mergeKey === 'function') ? _mergeKey(o) : String(o.recv_name||''),
       order_no: String(o.order_no||''),
       qty: Number(o.qty)||1,
       units,
@@ -22026,6 +22027,38 @@ function srBuildProfitRows(orders){
       r.saleVat = 0; r.purchaseVat = 0; r.vat = 0;
     }
     r.profit = r.sales - r.purchase - r.fee - r.vat;
+  }
+  // 합배송 배송비 — 같은 날 같은 발주처·같은 사업자로 같은 받는 사람(이름+주소)에게 가는 주문은 발주처가
+  // 한 박스로 묶어 보내서 배송비가 한 번만 듦(예: 박경모 목전지+삼겹살, MAC컴퍼니). 품목이 달라 행이 갈려도
+  // 1박스짜리 주문끼리는 배송비가 가장 큰 1건만 남기고 나머지는 0박스로 처리. 박스수를 직접 고친 주문은 건드리지 않음
+  {
+    const groups = {};
+    for (const r of Object.values(map)) {
+      if (r.isB2B) continue;
+      for (const d of r.orderDetail) {
+        if (!d.ship_key || d.boxesOverridden || d.boxes !== 1 || !(d.shipCost > 0)) continue;
+        (groups[r.brand + '|' + r.vendor + '|' + d.ship_key] ||= []).push({ r, d });
+      }
+    }
+    const touched = new Set();
+    for (const list of Object.values(groups)) {
+      if (list.length < 2) continue;
+      list.sort((a, b) => b.d.shipCost - a.d.shipCost);
+      for (const { r, d } of list.slice(1)) {
+        r.shipTotal -= d.shipCost;
+        d.shipCost = 0; d.boxes = 0; d.boxesComputed = 0; d.mergedShip = true;
+        d.totalCost = d.itemCost;
+        touched.add(r);
+      }
+    }
+    for (const r of touched) {
+      r.purchase = r.itemCost + r.shipTotal;
+      if (r.brand !== '그로븐' && r.taxable) {
+        r.purchaseVat = Math.round(r.purchase / 11);
+        r.vat = r.saleVat - r.purchaseVat;
+      }
+      r.profit = r.sales - r.purchase - r.fee - r.vat;
+    }
   }
   return Object.values(map).sort((a,b)=>{
     if (a.brand !== b.brand) return a.brand.localeCompare(b.brand);
@@ -22803,7 +22836,8 @@ function srOpenProfitDetail(tr, btn, r){
 }
 function srBuildDetailInnerHtml(r){
   const dRows = r.orderDetail.map((d, i) => {
-    const ovTag = d.boxesOverridden ? `<span style="font-size:9px;color:#7C3AED;margin-left:4px" title="자동 계산값: ${d.boxesComputed}박스">✏️수정됨</span>` : '';
+    const ovTag = d.boxesOverridden ? `<span style="font-size:9px;color:#7C3AED;margin-left:4px" title="자동 계산값: ${d.boxesComputed}박스">✏️수정됨</span>`
+      : (d.mergedShip ? `<span style="font-size:9px;color:#0D9488;margin-left:4px" title="같은 받는 분의 다른 주문과 한 박스로 합배송 — 배송비는 그쪽에서 한 번만">📦합배송</span>` : '');
     const restoreBtn = d.boxesOverridden ? `<button type="button" onclick="srRestoreDetailBox(this)" data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}" title="자동 계산으로 되돌리기 (${d.boxesComputed}박스)" style="border:none;background:none;cursor:pointer;color:#7C3AED;font-size:11px;padding:0 4px">↺</button>` : '';
     const salesOvTag = d.salesAmtOverridden ? `<span style="font-size:9px;color:#2563EB;margin-left:2px" title="자동 계산값: ${d.salesAmtComputed.toLocaleString()}원">✏️</span>` : '';
     const salesRestoreBtn = d.salesAmtOverridden ? `<button type="button" onclick="srRestoreDetailSales(this)" data-rowkey="${_srEsc(r.key)}" data-orderno="${_srEsc(d.order_no)}" title="자동 계산으로 되돌리기 (${d.salesAmtComputed.toLocaleString()}원)" style="border:none;background:none;cursor:pointer;color:#2563EB;font-size:11px;padding:0 4px">↺</button>` : '';
