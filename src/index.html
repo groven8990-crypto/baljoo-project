@@ -2735,9 +2735,17 @@ function applyOverride(vc, so){
 const LS_ORDER_OVERRIDES = 'yb_order_overrides';
 function loadOrderOverrides(){ try{ return JSON.parse(localStorage.getItem(LS_ORDER_OVERRIDES)||'[]'); }catch{ return []; } }
 function saveOrderOverrides(a){ localStorage.setItem(LS_ORDER_OVERRIDES, JSON.stringify(a)); }
-function applyOrderOverride(orderNo){
-  if (!orderNo) return null;
-  return loadOrderOverrides().find(o => o.orderNo === orderNo) || null;
+// 쿠팡 장바구니 주문처럼 한 주문번호 안에 상품이 여러 줄(예: 목전지 + 삼겹살) 들어오면 주문번호만으로는
+// 줄을 구분 못 해서, 한 줄을 고치면 같은 번호의 다른 줄까지 같이 바뀌었음 — 상품코드·상품명·선택사항으로
+// 줄을 구분하는 키를 같이 저장. (예전에 줄 키 없이 저장된 수정은 그 주문번호 전체에 그대로 적용)
+function _orderLineKey(o){
+  return [o.vendor_code||'', o.product||'', o.select_opt||''].map(x => String(x).trim()).join('||');
+}
+function applyOrderOverride(o){
+  if (!o || !o.order_no) return null;
+  const line = _orderLineKey(o);
+  const ovs = loadOrderOverrides().filter(x => x.orderNo === o.order_no);
+  return ovs.find(x => x.line === line) || ovs.find(x => !x.line) || null;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -5492,8 +5500,10 @@ function verifyDeleteRow(gk, idxList){
 // 경우에만 안내하고 중단
 function _saveOrderOverride(o, patch){
   if (!o.order_no) { alert('이 주문에는 고유 주문번호가 없어서 개별 수정을 저장할 수 없어요.'); return false; }
-  const ovs = loadOrderOverrides().filter(x => x.orderNo !== o.order_no);
-  ovs.push({ orderNo: o.order_no, ...patch });
+  const line = _orderLineKey(o);
+  // 같은 주문번호의 이 줄 수정 + 줄 구분 없이 저장됐던 예전 수정(다른 줄까지 바꾸던 것)은 지우고 새로 저장
+  const ovs = loadOrderOverrides().filter(x => !(x.orderNo === o.order_no && (x.line === line || !x.line)));
+  ovs.push({ orderNo: o.order_no, line, ...patch });
   saveOrderOverrides(ovs);
   return true;
 }
@@ -9026,7 +9036,7 @@ function rematchAllOrders(){
     }
     // 개별 주문 단위 직접수정 — 코드 단위 override보다 우선 적용. 같은 코드를 쓰는 다른
     // 주문에는 영향 없이 이 주문 한 건만 고칠 때 씀
-    const oov = applyOrderOverride(o.order_no);
+    const oov = applyOrderOverride(o);
     if (oov) {
       if (oov.item != null && oov.item !== '') o.item_name = oov.item;
       if (oov.option != null) o.option_name = oov.option;
