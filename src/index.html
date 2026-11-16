@@ -13232,14 +13232,19 @@ function handleFileAdd(file, onDone){
       // 플랫폼/쇼핑몰 컬럼은 헤더가 다양해서 후보 중 첫 번째로 찾는 걸 사용
       const findCol = (...names) => { for (const n of names) { const i = ci(n); if (i >= 0) return i; } return -1; };
       const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명'),si:ci('정산추가정보'),se:findCol('정산예정금액(배송비포함)','정산예정금액','정산금액(배송비포함)')};
-      // 기존 주문번호 집합(중복 제외용)
-      const existingOrderNos = new Set(allOrders.map(o => String(o.order_no||'').trim()).filter(Boolean));
+      // 중복 제외 — 주문번호만으로 보면 쿠팡 장바구니 주문(한 주문번호에 목전지+삼겹살처럼 상품 여러 줄)의
+      // 두 번째 줄이 "중복"으로 빠져버렸음(합배송 건 한 줄 누락). 주문번호+상품코드+상품명+선택사항으로 줄 단위 비교.
+      // 도매꾹은 선택사항을 옵션별로 쪼개서 저장하므로 선택사항은 빼고 비교
+      const _lineKey = (on, vc, pn, so, isDmk) => [on, vc, pn, isDmk ? '' : so].map(x => String(x||'').trim()).join('||');
+      const existingOrderNos = new Set(allOrders.filter(o => String(o.order_no||'').trim())
+        .map(o => _lineKey(o.order_no, o.vendor_code, o.product, o.select_opt, o.vendor_key === '도매꾹')));
       let added=0, dupSkipped=0;
       for(let i=hr+1;i<rows.length;i++){
         const r=rows[i];if(!r||r.every(c=>c===''))continue;
         const onVal = String(r[C.on]||'').trim();
-        if (onVal && existingOrderNos.has(onVal)) { dupSkipped++; continue; }
-        if (onVal) existingOrderNos.add(onVal);
+        const _lk = onVal ? _lineKey(onVal, r[C.vc], r[C.pn], r[C.so], detectVendor(r[C.vc]||'', r[C.pn]||'', r[C.so]||'') === '도매꾹') : '';
+        if (_lk && existingOrderNos.has(_lk)) { dupSkipped++; continue; }
+        if (_lk) existingOrderNos.add(_lk);
         totalCount++;added++;
         const vc=r[C.vc]||'',vo=r[C.vo]||'',pn=r[C.pn]||'',so=r[C.so]||'',dop=r[C.dop]||'';
         const vk=detectVendor(vc,pn,so),alias=extractAlias(r[C.al]);
