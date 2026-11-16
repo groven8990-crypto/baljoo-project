@@ -7276,7 +7276,13 @@ function ilbiItem(o){
 }
 // 푸드앤드베스트: 품목명 불필요, 옵션 + 수량만 표기 (예: "100g 10팩")
 function foodenItem(o){
-  if(o.option_name) return o.option_name + ' ' + effQty(o) + '팩';
+  if(o.option_name){
+    // 옵션에 이미 "13개"/"13팩"처럼 팩 수가 들어 있으면(코드에 수량이 안 박힌 주문, 직접수정 등) 거기에
+    // 수량을 또 붙이면 "80g 13개 1팩"처럼 14팩으로 오해하게 나옴 — 옵션의 팩 수 × 주문수량으로 한 번만 표기
+    const m = String(o.option_name).match(/^(.*?)\s*(\d+)\s*(개|팩|미)\s*$/);
+    if (m && m[1].trim() && !(Number(o.code_qty) > 1)) return `${m[1].trim()} ${parseInt(m[2]) * (Number(o.qty)||1)}팩`;
+    return o.option_name + ' ' + effQty(o) + '팩';
+  }
   return o.item_name;
 }
 function getSender(alias){
