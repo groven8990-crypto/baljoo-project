@@ -9036,8 +9036,6 @@ function rematchAllOrders(){
       ? _sikjaeVendorFromCode(o.vendor_code, o.product)
       : detectVendor(o.vendor_code, o.product, o.select_opt);
     const parsed=parseParts(o.vendor_code, o.vendor_opt||'', o.product, o.select_opt, '');
-    vk=_applyTimeVendorRule(o, vk);
-    o.vendor_key=vk;
     o.item_name=parsed.itemName;
     o.option_name=parsed.optionName;
     // 식자재코리아는 o.qty(파일의 실제 수량 칸)가 이미 진짜 수량이라 code_qty를 항상 1로 고정—
@@ -9049,6 +9047,12 @@ function rematchAllOrders(){
     o.opt_mapped=parsed.optMapped||false;
     o.opt_needs_check=parsed.optNeedsCheck||false;
     o.mapped_code=parsed.mappedCode||'';
+    // 시간대 규칙은 기본 파싱값을 다 넣은 "뒤에" 적용해야 함 — 예전엔 규칙이 대체 코드(예: 일비]박대/3P-1)의
+    // 품목·옵션·수량을 넣자마자 바로 아래에서 원래 코드(해담별 …-2) 값으로 다시 덮어써서, 재매칭(수정·코드
+    // 등록·새로고침)될 때마다 박대가 1개 → 2개로 되돌아가 발주서에 2개로 나갔음
+    vk=_applyTimeVendorRule(o, vk);
+    if (o.shop_mall === '식자재코리아') o.code_qty = 1;
+    o.vendor_key=vk;
     // 그린켐(또또컴퍼니) 마그네슘은 수량(1/2/3개)마다 매입단가가 완전히 다른데(묶음할인,
     // _grinchemPriceKey와 같은 이유), 옵션명이 비어있어서 매입/순이익의 매입단가표 키
     // (srPurchaseKey)가 수량 상관없이 전부 한 행으로 합쳐짐 — 그러면 먼저 등록된 수량의
