@@ -19577,6 +19577,26 @@ function srAggregate(orders){
       }
     }
   }
+  // B2B 순마진은 "매입/순이익" 탭과 똑같은 계산(srBuildProfitRows — 거기서 고친 매입수량·박스수·
+  // 매입단가·배송비가 다 반영됨)을 그대로 씀. 예전엔 여기서 따로 "단가×수량×코드수량"으로 근사해서
+  // 품목명에 "*2"가 붙은 또또 주문(유기농 현미 포켓누룽지 480g*2)을 2개로 계산 → 매입/순이익 탭은
+  // +4,500인데 매출 보고 B2B 표는 -16,500으로 서로 다르게 나왔음
+  try {
+    if (Object.keys(b2bMap).length && typeof srBuildProfitRows === 'function') {
+      const _b2bOrders = orders.filter(o => _srIsManualB2B(o) && !o.sr_exclude && !String(o.order_no||'').startsWith('dinette-'));
+      const _prof = {};
+      for (const r of srBuildProfitRows(_b2bOrders)) {
+        if (!r.isB2B) continue;
+        const bn = r.b2bName || '미지정';
+        if (!_prof[bn]) _prof[bn] = {sales:0, profit:0};
+        _prof[bn].sales += Number(r.sales)||0; _prof[bn].profit += Number(r.profit)||0;
+      }
+      for (const [bn, v] of Object.entries(b2bMap)) {
+        // 매입 미입력(빨간 미입력) 상태면 매입/순이익 탭도 0 처리라 그대로 따라감
+        if (_prof[bn]) v.purchase = v.sales - _prof[bn].profit;
+      }
+    }
+  } catch(e) { console.warn('B2B 순마진 계산 실패', e); }
   return {totalSales,count:orders.filter(o=>!o.sr_exclude).length,platMap,prodMap,garlicMap,b2bMap,regCount,regSales};
 }
 function srBrandSection(title, color, agg, opts){
