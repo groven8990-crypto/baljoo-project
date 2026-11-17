@@ -20252,6 +20252,7 @@ function _srProcessGrinchemStaged(){
   let pricesChanged = false;
   const unregMap = {};
   let idx = 0;
+  const _grSeen = {};
   const newOrders = [];  // rematchAllOrders 이후 vendor_key로 매입단가(cost)를 등록해야 하니 잠시 보관
   for (const r of srGrinchemStagedRows) {
     const key = _grinchemPriceKey(r.item, r.qty);
@@ -20310,7 +20311,10 @@ function _srProcessGrinchemStaged(){
       product: r.item,
       select_opt:'', disp_opt:'',
       qty: r.qty, code_qty:1,
-      order_no: `그린켐${idx++}_`+Date.now(),
+      // 주문번호를 매번 새 시각(Date.now())으로 만들면 새로고침·단가 등록으로 다시 변환될 때마다 번호가 바뀌어서,
+      // 매입/순이익 탭에서 그 주문에 직접 고친 매입수량·박스수·매출액(주문번호 기준 저장)이 전부 사라졌음
+      // → 받는사람·품목·수량·같은 내용 몇 번째인지로 항상 같은 번호가 나오게 함
+      order_no: (() => { const base = [r._srcFile||'', r.recv_name||'', r.recv_phone||'', r.addr||'', r.item||'', r.qty||''].join('|'); const n = (_grSeen[base] = (_grSeen[base]||0) + 1); let h = 0; const t = base + '#' + n; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; idx++; return '그린켐_' + (h >>> 0).toString(36) + '_' + n; })(),
       buyer:'', buyer_phone:'',
       carrier:'',
       order_amt: (Number(saved.price)||0) * r.qty,
@@ -21673,6 +21677,9 @@ function srBrandFromAlias(alias){
 //    많이 남는다고 확인) — 옵션명에서 중량을 읽어 그만큼 곱해줌
 //  - 그 외: 1건 = code_qty 팩/개 (예: '13개,140g' → code_qty=13)
 function srPurchaseUnits(o){
+  // 또또컴퍼니 주문은 매입단가를 "또또 발주서에 적힌 품목 그대로"(예: 포켓누룽지 480g*2 한 묶음 = 21,000원) 등록하니까
+  // 매입수량은 또또 발주서의 수량만 셈 — 등록 코드의 "-2"(코드수량)까지 곱하면 한 묶음을 2개로 봐서 매입이 두 배(마이너스)로 잡혔음
+  if (/^그린켐/.test(String(o.order_no||'')) || String(o.shop_mall||'') === 'B2B-그린켐') return Number(o.qty)||1;
   if (o.vendor_key === '동일') {
     const n = srNormalizeForPurchase(o);
     const m = n.option.match(/(\d+)/);
