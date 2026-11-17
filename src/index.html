@@ -21640,7 +21640,20 @@ function srPurchaseKey(o){
 }
 // 그룹핑 키 정규화 — 같은 상품인데 파싱이 들쭉날쭉(option_name이 빈칸/'깐마늘1kg'/'1kg' 등 섞임)인 케이스를 통일
 // 특히 동일(깐마늘)은 select_opt → disp_opt → vendor_code → option_name → code_qty 순으로 kg 감지
+// MAC컴퍼니(목전지·삼겹살)는 매입단가가 1kg당 가격 — 주문 1건이 실제 몇 kg인지를 고객이 고른 옵션에서 직접 읽음.
+// 예전엔 option_name만 봐서, 옵션명이 직접 수정 등으로 비어 있으면(화면에 "-") 3kg·4kg 주문도 전부 한 줄에
+// "1"로 뭉쳐 매입이 적게 잡혔고, 삼겹살 "1kg 2개"는 2kg인데 1kg로만 계산됐음.
+// 순서: 노출옵션명("4kg 1개") → 선택사항 → 옵션명 → 상품명(상품명엔 대표 중량 "2kg"이 늘 박혀 있어서 맨 마지막)
+function _macKgInfo(o){
+  for (const s of [o.disp_opt, o.select_opt, o.option_name, o.product]) {
+    const t = String(s||'');
+    const m = t.match(/(\d+(?:\.\d+)?)\s*kg(?:\s*[x×*]?\s*(\d+)\s*개)?/i);
+    if (m) return { kg: parseFloat(m[1]) || 1, cnt: m[2] ? (parseInt(m[2]) || 1) : 1 };
+  }
+  return { kg: 1, cnt: 1 };
+}
 function srNormalizeForPurchase(o){
+  if (o.vendor_key === 'MAC컴퍼니') return { item: o.item_name||'', option: _macKgInfo(o).kg + 'kg' };
   if (o.vendor_key === '동일') {
     // 실제 주문 옵션을 따라가야 함 — 발주서에서 강제로 '1kg'로 통일된 option_name보다
     // 고객이 실제 고른 select_opt / disp_opt / vendor_code / code_qty를 우선
@@ -21687,9 +21700,8 @@ function srPurchaseUnits(o){
     return (Number(o.qty)||1) * (kg || 1);
   }
   if (o.vendor_key === 'MAC컴퍼니') {
-    const m = String(o.option_name||'').match(/(\d+)\s*kg/i);
-    const kg = m ? parseInt(m[1]) : 1;
-    return (Number(o.qty)||1) * kg;
+    const mk = _macKgInfo(o);
+    return (Number(o.qty)||1) * mk.kg * mk.cnt;
   }
   // 참맛더드림 뻥튀기 "460g 2세트"처럼 옵션 하나에 세트 여러 개가 묶인 합포장 상품 — 코드에 수량이
   // 안 박혀 있으면(code_qty 1) 옵션의 세트 수만큼 매입수량으로 셈(배송비는 주문당 1박스 그대로)
