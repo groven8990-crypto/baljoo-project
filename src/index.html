@@ -5435,13 +5435,22 @@ function renderVerifyArea(){
           // 일반 행은 다른 발주처와 똑같이 code_qty 오버라이드로 안전하게 수정 가능함
           const canEditRow = rd.srcIdx.length === 1 && r.vendor !== '동일';
           const canEditQty = canEditRow && rd.dst_qty !== null;
+          // 수정이 안 되는 칸은 버튼만 숨기면 "왜 안 되지?"로 보여서, 이유를 작게 같이 보여줌
+          const _why = t => `<div style="font-size:9.5px;color:#9CA3AF;font-weight:400;margin-top:2px;white-space:normal">${t}</div>`;
+          const qtyWhy = r.vendor === '동일' ? '깐마늘은 kg대로 자동 계산'
+            : (rd.srcIdx.length > 1 ? '합배송으로 합쳐진 줄 — 합배송을 풀면 수정 가능'
+            : (rd.dst_qty === null ? '이 발주처 양식엔 수량 칸이 없음' : ''));
           const qtyCell = canEditQty
             ? `<button class="btn btn-sm" style="padding:1px 7px;font-size:10.5px;font-weight:700" onclick="verifyEditQty('${esc(r.gk)}',${rd.srcIdx[0]},${rd.dst_qty})" title="발주 수량 수정 (이 주문 한 건에만 적용돼요)">${rd.dst_qty} ✏️</button>`
-            : (rd.dst_qty!==null?rd.dst_qty:'-');
+            : (rd.dst_qty!==null?rd.dst_qty:'-') + (qtyWhy ? _why(qtyWhy) : '');
           const itemOptText = (rd.dst_item+' '+rd.dst_opt).trim()||'-';
+          // 합배송으로 합쳐진 줄도 품목/옵션은 고칠 수 있게 — 그 줄에 들어간 주문 전부에 같이 적용
+          const canEditItemMulti = rd.srcIdx.length > 1 && r.vendor !== '동일';
           const itemOptCell = canEditRow
             ? `<button class="btn btn-sm" style="padding:1px 7px;font-size:10.5px;font-weight:700;text-align:left;white-space:normal" onclick="verifyEditItemOpt('${esc(r.gk)}',${rd.srcIdx[0]})" title="발주서 품목명·옵션 수정 (이 주문 한 건에만 적용돼요)">${escHtml(itemOptText)} ✏️</button>`
-            : escHtml(itemOptText);
+            : canEditItemMulti
+            ? `<button class="btn btn-sm" style="padding:1px 7px;font-size:10.5px;font-weight:700;text-align:left;white-space:normal" onclick="verifyEditItemOptMulti('${esc(r.gk)}','${rd.srcIdx.join(',')}')" title="합배송으로 합쳐진 ${rd.srcIdx.length}건에 같이 적용돼요">${escHtml(itemOptText)} ✏️</button>`
+            : escHtml(itemOptText) + (r.vendor === '동일' ? _why('깐마늘은 kg 자동 계산 — 코드 관리에서 수정') : '');
           return `
           <tr style="background:${rd.bundleRgb?'#'+rd.bundleRgb.slice(2):(rd.issues.length?'#FEF2F2':'#fff')}">
             <td style="padding:5px 8px;border-bottom:1px solid #f3f4f6">${escHtml(rd.recv_name)}</td>
@@ -5545,6 +5554,23 @@ function verifyEditItemOpt(gk, srcIdx){
   const newOpt = prompt('발주서 옵션명을 무엇으로 바꿀까요? (없으면 비워두세요)', o.option_name || '');
   if (newOpt === null) return;
   if (!_saveOrderOverride(o, { item: newItem.trim(), option: newOpt.trim(), qty: o.code_qty || 1 })) return;
+  rematchAllOrders();
+  renderStep3();
+}
+// 합배송으로 한 줄에 합쳐진 주문들의 품목/옵션을 한 번에 수정 — 그 줄에 들어간 주문 전부에 같은 값 적용
+function verifyEditItemOptMulti(gk, idxCsv){
+  const list = groupedOrders[gk];
+  const targets = String(idxCsv||'').split(',').map(Number).map(i => list && list[i]).filter(Boolean);
+  if (!targets.length) return;
+  const o = targets[0];
+  const names = [...new Set(targets.map(t => t.recv_name||''))].join(', ');
+  const newItem = prompt(`"${names}" (합배송 ${targets.length}건)\n발주서 품목명을 무엇으로 바꿀까요? (이 ${targets.length}건에 같이 적용돼요)`, o.item_name || '');
+  if (newItem === null) return;
+  const newOpt = prompt('발주서 옵션명을 무엇으로 바꿀까요? (없으면 비워두세요)', o.option_name || '');
+  if (newOpt === null) return;
+  for (const t of targets) {
+    if (!_saveOrderOverride(t, { item: newItem.trim(), option: newOpt.trim(), qty: t.code_qty || 1 })) return;
+  }
   rematchAllOrders();
   renderStep3();
 }
