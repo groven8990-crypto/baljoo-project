@@ -21967,8 +21967,15 @@ function srBuildProfitRows(orders){
     const key = srPurchaseKey(o) + (isManualB2B ? ('|b2b:'+b2bName) : '');
     const norm = srNormalizeForPurchase(o);
     if (!map[key]) {
-      const saved = db[key] || {};
-      const tableCost = (!isManualB2B && !saved.unit) ? priceLookupCost(o.vendor_key, norm.item) : null;
+      let saved = db[key] || {};
+      // B2B(문자주문 등) 줄에 매입단가가 아직 없으면, 같은 발주처·품목·옵션의 일반 줄에 넣어둔 매입단가·배송비를
+      // 그대로 가져다 씀 — 예전엔 B2B 줄은 따로 비어 있어서 매입 0원 → 매출 보고 B2B 순마진이 매출액과 똑같이 나왔음
+      // (또또컴퍼니는 매입단가를 또또 품목 기준으로 따로 자동 등록하므로 제외)
+      if (isManualB2B && !Number(saved.unit) && b2bName !== '그린켐') {
+        const _reg = db[srPurchaseKey(o)] || {};
+        if (Number(_reg.unit)) saved = Object.assign({}, _reg, saved, { unit: _reg.unit, shipFee: (saved.shipFee != null ? saved.shipFee : _reg.shipFee) });
+      }
+      const tableCost = (!saved.unit && (!isManualB2B || b2bName !== '그린켐')) ? priceLookupCost(o.vendor_key, norm.item) : null;
       map[key] = {
         key,
         brand:    srBrandFromAlias(o.alias),
