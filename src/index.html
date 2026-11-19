@@ -9071,6 +9071,10 @@ function rematchAllOrders(){
     // 등록·새로고침)될 때마다 박대가 1개 → 2개로 되돌아가 발주서에 2개로 나갔음
     vk=_applyTimeVendorRule(o, vk);
     if (o.shop_mall === '식자재코리아') o.code_qty = 1;
+    // 문자주문·직거래·자사 수기 입력은 사람이 수량을 직접 적어 넣은 주문이라 그 수량이 진짜 수량 —
+    // 같은 품목의 쇼핑몰 코드(예: 해담별]반건조 박대/…-2 "2팩 세트")에 매칭돼도 코드수량을 곱하면 안 됨.
+    // 예전엔 박대 1개 문자주문이 매입수량 2·발주서 2개로 잡혀서 순이익이 마이너스로 나왔음
+    if (/^(수동|직거래|자사수기)/.test(String(o.order_no||''))) o.code_qty = 1;
     o.vendor_key=vk;
     // 그린켐(또또컴퍼니) 마그네슘은 수량(1/2/3개)마다 매입단가가 완전히 다른데(묶음할인,
     // _grinchemPriceKey와 같은 이유), 옵션명이 비어있어서 매입/순이익의 매입단가표 키
@@ -19175,6 +19179,8 @@ function srFee(plat){
   // 플랫폼 칸에 "직거래"라고 직접 타이핑해 넣은 경우도 똑같이 수수료 0%로 — 안내 문구가 "비워두면
   // 직거래로 계산"이라 적혀 있어서, 사용자가 비우는 대신 "직거래"라고 써넣어도 같은 뜻으로 받아줌
   if (p === '식자재코리아' || p === '수기입력' || p === '직거래' || p.includes('B2B')) return 0;
+  // 문자·카톡·전화로 받은 주문(플랫폼 칸에 "문자주문" 등으로 적은 경우)도 직거래 — 수수료 없음
+  if (/문자|카톡|카카오톡|전화|지인/.test(p)) return 0;
   if (p.includes('톡딜')) return 0.033;  // 카카오톡딜 판매수수료 3.3%
   if (p.includes('네이버')) return 0.07;  // 네이버 판매수수료 약 7% (러프)
   return 0.12;
@@ -19500,7 +19506,8 @@ function srRenderProductAliases(){
     </div>`).join('');
 }
 function srBrand(alias){const a=String(alias||'');if(a.includes('로또상회')||a.includes('그로븐'))return 'grobn';if(a.includes('자꾸가게')||a.includes('옐로우브릿지'))return 'yb';return 'other';}
-function _srIsManualB2B(o){ return /^B2B-/.test(String((o&&o.shop_mall)||'')); }
+// B2B로 등록된 주문 + 플랫폼 칸에 "문자주문"처럼 문자·카톡·전화로 받은 주문(오픈마켓 아님)도 B2B로 묶음
+function _srIsManualB2B(o){ const sm = String((o&&o.shop_mall)||''); return /^B2B-/.test(sm) || /문자|카톡|카카오톡|전화주문|지인/.test(sm); }
 // 내부 데이터(shop_mall/order_no/매입단가 키/B2B 발주처 매핑)는 전부 '그린켐'을 그대로 쓰지만
 // (Gmail 자동첨부 매칭·매입단가 연동이 걸려있어 바꾸면 깨짐), 화면에 보여줄 때만 이 함수를 거쳐
 // "또또컴퍼니"로 바꿔서 표시함 — 실제 거래처명이 그린켐이 아니라 또또컴퍼니라서 이름만 정정.
