@@ -6509,7 +6509,7 @@ async function buildVendorWorkbook(gk){
     try { b64cached = await _injectXlsxCellFills(b64cached, cellFillMap); }
     catch(e) { console.warn('[색채움] 자동발송용 워크북 색채움 실패, 색 없이 진행:', e); }
   }
-  return { wb, b64: b64cached, vendor: v, alias: a, fname: makeFileName(v, a), orders };
+  return { wb, b64: b64cached, vendor: v, alias: a, fname: makeFileName(v, a), orders, hasBundles };
 }
 // ── 동일(깐마늘) 발주정산내역서 생성 ──
 // orders: groupedOrders[gk], alias: 사업자 별칭, dateStr: 'YYYY-MM-DD'
@@ -7120,7 +7120,12 @@ async function autoSendVendor(vendorName, opts){
   const brands = [...new Set(built.map(b => _vendorFixedStore(vendorName) || _brandLabel(b.alias)).filter(Boolean))];
   const primaryBrand = brands.includes('그로븐') ? '그로븐' : (brands[0] || '');
   let subject = _applyTpl(tpl.subject, vendorName, today, primaryBrand, brands);
-  const body    = _applyTpl(tpl.body,    vendorName, today, primaryBrand, brands);
+  let body    = _applyTpl(tpl.body,    vendorName, today, primaryBrand, brands);
+  // 일비: 노란색 = 합포장 건이라고 본문에 안내
+  if (vendorName === '일비' && built.some(b => b.hasBundles) && !/노란색/.test(body)) {
+    body = body.replace(/\n*(감사합니다\.?)\s*$/, '\n\n※ 노란색으로 표시된 건은 같은 분께 가는 합포장 건입니다. 한 박스로 보내주세요.\n\n$1');
+    if (!/노란색/.test(body)) body += '\n\n※ 노란색으로 표시된 건은 같은 분께 가는 합포장 건입니다. 한 박스로 보내주세요.';
+  }
   if (opts.resend) {
     const n = bumpResendCount(vendorName) + 1; // 원래 발송을 1로 치고, 첫 재전송이 2
     subject = _injectResendSuffix(subject, n);
@@ -7402,8 +7407,22 @@ function _foodenMergePlan(orders){
   });
   return {result, repIndexOf, bundled};
 }
+// 일비 합포장 표시색 — 사장님 요청으로 일비는 합포장(같은 받는분·주소) 줄을 항상 노란색으로 칠해서 보냄
+const _ILBI_BUNDLE_RGB = 'FFFFFF00';
 function applyMergeForVendor(orders, vendor){
   _lastBundledRows = [];
+  // 일비: 합배송 체크 여부와 상관없이 같은 받는분+주소로 2줄 이상 가는 건은 자동으로 합포장 표시(노란색).
+  // 줄 순서는 그대로 둠 — 자동 검토 표가 "주문 순서 = 발주서 줄 순서"로 1:1 대조하기 때문
+  if (vendor === '일비') {
+    const cnt = new Map();
+    orders.forEach(o => { const k = _mergeKey(o); cnt.set(k, (cnt.get(k)||0) + 1); });
+    return orders.map((o, i) => {
+      const k = _mergeKey(o);
+      if ((cnt.get(k)||0) < 2) return o;
+      _lastBundledRows.push({dataIdx: i, rgb: _ILBI_BUNDLE_RGB});
+      return {...o, _bundleGroup: k};
+    });
+  }
   if (vendor === '푸드엔드베스트') {
     const plan = _foodenMergePlan(orders);
     _lastBundledRows = plan.bundled;
