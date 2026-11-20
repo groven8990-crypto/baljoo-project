@@ -13607,6 +13607,23 @@ function _seedMacCompanyBankEntry(){
   }catch(e){}
 }
 _seedMacCompanyBankEntry();
+// 엠에이씨컴퍼니 송금처를 "(주)엠에이씨컴퍼니" 하나로 정리 — 계좌 없는 'MAC컴퍼니' 빈 항목, '주식회사 엠에이씨컴퍼니'
+// 중복 항목을 없애고 계좌 있는 항목 하나만 "(주)엠에이씨컴퍼니" 이름으로 남김 (사장님 요청: 그 이름으로 입력하면 계좌까지 뜨게)
+function _macBankUnifyV1(){
+  try{
+    if (localStorage.getItem('yb_bank_mac_unify_v1')) return;
+    const banks = loadBankInfo();
+    const isMac = b => /엠에이씨/.test(String(b.name||'')+String(b.holder||'')) || b.name === 'MAC컴퍼니';
+    const macs = banks.filter(isMac);
+    const keep = macs.find(b => b.name === '(주)엠에이씨컴퍼니' && String(b.acct||'').trim()) || macs.find(b => String(b.acct||'').trim());
+    if (keep) {
+      const rest = banks.filter(b => !isMac(b));
+      rest.push(Object.assign({}, keep, { name: '(주)엠에이씨컴퍼니' }));
+      if (rest.length !== banks.length || keep.name !== '(주)엠에이씨컴퍼니') saveBankInfo(rest);
+    }
+    localStorage.setItem('yb_bank_mac_unify_v1', '1');
+  }catch(e){}
+}
 // 엠에이씨컴퍼니 송금 계좌가 재동기화(구글시트 사본으로 통째 덮어쓰기) 때 빠져버려서 복원 —
 // 11/09까지 지출결의서에 쓰던 계좌 그대로. 한 번만 실행하고, 이미 엠에이씨 계좌가 있으면 안 건드림
 function _restoreMacCompanyBankV2(){
@@ -13621,6 +13638,7 @@ function _restoreMacCompanyBankV2(){
   }catch(e){}
 }
 _restoreMacCompanyBankV2();
+_macBankUnifyV1();
 // 생선상륙 주인이 바뀌어서 사업자를 새로 냄(2026-10-06, 신규 등록번호 274-92-02472,
 // 대표 장진희) — 계좌도 NH농협은행으로 새로 바뀌어서 기존 등록된 계좌 정보를 한 번만
 // 덮어씀. 이미 같은 정보로 바꿔놨으면(사용자가 그 후에 또 직접 고쳤어도) 다시 안 건드림.
@@ -14155,8 +14173,10 @@ function onExpVendorInput() {
   }
   _expVendorRenderDropdown();
   dd.style.display = 'block';
-  // 정확 일치 시 바로 템플릿 적용
-  const exact = banks.find(b => b.name === val);
+  // 정확 일치 시 바로 템플릿 적용 — (주)/주식회사/띄어쓰기만 다른 경우도 같은 송금처로 보고 계좌 있는 항목을 적용
+  const exact = banks.find(b => b.name === val && String(b.acct||'').trim())
+    || (val ? banks.find(b => String(b.acct||'').trim() && _vendorNameKey(b.name) === _vendorNameKey(val)) : null)
+    || banks.find(b => b.name === val);
   if (exact) applyBankTemplate(exact);
 }
 function _expVendorRenderDropdown() {
@@ -14206,7 +14226,7 @@ function onExpVendorKeydown(ev) {
 
 // 발주처 매칭용 짧은 이름("MAC컴퍼니")과 실제 송금처에 적어야 할 정식 상호가 다른 경우 —
 // 발주 매칭/코드 등록은 짧은 이름 그대로 두고, 지출결의서 "송금처" 칸에만 정식 상호로 바꿔 넣음
-const VENDOR_PAYEE_NAME = { 'MAC컴퍼니': '주식회사 엠에이씨컴퍼니' };
+const VENDOR_PAYEE_NAME = { 'MAC컴퍼니': '(주)엠에이씨컴퍼니' };
 // 발주처명(예: "MAC컴퍼니")으로 송금처 계좌 찾기 — 송금처는 사업자등록 이름("(주)엠에이씨컴퍼니")으로 저장돼 있어서
 // 이름이 정확히 같을 때만 찾던 예전 방식으론 못 찾아 계좌·메모가 비었음 → (주)/주식회사/띄어쓰기 무시 + 별칭까지 비교
 const _VENDOR_BANK_ALIASES = { 'MAC컴퍼니': ['엠에이씨컴퍼니', '엠에이씨'] };
@@ -14233,7 +14253,8 @@ function _groupHistByVendor(list){
     const nm = d.vendor||'미지정';
     groups[key]._names[nm] = (groups[key]._names[nm]||0) + 1;
   });
-  Object.values(groups).forEach(g => { g.vendor = Object.entries(g._names).sort((a,b)=>b[1]-a[1])[0][0]; });
+  // 제목은 가장 최근에 쓴 표기 (목록이 최신순이라 첫 건) — 앞으로 쓰는 이름으로 보이게
+  Object.values(groups).forEach(g => { g.vendor = g.items[0].vendor || g.vendor; });
   return groups;
 }
 function selectVendorItem(name) {
