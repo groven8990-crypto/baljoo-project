@@ -15244,6 +15244,19 @@ function saveExpense() {
     alert('수정됐어요! (날짜: ' + (updated.date||'-') + ')');
     switchExpSubTab('list');
     renderExpHistList();
+    // 예전에 저장 폴더에 이미지로 저장해둔 건이면, 그 파일도 수정본으로 바로 다시 저장(이름이 바뀌었으면 옛 파일은 지움) —
+    // 예전엔 "수정 저장"을 해도 폴더(드라이브 동기화 폴더 포함)에 있는 지출결의서 이미지는 처음 저장한 그대로 남았음
+    if (existing.imgSavedAt) {
+      _expResaveFolderImgAfterEdit(existing, updated).then(ok => {
+        if (ok) {
+          const h = loadExpHist(); const ix = h.findIndex(x => x && x.id === updated.id);
+          if (ix >= 0) { h[ix].imgSavedAt = _localISO(); saveExpHist(h); renderExpHistList(); }
+          _poShowToast('📁 저장 폴더의 지출결의서 이미지도 수정본으로 바꿨어요');
+        } else {
+          _poShowToast('📷 저장 폴더에 연결이 안 돼서 이미지는 그대로예요 — 작성이력에서 📷를 다시 눌러 수정본으로 저장해주세요');
+        }
+      }).catch(e => console.warn('수정본 이미지 재저장 실패:', e));
+    }
     return;
   }
 
@@ -15265,6 +15278,37 @@ function saveExpense() {
   _sbUpsertExp(record).catch(()=>{});
   _logExpQuickDone();
   resetExpForm();
+}
+
+async function _expResaveFolderImgAfterEdit(oldRec, newRec){
+  if (!_expSaveDirHandle || !newRec) return false;
+  const subDir = await _getSubDirHandle(newRec.co);
+  if (!subDir) return false;
+  const nameOf = (d, def) => (d.date||'').replace(/-/g,'').slice(2) + '-지출결의서-' + (d.vendor||def) + '_' + (d.co||'') + '_' + (Number(d.total)||0).toLocaleString() + '원.png';
+  const attach = await _expLoadAttachImgUrls(newRec);
+  _expModalData = newRec;
+  _doPreviewExpense(newRec, attach);
+  await new Promise(r => setTimeout(r, 150));
+  try {
+    const el = document.getElementById('expPrintArea');
+    if (!el) return false;
+    const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#fff', useCORS: true });
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    const fname = nameOf(newRec, '');
+    const fh = await subDir.getFileHandle(fname, { create: true });
+    const wr = await fh.createWritable(); await wr.write(blob); await wr.close();
+    // 송금처·금액·날짜·사업자를 고쳐서 파일 이름이 달라졌으면 옛 이름 파일은 지움(같은 건이 두 장 남지 않게)
+    const oldDir = (oldRec && oldRec.co !== newRec.co) ? await _getSubDirHandle(oldRec.co) : subDir;
+    if (oldRec && oldDir) {
+      for (const def of ['', '거래처', '미지정']) {
+        const on = nameOf(oldRec, def);
+        if (on !== fname || oldDir !== subDir) { try { await oldDir.removeEntry(on); } catch(e){} }
+      }
+    }
+    return true;
+  } finally {
+    const m = document.getElementById('expModal'); if (m) m.style.display = 'none';
+  }
 }
 
 function insertFirstTradeMemo() {
