@@ -14212,10 +14212,24 @@ function onExpVendorKeydown(ev) {
 // 발주처 매칭용 짧은 이름("MAC컴퍼니")과 실제 송금처에 적어야 할 정식 상호가 다른 경우 —
 // 발주 매칭/코드 등록은 짧은 이름 그대로 두고, 지출결의서 "송금처" 칸에만 정식 상호로 바꿔 넣음
 const VENDOR_PAYEE_NAME = { 'MAC컴퍼니': '주식회사엠에이씨컴퍼니' };
+// 발주처명(예: "MAC컴퍼니")으로 송금처 계좌 찾기 — 송금처는 사업자등록 이름("(주)엠에이씨컴퍼니")으로 저장돼 있어서
+// 이름이 정확히 같을 때만 찾던 예전 방식으론 못 찾아 계좌·메모가 비었음 → (주)/주식회사/띄어쓰기 무시 + 별칭까지 비교
+const _VENDOR_BANK_ALIASES = { 'MAC컴퍼니': ['엠에이씨컴퍼니', '엠에이씨'] };
+// 계좌번호가 비어 있는 항목(예: 예전에 자동완성용으로 미리 만들어둔 빈 "MAC컴퍼니" 항목)은 맨 마지막에만 씀 —
+// 이 빈 항목이 먼저 잡혀서 메모가 "예금주명 : (빈칸) / 계좌번호 : (빈칸)"으로 채워졌던 게 원인
+function _findBankForVendor(name){
+  const all = loadBankInfo();
+  const norm = s => String(s||'').replace(/\(주\)|㈜|주식회사|\s/g, '').toLowerCase();
+  const cands = [name, VENDOR_PAYEE_NAME[name], ...(_VENDOR_BANK_ALIASES[name] || [])].filter(Boolean).map(norm);
+  const pick = banks => banks.find(x => x.name === name)
+    || banks.find(x => cands.includes(norm(x.name)) || cands.includes(norm(x.holder)))
+    || banks.find(x => cands.some(c => c.length >= 3 && (norm(x.name).includes(c) || norm(x.holder).includes(c))));
+  return pick(all.filter(x => String(x.acct||'').trim())) || pick(all) || null;
+}
 function selectVendorItem(name) {
-  document.getElementById('expVendor').value = VENDOR_PAYEE_NAME[name] || name;
+  const bank = _findBankForVendor(name);
+  document.getElementById('expVendor').value = (bank && bank.name !== name && !VENDOR_PAYEE_NAME[name]) ? bank.name : (VENDOR_PAYEE_NAME[name] || name);
   hideVendorList();
-  const bank = loadBankInfo().find(b => b.name === name);
   if (bank) applyBankTemplate(bank);
 }
 
@@ -14263,8 +14277,13 @@ function applyBankTemplate(bank) {
   const desc = document.getElementById('expDesc').value || '';
   // 사용자가 메모를 이미 작성했으면 덮어쓰지 않음 (가상계좌 등 수동 편집 보존)
   const memoEl = document.getElementById('expMemo');
-  if (memoEl && !memoEl.value.trim()) {
-    memoEl.value = `* ${desc}\n* 예금주명 : ${bank.holder}\n* ${bank.bank}\n* 계좌번호 : ${bank.acct}`;
+  // 자동 양식인데 예금주·계좌 칸이 비어 있는 메모("* 예금주명 :" 뒤가 빈칸)도 채워줌 — 계좌를 못 찾은 상태로 먼저
+  // 만들어진 빈 양식이 남아 있으면, 나중에 송금처를 골라도 "이미 작성된 메모"로 보고 안 채우던 문제
+  const _cur = memoEl ? memoEl.value : '';
+  const _blankAuto = /^\*[^\n]*\n\*\s*예금주명\s*:\s*(\n|$)/.test(_cur);
+  if (memoEl && (!_cur.trim() || _blankAuto)) {
+    const _desc = desc || (_blankAuto ? _cur.split('\n')[0].replace(/^\*\s*/, '') : '');
+    memoEl.value = `* ${_desc}\n* 예금주명 : ${bank.holder}\n* ${bank.bank}\n* 계좌번호 : ${bank.acct}`;
   }
   if (bank.tnote) document.getElementById('expNote').value = bank.tnote;
 }
