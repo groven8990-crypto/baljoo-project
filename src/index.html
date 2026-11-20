@@ -19344,8 +19344,13 @@ function _srSeedProductAliasDefaults(){
 _srSeedProductAliasDefaults();
 // ── 매출금액 직접 지정 (판매자상품코드 + 선택 별칭 → 지정 매출금액) ──
 const LS_SALES_OVERRIDE = 'yb_sales_amt_override';
-function srLoadSalesOverride(){ try{ return JSON.parse(localStorage.getItem(LS_SALES_OVERRIDE)||'[]'); }catch{ return []; } }
-function srSaveSalesOverride(a){ localStorage.setItem(LS_SALES_OVERRIDE, JSON.stringify(a)); _sbSaveKV('sales_amt_override', a).catch(()=>{}); }
+// 목전지(MAC컴퍼니]목전지/) 매출 19,900원 고정은 이미 철회한 설정인데, 클라우드(다른 기기) 사본에 남아 있다가
+// 동기화 때마다 다시 내려와서 3kg(28,900)·4kg(37,900) 주문까지 매출이 19,900원으로 잡혀 역마진이 났음 →
+// 불러올 때·저장할 때 항상 걸러냄 (목전지 매출은 파일 금액/중량별 판매가 그대로 씀)
+// (페이지 앞부분 시드 코드에서도 불리므로 const 대신 함수 안에 목록을 둠 — 선언 전 접근 오류 방지)
+function _srSalesOvAllowed(ov){ return !(ov && ['MAC컴퍼니]목전지/'].includes(String(ov.code||'').trim())); }
+function srLoadSalesOverride(){ try{ return JSON.parse(localStorage.getItem(LS_SALES_OVERRIDE)||'[]').filter(_srSalesOvAllowed); }catch{ return []; } }
+function srSaveSalesOverride(a){ a = (a||[]).filter(_srSalesOvAllowed); localStorage.setItem(LS_SALES_OVERRIDE, JSON.stringify(a)); _sbSaveKV('sales_amt_override', a).catch(()=>{}); }
 // 한 주문의 매출금액 — 지정 규칙이 있으면 그 값(×수량), 없으면 원래 order_amt
 function _srSalesAmt(o){
   const base = Number(o.order_amt)||0;
