@@ -11611,13 +11611,8 @@ function renderExpHistList() {
 
   if (!filtered.length) { el.innerHTML = '<p style="font-size:13px;color:var(--text3)">검색 결과가 없습니다.</p>'; return; }
 
-  // 거래처별로 그룹핑
-  const groups = {};
-  filtered.forEach(d => {
-    const key = (d.co||'') + '|' + (d.vendor||'미지정');
-    if (!groups[key]) groups[key] = {co: d.co||'', vendor: d.vendor||'미지정', items: []};
-    groups[key].items.push(d);
-  });
+  // 거래처별로 그룹핑 — "(주)엠에이씨컴퍼니"/"주식회사 엠에이씨컴퍼니"처럼 표기만 다른 같은 회사는 한 묶음으로
+  const groups = _groupHistByVendor(filtered);
 
   let html = '';
   Object.values(groups).forEach(g => {
@@ -14211,7 +14206,7 @@ function onExpVendorKeydown(ev) {
 
 // 발주처 매칭용 짧은 이름("MAC컴퍼니")과 실제 송금처에 적어야 할 정식 상호가 다른 경우 —
 // 발주 매칭/코드 등록은 짧은 이름 그대로 두고, 지출결의서 "송금처" 칸에만 정식 상호로 바꿔 넣음
-const VENDOR_PAYEE_NAME = { 'MAC컴퍼니': '주식회사엠에이씨컴퍼니' };
+const VENDOR_PAYEE_NAME = { 'MAC컴퍼니': '주식회사 엠에이씨컴퍼니' };
 // 발주처명(예: "MAC컴퍼니")으로 송금처 계좌 찾기 — 송금처는 사업자등록 이름("(주)엠에이씨컴퍼니")으로 저장돼 있어서
 // 이름이 정확히 같을 때만 찾던 예전 방식으론 못 찾아 계좌·메모가 비었음 → (주)/주식회사/띄어쓰기 무시 + 별칭까지 비교
 const _VENDOR_BANK_ALIASES = { 'MAC컴퍼니': ['엠에이씨컴퍼니', '엠에이씨'] };
@@ -14225,6 +14220,21 @@ function _findBankForVendor(name){
     || banks.find(x => cands.includes(norm(x.name)) || cands.includes(norm(x.holder)))
     || banks.find(x => cands.some(c => c.length >= 3 && (norm(x.name).includes(c) || norm(x.holder).includes(c))));
   return pick(all.filter(x => String(x.acct||'').trim())) || pick(all) || null;
+}
+// 거래처명 비교용 — (주)/㈜/주식회사/띄어쓰기 차이는 같은 회사로 봄
+function _vendorNameKey(v){ return String(v||'').replace(/\(주\)|㈜|\(유\)|주식회사|유한회사|\s/g, '').toLowerCase() || '미지정'; }
+// 지출·입금 결의서 작성이력 거래처 묶음 — 표기만 다른 같은 회사는 한 그룹, 제목은 가장 많이 쓴 표기로
+function _groupHistByVendor(list){
+  const groups = {};
+  list.forEach(d => {
+    const key = (d.co||'') + '|' + _vendorNameKey(d.vendor);
+    if (!groups[key]) groups[key] = {co: d.co||'', vendor: d.vendor||'미지정', items: [], _names: {}};
+    groups[key].items.push(d);
+    const nm = d.vendor||'미지정';
+    groups[key]._names[nm] = (groups[key]._names[nm]||0) + 1;
+  });
+  Object.values(groups).forEach(g => { g.vendor = Object.entries(g._names).sort((a,b)=>b[1]-a[1])[0][0]; });
+  return groups;
 }
 function selectVendorItem(name) {
   const bank = _findBankForVendor(name);
@@ -15972,12 +15982,7 @@ function renderIncHistList() {
     sumEl.innerHTML = _incHistSumHtml(filtered, false);
   } else if (sumEl) { sumEl.innerHTML=''; }
   if (!filtered.length) { el.innerHTML='<p style="font-size:13px;color:var(--text3)">검색 결과가 없습니다.</p>'; return; }
-  const groups = {};
-  filtered.forEach(d => {
-    const key = (d.co||'')+'|'+(d.vendor||'미지정');
-    if (!groups[key]) groups[key]={co:d.co||'',vendor:d.vendor||'미지정',items:[]};
-    groups[key].items.push(d);
-  });
+  const groups = _groupHistByVendor(filtered);
   let html = '';
   Object.values(groups).forEach(g => {
     const coColor = g.co==='옐로우브릿지'?'#f59e0b':'#3b82f6';
