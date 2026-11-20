@@ -14340,7 +14340,8 @@ function getExpVendorName() {
 
 function getExpFormData() {
   const vname = getExpVendorName();
-  const bank = loadBankInfo().find(b=>b.name===vname) || loadBankInfo().find(b=>vname.includes(b.name)||b.name.includes(vname));
+  const bank = (vname && typeof _findBankForVendor === 'function' ? _findBankForVendor(vname) : null)
+    || loadBankInfo().find(b=>b.name===vname) || loadBankInfo().find(b=>vname.includes(b.name)||b.name.includes(vname));
   return {
     co:       curExpCo,
     date:     document.getElementById('expDate').value,
@@ -14404,6 +14405,18 @@ async function previewExpense() {
   _doPreviewExpense(d, imgUrls);
 }
 let _expModalData = null;
+function _expFillBlankBankMemo(memo, d){
+  const m = String(memo||'');
+  if (!/^\*[^\n]*\n\*\s*예금주명\s*:\s*(\n|$)/.test(m)) return m;
+  let bank = (d && d.bank && String(d.bank.acct||'').trim()) ? d.bank : null;
+  if (!bank && d && d.vendor && typeof _findBankForVendor === 'function') {
+    const b = _findBankForVendor(d.vendor);
+    if (b && String(b.acct||'').trim()) bank = b;
+  }
+  if (!bank) return m;
+  const first = m.split('\n')[0].replace(/^\*\s*/, '') || (d && d.desc) || '';
+  return `* ${first}\n* 예금주명 : ${bank.holder||''}\n* ${bank.bank||''}\n* 계좌번호 : ${bank.acct||''}`;
+}
 function _doPreviewExpense(d, attachImgUrl) {
   _expModalData = d;
 
@@ -14429,6 +14442,10 @@ function _doPreviewExpense(d, attachImgUrl) {
   // 오른쪽(재무회계과 MEMO): 사용자가 직접 편집한 d.memo 우선, 없으면 송금내역 / 예금주명 / 은행 / 계좌번호 자동 조립
   // 안전망: 자동 생성된 메모인데 첫 줄이 `* ` (빈 송금내역) 그대로 남아있으면 d.desc 로 채움
   let memoForRight = d.memo || '';
+  // 자동 양식 메모인데 예금주·계좌 칸이 빈칸으로 저장된 경우(계좌를 못 찾은 상태에서 먼저 만들어진 메모) —
+  // 송금처 계좌로 채워서 파일에 넣음. 예전엔 화면 계좌정보 칸엔 계좌가 떠도 메모가 빈칸 그대로라
+  // 저장한 지출결의서 파일엔 예금주·계좌번호가 빠져서 나갔음
+  memoForRight = _expFillBlankBankMemo(memoForRight, d);
   if (memoForRight && d.desc) {
     const ls = memoForRight.split('\n');
     if (ls.length >= 2 && /^\*\s*$/.test(ls[0]) && /^\*\s*예금주명/.test(ls[1])) {
@@ -15188,6 +15205,7 @@ function _fixAmountMismatch(d, isCalcEl) {
 }
 function saveExpense() {
   const d = getExpFormData();
+  d.memo = _expFillBlankBankMemo(d.memo, d);
   if (!d.vendor || !d.total) { alert('송금처와 송금금액을 입력해주세요.'); return; }
   if (!_fixAmountMismatch(d, 'ev2')) return;
   const hist = loadExpHist();
