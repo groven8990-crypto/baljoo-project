@@ -2771,6 +2771,9 @@ function applyOrderOverride(o){
 // ══════════════════════════════════════════════════════════
 // 발주처 감지
 // ══════════════════════════════════════════════════════════
+// 마그네슘(액티브 트리플샷) 상품명 판별 — 또또컴퍼니 발주서에 "마드네슘"처럼 오타로 오는 경우가 있어서
+// (11/23 "액티브 트리플샷 마드네슘 450 120정" 3건이 미매칭으로 빠져 발주서에 안 뜸) 흔한 오타·제품명까지 같이 봄
+function _isMagnesiumText(s){ return /마그네슘|마드네슘|마그내슘|마그네숨|마그내숨|마구네슘|트리플샷/.test(String(s||'').replace(/\s+/g,'')); }
 function detectVendor(vc, productName, selectOpt) {
   const c = String(vc||'').trim();
   const pn = String(productName||'').toLowerCase();
@@ -2810,7 +2813,7 @@ function detectVendor(vc, productName, selectOpt) {
   // "재고]"/"보부상]" 접두사 없이 쿠팡식 자동생성 코드(m2026...)로만 들어오는 경우가 있음 —
   // 코드 형식과 무관하게 상품명에 "마그네슘"이 있으면 무조건 마그네슘 카드로 보냄(이 상품명은
   // 이 OEM 상품 전용이라 다른 발주처와 헷갈릴 일이 없음)
-  if (pn.includes('마그네슘')) return '마그네슘';
+  if (_isMagnesiumText(pn)) return '마그네슘';
   // 3) 판매자상품코드 접두사로 발주처 추정
   if (c) {
     // "직접발송"(재고] 접두사)은 실제 발주처가 아니라 우리가 재고로 직접 포장·발송하는 상품이라,
@@ -9103,7 +9106,7 @@ function rematchAllOrders(){
     // (srPurchaseKey)가 수량 상관없이 전부 한 행으로 합쳐짐 — 그러면 먼저 등록된 수량의
     // 단가가 다른 수량에도 그대로 적용돼버려 순이익이 틀어짐. 옵션명에 수량을 넣어서
     // 수량별로 매입단가표 행이 분리되게 함
-    if (/^그린켐/.test(o.order_no||'') && /마그네슘/.test(o.item_name||'')) {
+    if (/^그린켐/.test(o.order_no||'') && _isMagnesiumText(o.item_name)) {
       o.option_name = o.qty + '개';
     }
     // 목전지(MAC컴퍼니)는 중량(2/3/4/5kg)마다 매입/판매단가가 다른데, 선택사항·노출옵션명
@@ -20307,6 +20310,9 @@ const GRINCHEM_ITEM_VENDOR_KEYWORDS = [
   { kw:'온반', vendor:'한마당식품' },
   { kw:'떡볶이떡', vendor:'공덕농협' },
   { kw:'떡국떡', vendor:'공덕농협' },
+  { kw:'마그네슘', vendor:'마그네슘' },
+  { kw:'마드네슘', vendor:'마그네슘' },  // 또또 발주서 오타(11/23)
+  { kw:'트리플샷', vendor:'마그네슘' },
 ];
 function _grinchemResolveVendor(itemText){
   // "순살 갈치"처럼 품목명에 띄어쓰기가 들쭉날쭉 섞여 들어오면 키워드('순살갈치')랑 안 맞아서
