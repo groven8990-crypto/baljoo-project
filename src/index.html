@@ -2708,6 +2708,26 @@ function loadCodes() {
     return [...DEFAULT_CODES];
   } catch { return DEFAULT_CODES; }
 }
+// 실비김치 등록 코드를 비셀러 → 해담별로 한 번 옮김 (발주서 품목명: "실비김치 포기김치 1kg/2kg")
+function _silbiKimchiToHaedamV1(){
+  try{
+    if (localStorage.getItem('yb_silbi_haedam_v1')) return;
+    const codes = loadCodes(); let changed = false;
+    for (const c of codes) {
+      const txt = [c.code, c.product, c.productKw, c.orderProduct, c.originalCode].map(x => String(x||'')).join(' ');
+      if (c.vendor === '비셀러' && /실비/.test(txt)) {
+        const kg = (String(c.code||'') + ' ' + String(c.orderOpt||'') + ' ' + String(c.product||'')).match(/(\d+)\s*kg/i);
+        const qm = String(c.code||'').match(/-(\d+)\s*$/);
+        c.vendor = '해담별';
+        c.code = '해담별]실비김치 포기김치/' + (kg ? kg[1] + 'kg' : '') + '-' + (qm ? qm[1] : '1');
+        c.product = c.code.slice('해담별]'.length);
+        changed = true;
+      }
+    }
+    if (changed) saveCodes(codes);
+    localStorage.setItem('yb_silbi_haedam_v1', '1');
+  }catch(e){}
+}
 function saveCodes(a) {
   localStorage.setItem(LS_CODES, JSON.stringify(a));
   saveToCloud('codes', a);
@@ -2758,6 +2778,8 @@ function detectVendor(vc, productName, selectOpt) {
   if (!c && !pn) return null;
   // 꿀스틱 선물세트는 판매자상품코드가 "해담별]..."로 들어와도 실제로는 숲속양봉원에 발주함(사장님 확인)
   if (pn.includes('꿀스틱') || c.includes('꿀스틱')) return '숲속양봉원';
+  // 실비김치(전남 무안 매운 실비 포기김치)는 비셀러(발주 사이트) → 해담별 발주로 변경(사장님 요청, 11/23)
+  if ((pn.includes('실비') && pn.includes('김치')) || (c.includes('실비') && c.includes('김치'))) return '해담별';
   // 홍어(홍어회)는 전부 일해수산(목포) 제품 — 코드에 일해수산 접두사가 없이 들어와도 일해수산 발주서로
   if (pn.includes('홍어') || c.includes('홍어')) return '일해수산';
   const codes = loadCodes();
@@ -13611,6 +13633,7 @@ function _seedMacCompanyBankEntry(){
   }catch(e){}
 }
 _seedMacCompanyBankEntry();
+_silbiKimchiToHaedamV1();
 // 엠에이씨컴퍼니 송금처를 "(주)엠에이씨컴퍼니" 하나로 정리 — 계좌 없는 'MAC컴퍼니' 빈 항목, '주식회사 엠에이씨컴퍼니'
 // 중복 항목을 없애고 계좌 있는 항목 하나만 "(주)엠에이씨컴퍼니" 이름으로 남김 (사장님 요청: 그 이름으로 입력하면 계좌까지 뜨게)
 function _macBankUnifyV1(){
