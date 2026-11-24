@@ -4426,6 +4426,7 @@ function addManualOrder(){
     order_date: _localISO(),
   };
   allOrders.push(order);
+  _manualKeepAdd(order);  // 새로고침·파일 재업로드에도 안 지워지게 따로 보관(제거 버튼으로 지울 때까지)
   totalCount = (totalCount||0) + 1;
   rematchAllOrders();
   loadedFileNames.push(`✍️ 수동입력: ${item} (${recvName})`);
@@ -4510,6 +4511,7 @@ function addManualB2BEntry(){
     order_date: _localISO(),
   };
   allOrders.push(order);
+  _manualKeepAdd(order);  // 새로고침·파일 재업로드에도 안 지워지게 따로 보관(제거 버튼으로 지울 때까지)
   totalCount = (totalCount||0) + 1;
   rematchAllOrders();  // order.vendor_key 등이 이 자리에서 그대로 채워짐(같은 객체 참조)
 
@@ -4570,6 +4572,7 @@ function renderManualB2BList(){
   el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">추가된 항목 (${entries.length}건)</div>${rows}`;
 }
 function removeManualB2BEntry(orderNo){
+  _manualKeepRemove(orderNo);
   const idx = allOrders.findIndex(o => o.order_no === orderNo);
   if (idx < 0) return;
   allOrders.splice(idx, 1);
@@ -4594,8 +4597,26 @@ function removeManualB2BEntry(orderNo){
 const LS_JG_ORDERS = 'yb_jikgeorae_orders';
 function loadJgOrders(){ try{ return JSON.parse(localStorage.getItem(LS_JG_ORDERS)||'[]'); }catch{ return []; } }
 function saveJgOrders(arr){ try{ localStorage.setItem(LS_JG_ORDERS, JSON.stringify(arr||[])); }catch(e){} }
+// 문자주문·기타 B2B 수기 입력(주문번호 "수동…")도 직거래처럼 따로 보관 — 예전엔 allOrders에만 넣어서
+// 새로고침하거나 샵마인 파일을 다시 올리면 입력해둔 B2B 매출이 통째로 사라졌음. 사장님이 제거할 때까지 유지
+const LS_MANUAL_KEEP = 'yb_manual_keep_orders';
+function _manualKeepLoad(){ try{ return JSON.parse(localStorage.getItem(LS_MANUAL_KEEP)||'[]'); }catch{ return []; } }
+function _manualKeepSave(arr){ try{ localStorage.setItem(LS_MANUAL_KEEP, JSON.stringify(arr||[])); }catch(e){} }
+function _isManualKeepOrder(o){ return /^수동/.test(String((o&&o.order_no)||'')); }
+function _manualKeepAdd(o){
+  if (!_isManualKeepOrder(o)) return;
+  const list = _manualKeepLoad().filter(x => x.order_no !== o.order_no);
+  const copy = {...o}; delete copy._qty0;
+  list.push(copy); _manualKeepSave(list);
+}
+function _manualKeepRemove(orderNo){ _manualKeepSave(_manualKeepLoad().filter(x => x.order_no !== orderNo)); }
 function _syncJikgeoraeOrdersIntoAllOrders(){
   if (!Array.isArray(allOrders)) return;
+  // 보관해둔 문자주문·기타 B2B 수기 입력도 같이 다시 끼워 넣음(이미 있는 건 중복으로 안 넣음)
+  try {
+    const have = new Set(allOrders.map(o => o.order_no));
+    for (const k of _manualKeepLoad()) if (!have.has(k.order_no)) allOrders.push({...k});
+  } catch(e) { console.warn('수기 입력 주문 복원 실패:', e); }
   allOrders = allOrders.filter(o => !/^직거래\d/.test(o.order_no||''));
   const jg = loadJgOrders();
   if (jg.length) allOrders.push(...jg);
@@ -5528,7 +5549,7 @@ function verifyDeleteRow(gk, idxList){
   if (!confirm(`"${label}" 을(를) 발주서에서 삭제할까요?\n(다시 넣으려면 원본 파일을 새로 업로드해야 해요)`)) return;
   // 뒤에서부터 지워야 앞쪽 인덱스가 안 밀림
   idxs.slice().sort((a,b) => b - a).forEach(i => list.splice(i, 1));
-  targets.forEach(o => { const ai = allOrders.indexOf(o); if (ai >= 0) allOrders.splice(ai, 1); });
+  targets.forEach(o => { const ai = allOrders.indexOf(o); if (ai >= 0) allOrders.splice(ai, 1); if (_isManualKeepOrder(o)) _manualKeepRemove(o.order_no); });
   if (!list.length) delete groupedOrders[gk];
   renderStep3();
 }
