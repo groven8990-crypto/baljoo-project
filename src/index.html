@@ -20262,7 +20262,20 @@ function _grinchemNormItem(name){ return String(name||'').trim().replace(/\s+/g,
 // 섞어야 함 — 단가 저장(_srProcessGrinchemStaged)과 등록된 단가 목록 표시(renderGrinchemRegisteredList)
 // 양쪽이 똑같이 이 함수로 키를 만들어야 서로 어긋나서 등록해놓고도 목록에 안 뜨는 일이 없음
 function _grinchemPriceKey(item, qty){
-  return _grinchemNormItem(item) + (/마그네슘/.test(item||'') ? ('|qty:'+qty) : '');
+  if (/마그네슘/.test(item||'')) return _grinchemNormItem(item) + '|qty:'+qty;
+  // 고등어 10팩 세트는 13팩 세트와 단가가 달라서 따로 등록(13팩은 예전 키 그대로 — 이미 등록한 단가 유지)
+  const st = _grinchemSetInfo(item, qty);
+  return _grinchemNormItem(item) + (st && st.size === 10 ? '|set:10' : '');
+}
+// 또또컴퍼니 고등어는 "13팩 한 세트 = 23,800원"처럼 세트 단위 단가인데, 발주서 수량 칸엔 세트 수(1) 대신
+// 팩 수(13)가 적혀 오는 경우가 있음 — 그대로 곱하면 매출·매입이 13배로 잡힘(11/24 안동간고등어 120g 13 →
+// 매출 309,400원). 수량이 13·10의 배수면 팩 수로 보고 세트 수로 바꿔서 계산. 그보다 작은 수는 세트 수로 봄
+function _grinchemSetInfo(item, qty){
+  if (!/고등어/.test(String(item||''))) return null;
+  const q = Number(qty) || 1;
+  if (q >= 13 && q % 13 === 0) return { size: 13, sets: q / 13 };
+  if (q >= 10 && q % 10 === 0) return { size: 10, sets: q / 10 };
+  return { size: 13, sets: q };
 }
 // 또또컴퍼니 발주서도 샵마인 파일처럼 새로고침하면 브라우저 메모리(srGrinchemStagedRows)에만
 // 있던 게 통째로 사라지던 문제 — 샵마인 업로드 이력과 같은 방식으로 오늘 날짜 파일을 저장해뒀다가
@@ -20462,7 +20475,7 @@ function _srProcessGrinchemStaged(){
     // (등록하면 이 함수가 다시 돌면서 정상 금액으로 잡힘)
     let unpriced = false;
     if (!_isReg(saved)) {
-      if (!unregMap[key]) unregMap[key] = { key, item: r.item, count:0, qtySum:0 };
+      if (!unregMap[key]) { const _st = _grinchemSetInfo(r.item, r.qty); unregMap[key] = { key, item: _st ? `${r.item} (${_st.size}팩 1세트 단가)` : r.item, count:0, qtySum:0 }; }
       unregMap[key].count++;
       unregMap[key].qtySum += r.qty;
       unpriced = true;
@@ -20505,7 +20518,8 @@ function _srProcessGrinchemStaged(){
       order_no: (() => { const base = [r._srcFile||'', r.recv_name||'', r.recv_phone||'', r.addr||'', r.item||'', r.qty||''].join('|'); const n = (_grSeen[base] = (_grSeen[base]||0) + 1); let h = 0; const t = base + '#' + n; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; idx++; return '그린켐_' + (h >>> 0).toString(36) + '_' + n; })(),
       buyer:'', buyer_phone:'',
       carrier:'',
-      order_amt: (Number(saved.price)||0) * r.qty,
+      order_amt: (Number(saved.price)||0) * (_grinchemSetInfo(r.item, r.qty) ? _grinchemSetInfo(r.item, r.qty).sets : r.qty),
+      gr_sets: _grinchemSetInfo(r.item, r.qty) ? _grinchemSetInfo(r.item, r.qty).sets : undefined,
       order_date: _localISO(),
     };
     if (saved.zero || unpriced) order.sr_exclude = true;
@@ -20525,6 +20539,9 @@ function _srProcessGrinchemStaged(){
     for (const { order, cost } of newOrders) {
       if (!cost || !order.vendor_key) continue;
       const pkey = srPurchaseKey(order) + '|b2b:그린켐';
+      // 고등어 세트 단가: 예전에 13배로 잡힌 매출에 맞추려고 매입단가 칸에 총액(예: 307,400)을 직접 넣어둔 경우,
+      // 이제 세트 단위로 계산되니 등록된 세트 매입단가(예: 21,800)로 되돌림
+      if (order.gr_sets != null && db[pkey] && Number(db[pkey].unit) > cost * 3) { db[pkey] = Object.assign({}, db[pkey], { unit: cost }); dbChanged = true; }
       if (db[pkey] == null || db[pkey].unit == null) {
         db[pkey] = Object.assign({}, db[pkey], { unit: cost });
         dbChanged = true;
@@ -20642,7 +20659,8 @@ function renderGrinchemRegisteredList(){
     if (!_grinchemPriceIsRegistered(saved)) continue;
     seen.add(key);
     // 마그네슘처럼 키에 수량이 섞여 있으면, 같은 품목명이 수량별로 여러 줄 뜨니까 구분되게 표시
-    const label = key.includes('|qty:') ? `${r.item} (수량 ${r.qty}개)` : r.item;
+    const _st = _grinchemSetInfo(r.item, r.qty);
+    const label = key.includes('|qty:') ? `${r.item} (수량 ${r.qty}개)` : (_st ? `${r.item} (${_st.size}팩 1세트 단가)` : r.item);
     items.push({ key, item: label, saved });
   }
   if (!items.length) { el.innerHTML = ''; return; }
@@ -21880,7 +21898,7 @@ function srBrandFromAlias(alias){
 function srPurchaseUnits(o){
   // 또또컴퍼니 주문은 매입단가를 "또또 발주서에 적힌 품목 그대로"(예: 포켓누룽지 480g*2 한 묶음 = 21,000원) 등록하니까
   // 매입수량은 또또 발주서의 수량만 셈 — 등록 코드의 "-2"(코드수량)까지 곱하면 한 묶음을 2개로 봐서 매입이 두 배(마이너스)로 잡혔음
-  if (/^그린켐/.test(String(o.order_no||'')) || String(o.shop_mall||'') === 'B2B-그린켐') return Number(o.qty)||1;
+  if (/^그린켐/.test(String(o.order_no||'')) || String(o.shop_mall||'') === 'B2B-그린켐') return (o.gr_sets != null ? Number(o.gr_sets) : Number(o.qty)) || 1;
   if (o.vendor_key === '동일') {
     const n = srNormalizeForPurchase(o);
     const m = n.option.match(/(\d+)/);
