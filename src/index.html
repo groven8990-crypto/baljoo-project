@@ -4602,7 +4602,7 @@ function saveJgOrders(arr){ try{ localStorage.setItem(LS_JG_ORDERS, JSON.stringi
 const LS_MANUAL_KEEP = 'yb_manual_keep_orders';
 function _manualKeepLoad(){ try{ return JSON.parse(localStorage.getItem(LS_MANUAL_KEEP)||'[]'); }catch{ return []; } }
 function _manualKeepSave(arr){ try{ localStorage.setItem(LS_MANUAL_KEEP, JSON.stringify(arr||[])); }catch(e){} }
-function _isManualKeepOrder(o){ return /^수동/.test(String((o&&o.order_no)||'')); }
+function _isManualKeepOrder(o){ return /^(수동|자사수기)/.test(String((o&&o.order_no)||'')); }
 function _manualKeepAdd(o){
   if (!_isManualKeepOrder(o)) return;
   const list = _manualKeepLoad().filter(x => x.order_no !== o.order_no);
@@ -4938,6 +4938,7 @@ function addManualSelfEntry(){
     };
     allOrders.push(order);
     pushed.push(order);
+    _manualKeepAdd(order);  // 자사 매출 수기 입력도 제거할 때까지 유지
   }
   totalCount = (totalCount||0) + qty;
   rematchAllOrders();  // order.vendor_key 등이 이 자리에서 그대로 채워짐(같은 객체 참조)
@@ -5006,6 +5007,7 @@ function renderManualSelfList(){
   el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:4px">추가된 항목 (${order.length}건)</div>${rows}`;
 }
 function removeManualSelfEntry(batchId){
+  _manualKeepSave(_manualKeepLoad().filter(x => !String(x.order_no||'').startsWith(batchId + '_')));
   const before = allOrders.length;
   for (let i = allOrders.length - 1; i >= 0; i--) {
     if (String(allOrders[i].order_no||'').startsWith(batchId + '_')) allOrders.splice(i, 1);
