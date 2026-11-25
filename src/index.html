@@ -9661,7 +9661,7 @@ const VENDOR_COURIER_DEFAULT = {
   '에이팩': '롯데택배', '사무실': '롯데택배',
   '생선상륙': '한진택배',
   '참맛더드림': '로젠택배',
-  '마그네슘': '경동택배',
+  '마그네슘': '롯데택배',  // 11/25 사장님 요청으로 경동 → 롯데 고정
   '일해수산': '롯데택배',
 };
 
@@ -20840,7 +20840,12 @@ function grinchemMatchTrackingFile(file, opts){
         if (!cands || !cands.length) continue;
         const idx = usedIdx[nm] || 0;
         if (idx >= cands.length) continue;
-        tracking[_grinchemTrackKey(r)] = { no: cands[idx].no, courier: _grinchemFixedCourier(r.item) || cands[idx].courier };
+        // 사장님이 목록에서 택배사를 직접 골라 저장해둔 건(manual) 회신파일이 다시 읽혀도 그대로 둠 — 예전엔
+        // 회신파일이 자동으로 다시 매칭될 때 발주처 고정 택배사로 덮어써서, 롯데로 바꿔 저장한 마그네슘이
+        // 경동택배로 나갔음(11/24). 직접 고른 게 없으면 발주처 고정 택배사 → 회신파일 택배사 순
+        const _prev = tracking[_grinchemTrackKey(r)];
+        const _courier = (_prev && _prev.manual && _prev.courier) ? _prev.courier : (_grinchemFixedCourier(r.item) || cands[idx].courier);
+        tracking[_grinchemTrackKey(r)] = { no: cands[idx].no, courier: _courier, ...(_prev && _prev.manual ? { manual: true } : {}) };
         usedIdx[nm] = idx + 1;
         matched++;
       }
@@ -20902,7 +20907,7 @@ function saveGrinchemTrackRow(i){
   const no = (document.getElementById('grinchemTrackNo_'+i).value||'').trim();
   const courier = document.getElementById('grinchemTrackCourier_'+i).value || '';
   const tracking = loadGrinchemTracking();
-  if (no) tracking[_grinchemTrackKey(r)] = { no, courier };
+  if (no) tracking[_grinchemTrackKey(r)] = { no, courier, manual: true };
   else delete tracking[_grinchemTrackKey(r)];
   saveGrinchemTracking(tracking);
   renderGrinchemTrackingList();
