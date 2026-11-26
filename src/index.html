@@ -4129,7 +4129,7 @@ function handleFile(file, onDone) {
       const H=rows[hr],ci=n=>H.indexOf(n);
       // 플랫폼/쇼핑몰 컬럼은 헤더가 다양해서 후보 중 첫 번째로 찾는 걸 사용
       const findCol = (...names) => { for (const n of names) { const i = ci(n); if (i >= 0) return i; } return -1; };
-      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명'),si:ci('정산추가정보'),se:findCol('정산예정금액(배송비포함)','정산예정금액','정산금액(배송비포함)')};
+      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명'),si:ci('정산추가정보'),se:findCol('정산예정금액(배송비포함)','정산예정금액','정산금액(배송비포함)'),mf:findCol('마켓수수료금액','마켓수수료','판매수수료')};
       groupedOrders={};unmatchedList=[];allOrders=[];totalCount=0;loadedFileNames=[];_mergeDecisions=new Set();
       for(let i=hr+1;i<rows.length;i++){
         const r=rows[i];if(!r||r.every(c=>c===''))continue;totalCount++;
@@ -4202,7 +4202,7 @@ function handleFile(file, onDone) {
             order_amt = _ppungtigiSetPrice(_ppSets) * (parseInt(r[C.qt])||1);
           }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-          const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
+          const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null),market_fee:(C.mf>=0?(parseFloat(String(r[C.mf]||'').replace(/,/g,''))||0):null)};
           // 시간대별 발주처 규칙 적용
           const vkFinal=_applyTimeVendorRule(order, vk);
           order.vendor_key=vkFinal; order.unmatched=!vkFinal;
@@ -10590,6 +10590,7 @@ function _invDetectTrackHeader(rawRows) {
   }
   return {trackIdx, nameIdx, orderCodeIdx, courierIdx, addrIdx, hdrRow};
 }
+function hasCourierCol0(rows, hdrRow){ return ((rows||[])[hdrRow] || []).some(c => /택배사|배송사|운송사/.test(String(c||''))); }
 function invLoadTracks(files, vendorHint, onEach) {
   Array.from(files).forEach(file => {
     const reader = new FileReader();
@@ -10630,11 +10631,19 @@ function invLoadTracks(files, vendorHint, onEach) {
           const courier = courierIdx >= 0 ? normalizeCourier(row[courierIdx]) : '';
           const addr    = addrIdx    >= 0 ? String(row[addrIdx]||'').trim()    : '';
           if (name)      (map[name]           || (map[name]           = [])).push({no, courier, addr});
+          // 받는분 칸에 호수가 붙어 오는 경우(예: "신인식 512호")도 샵마인 수령자("신인식")와 맞게 이름만 따로 한 번 더 등록
+          if (name) { const _bare = name.replace(/\d.*$/, '').replace(/[()\[\]\-_,.]+$/, ''); if (_bare && _bare !== name && _bare.length >= 2) (map[_bare] || (map[_bare] = [])).push({no, courier, addr}); }
           if (orderCode) (orderCodeMap[orderCode] || (orderCodeMap[orderCode] = [])).push({no, courier, addr});
         });
         const hasCourier   = courierIdx >= 0;
         const hasOrderCode = Object.keys(orderCodeMap).length > 0;
         const lookup       = invLookupCourier(file.name, vendorHint);
+        // 롯데택배 접수 시스템에서 받은 파일(PIDPIC…xlsx — 집하점소/배송점소명 칸, 점소명 "(대)")은 택배사 칸이 없어서
+        // 거래처별 기본값(참맛더드림=로젠)으로 잘못 찍혀 샵마인 송장등록이 안 됐음 → 파일 자체로 롯데택배로 지정
+        if (!lookup.courier && !hasCourierCol0(rawRows, hdrRow)) {
+          const _h = (rawRows[hdrRow] || []).map(c => String(c||'').replace(/\s/g,''));
+          if ((_h.includes('집하점소') && _h.includes('배송점소명')) || /^PIDPIC/i.test(file.name)) lookup.courier = '롯데택배';
+        }
         const _rawGuess    = lookup.matchedKey || invGuessVendor(file.name);
         const vendorGuess  = vendorHint || ((_rawGuess !== '미확인') ? _rawGuess : '미확인');
         const courierGuess = lookup.courier;
@@ -11044,6 +11053,7 @@ function invProcess() {
     const prodCol      = _findCol(['상품명'], '상품명');
     const orderCodeCol = Object.keys(sample).find(k => /주문고유코드/.test(k.replace(/\s/g,''))) || '';
     const dupReg = {};
+    const _sameAddrUse = {};
     invPreviewRows = [];
     invResultData = invOrderData.map((row, rowIdx) => {
       const newRow = {...row};
@@ -11121,6 +11131,12 @@ function invProcess() {
             const scored = entries.map(e => ({e, s: invAddrScoreSmart(e.addr, oAddr)})).sort((p,q) => q.s - p.s);
             if (scored[0].s >= 6 && (scored.length < 2 || scored[0].s > scored[1].s)) entry = scored[0].e;
           }
+          // 같은 사람·같은 주소로 박스가 여러 개 나간 경우(예: 신인식 2박스)는 동명이인이 아니라 한 사람 몫이라
+          // 고를 필요 없이 순서대로 하나씩 배정
+          if (!entry && new Set(entries.map(e => String(e.addr||'').replace(/\s/g,''))).size === 1) {
+            const _k = tf.fileName + '|' + name; const _u = _sameAddrUse[_k] || 0;
+            entry = entries[_u % entries.length]; _sameAddrUse[_k] = _u + 1;
+          }
           if (!entry) {
             // 주소로 못 가림 → 자동매칭 대신 사용자가 직접 선택하도록 후보 보관
             ambiguous = true;
@@ -11148,7 +11164,7 @@ function invProcess() {
       }
       if (!found && name) {
         // 미매칭이어도 거래처명 매핑이 있으면 택배사 기입
-        const fallbackCourier = normalizeCourier(vendorCourierDefault || '');
+        const fallbackCourier = normalizeCourier((dupReg[rowIdx] && dupReg[rowIdx].courierFallback) || vendorCourierDefault || '');
         if (fallbackCourier) newRow[courierCol] = fallbackCourier;
         invPreviewRows.push({rowIdx, name, vendor, courier: fallbackCourier, track:'', prod: String(row[prodCol]||'').slice(0,30), status: ambiguous ? 'dup' : 'unmatch', oAddr});
       }
@@ -13409,7 +13425,7 @@ function handleFileAdd(file, onDone){
       const H=rows[hr],ci=n=>H.indexOf(n);
       // 플랫폼/쇼핑몰 컬럼은 헤더가 다양해서 후보 중 첫 번째로 찾는 걸 사용
       const findCol = (...names) => { for (const n of names) { const i = ci(n); if (i >= 0) return i; } return -1; };
-      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명'),si:ci('정산추가정보'),se:findCol('정산예정금액(배송비포함)','정산예정금액','정산금액(배송비포함)')};
+      const C={vc:ci('판매자상품코드'),vo:ci('판매자옵션코드'),al:ci('별칭(쇼핑몰계정)'),rn:ci('수령자'),rp:ci('수령자휴대전화'),zp:ci('우편번호'),ad:ci('주소'),mm:ci('배송메모'),pn:ci('상품명'),so:ci('선택사항'),dop:ci('노출옵션명(쿠팡)'),qt:ci('수량'),on:ci('주문번호'),by:ci('구매자'),bp:ci('구매자휴대전화'),ca:ci('택배사'),od:ci('주문일시'),sm:findCol('쇼핑몰','마켓','판매처','마켓명','판매채널','쇼핑몰명'),si:ci('정산추가정보'),se:findCol('정산예정금액(배송비포함)','정산예정금액','정산금액(배송비포함)'),mf:findCol('마켓수수료금액','마켓수수료','판매수수료')};
       // 중복 제외 — 주문번호만으로 보면 쿠팡 장바구니 주문(한 주문번호에 목전지+삼겹살처럼 상품 여러 줄)의
       // 두 번째 줄이 "중복"으로 빠져버렸음(합배송 건 한 줄 누락). 주문번호+상품코드+상품명+선택사항으로 줄 단위 비교.
       // 도매꾹은 선택사항을 옵션별로 쪼개서 저장하므로 선택사항은 빼고 비교
@@ -13493,7 +13509,7 @@ function handleFileAdd(file, onDone){
             order_amt = _ppungtigiSetPrice(_ppSets) * (parseInt(r[C.qt])||1);
           }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
-          const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
+          const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null),market_fee:(C.mf>=0?(parseFloat(String(r[C.mf]||'').replace(/,/g,''))||0):null)};
           const vkFinal=_applyTimeVendorRule(order, vk);
           order.vendor_key=vkFinal; order.unmatched=!vkFinal;
           allOrders.push(order);
@@ -19488,7 +19504,8 @@ function _srUseSettleAmt(o){
   return false;
 }
 function _srSalesAmt(o){
-  if (_srUseSettleAmt(o)) return Math.round(Number(o.settle_amt));
+  // 정산금 + 마켓수수료 = 수수료 떼기 전 금액을 매출로, 수수료는 파일의 실제 마켓수수료로 따로 보여줌(순이익은 정산금 기준 그대로)
+  if (_srUseSettleAmt(o)) return Math.round(Number(o.settle_amt) + (Number(o.market_fee) || 0));
   const base = Number(o.order_amt)||0;
   const list = srLoadSalesOverride();
   if(!list.length) return base;
@@ -19553,7 +19570,8 @@ function srLoadFeeOverride(){ try{ return JSON.parse(localStorage.getItem(LS_FEE
 function srSaveFeeOverride(a){ localStorage.setItem(LS_FEE_OVERRIDE, JSON.stringify(a)); _sbSaveKV('fee_override', a).catch(()=>{}); }
 // 한 주문의 판매수수료율 — 지정 규칙이 있으면 그 값, 없으면 플랫폼 기본값(srFee)
 function srFeeForOrder(o){
-  if (typeof _srUseSettleAmt === 'function' && _srUseSettleAmt(o)) return 0;  // 정산금(수수료 차감 후)을 매출로 쓰는 주문
+  // 정산금 기준 주문: 수수료율 = 실제 마켓수수료 ÷ (정산금+마켓수수료) → 수수료 칸에 파일의 마켓수수료가 그대로 찍힘
+  if (typeof _srUseSettleAmt === 'function' && _srUseSettleAmt(o)) { const mf = Number(o.market_fee)||0, st = Number(o.settle_amt)||0; return (mf > 0 && st + mf > 0) ? mf / (st + mf) : 0; }
   const list = srLoadFeeOverride();
   if (list.length) {
     const code = String(o.vendor_code||'').trim();
