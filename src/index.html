@@ -19480,7 +19480,13 @@ function srSaveSalesOverride(a){ a = (a||[]).filter(_srSalesOvAllowed); localSto
 // 마그네슘(자사제품) 쇼핑몰 주문은 샵마인 파일의 "정산예정금액(배송비포함)"을 그대로 매출로 씀(사장님 요청, 11/26) —
 // 예전엔 수량별 고정 판매가(17,800/33,800/48,000)를 썼는데 쿠폰·판매가가 바뀌면 실제 정산금과 안 맞았음.
 // 정산금은 이미 수수료가 빠진 금액이라 이 주문들은 수수료를 따로 안 뺌(srFeeForOrder)
-function _srUseSettleAmt(o){ return !!(o && o.vendor_key === '마그네슘' && Number(o.settle_amt) > 0 && !/^그린켐/.test(String(o.order_no||''))); }
+// 현미 뻥튀기(참맛더드림)도 같은 방식(사장님 요청, 11/26) — 정산예정금액이 없는 주문만 세트 묶음가(_ppungtigiSetPrice)로
+function _srUseSettleAmt(o){
+  if (!o || !(Number(o.settle_amt) > 0) || /^그린켐/.test(String(o.order_no||''))) return false;
+  if (o.vendor_key === '마그네슘') return true;
+  if (o.vendor_key === '참맛더드림' && /뻥튀기/.test(String(o.product||'') + String(o.item_name||''))) return true;
+  return false;
+}
 function _srSalesAmt(o){
   if (_srUseSettleAmt(o)) return Math.round(Number(o.settle_amt));
   const base = Number(o.order_amt)||0;
