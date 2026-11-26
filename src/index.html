@@ -19467,7 +19467,12 @@ function _srSalesOvAllowed(ov){ return !(ov && ['MAC컴퍼니]목전지/'].inclu
 function srLoadSalesOverride(){ try{ return JSON.parse(localStorage.getItem(LS_SALES_OVERRIDE)||'[]').filter(_srSalesOvAllowed); }catch{ return []; } }
 function srSaveSalesOverride(a){ a = (a||[]).filter(_srSalesOvAllowed); localStorage.setItem(LS_SALES_OVERRIDE, JSON.stringify(a)); _sbSaveKV('sales_amt_override', a).catch(()=>{}); }
 // 한 주문의 매출금액 — 지정 규칙이 있으면 그 값(×수량), 없으면 원래 order_amt
+// 마그네슘(자사제품) 쇼핑몰 주문은 샵마인 파일의 "정산예정금액(배송비포함)"을 그대로 매출로 씀(사장님 요청, 11/26) —
+// 예전엔 수량별 고정 판매가(17,800/33,800/48,000)를 썼는데 쿠폰·판매가가 바뀌면 실제 정산금과 안 맞았음.
+// 정산금은 이미 수수료가 빠진 금액이라 이 주문들은 수수료를 따로 안 뺌(srFeeForOrder)
+function _srUseSettleAmt(o){ return !!(o && o.vendor_key === '마그네슘' && Number(o.settle_amt) > 0 && !/^그린켐/.test(String(o.order_no||''))); }
 function _srSalesAmt(o){
+  if (_srUseSettleAmt(o)) return Math.round(Number(o.settle_amt));
   const base = Number(o.order_amt)||0;
   const list = srLoadSalesOverride();
   if(!list.length) return base;
@@ -19532,6 +19537,7 @@ function srLoadFeeOverride(){ try{ return JSON.parse(localStorage.getItem(LS_FEE
 function srSaveFeeOverride(a){ localStorage.setItem(LS_FEE_OVERRIDE, JSON.stringify(a)); _sbSaveKV('fee_override', a).catch(()=>{}); }
 // 한 주문의 판매수수료율 — 지정 규칙이 있으면 그 값, 없으면 플랫폼 기본값(srFee)
 function srFeeForOrder(o){
+  if (typeof _srUseSettleAmt === 'function' && _srUseSettleAmt(o)) return 0;  // 정산금(수수료 차감 후)을 매출로 쓰는 주문
   const list = srLoadFeeOverride();
   if (list.length) {
     const code = String(o.vendor_code||'').trim();
