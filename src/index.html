@@ -4199,7 +4199,7 @@ function handleFile(file, onDone) {
               const m = String(s||'').match(/(\d+)\s*세트/);
               if (m) { _ppSets = parseInt(m[1]) || 1; break; }
             }
-            order_amt = 7980 * _ppSets * (parseInt(r[C.qt])||1);
+            order_amt = _ppungtigiSetPrice(_ppSets) * (parseInt(r[C.qt])||1);
           }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
@@ -13319,6 +13319,16 @@ function aliasToStore(alias) {
 // 발주처한테 보이는 사업자명을 발주처 기준으로 고정해야 하는 경우 — 한마당식품은 식자재코리아에서
 // 받아온 주문(사업자는 그로븐으로 잡힘)이어도 발주서 이름·메일 제목·카톡은 옐로우브릿지로 나가야 함
 // (함수 선언으로 둬야 스크립트 앞쪽 시작 코드에서 makeFileName이 먼저 불려도 안전함)
+// 뻥튀기(참맛더드림, 자꾸가게 쿠팡) 세트 수별 실제 판매가 — 쿠팡에 등록된 묶음할인가(사장님 확인 11/26):
+// 1세트 7,980 / 2세트 14,780 / 4세트 28,560 / 6세트 42,340. 예전엔 7,980 × 세트 수로 계산해서 2세트 이상은
+// 매출이 할인만큼 부풀려졌음(2세트 15,960 → 실제 14,780). 표에 없는 세트 수는 큰 묶음부터 합쳐서 계산
+function _ppungtigiSetPrice(sets){
+  const TIER = {1:7980, 2:14780, 4:28560, 6:42340};
+  let n = Math.max(1, parseInt(sets) || 1), total = 0;
+  if (TIER[n]) return TIER[n];
+  for (const k of [6,4,2,1]) { while (n >= k) { total += TIER[k]; n -= k; } }
+  return total;
+}
 function _vendorFixedStore(vendor, alias){
   // 또또컴퍼니발 주문(alias '옐로우브릿지2')은 어느 발주처로 가든 항상 "옐로우브릿지2"로 — 정규 주문 발주서와
   // 파일·메일이 구분돼야 해서(사장님과 정한 규칙). 예전엔 한마당식품(온반)처럼 사업자명을 고정해둔 발주처는
@@ -13480,7 +13490,7 @@ function handleFileAdd(file, onDone){
               const m = String(s||'').match(/(\d+)\s*세트/);
               if (m) { _ppSets = parseInt(m[1]) || 1; break; }
             }
-            order_amt = 7980 * _ppSets * (parseInt(r[C.qt])||1);
+            order_amt = _ppungtigiSetPrice(_ppSets) * (parseInt(r[C.qt])||1);
           }
           const order_date_raw = (C.od>=0?r[C.od]:'') || '';
           const order={vendor_code:vc,vendor_opt:vo,vendor_key:vk,alias,item_name:parsed.itemName,option_name:parsed.optionName,opt_mapped:parsed.optMapped||false,opt_needs_check:parsed.optNeedsCheck||false,mapped_code:parsed.mappedCode||'',unmatched:parsed.unmatched||false,recv_name:r[C.rn]||'',recv_phone:r[C.rp]||'',zip:String(r[C.zp]||''),addr:r[C.ad]||'',memo:r[C.mm]||'',product:pn,select_opt:soOne,disp_opt:dop,qty:r[C.qt]||1,code_qty:parsed.codeQty||1,order_no:r[C.on]||'',buyer:r[C.by]||'',buyer_phone:r[C.bp]||'',carrier:r[C.ca]||'',order_amt,order_date:order_date_raw,shop_mall:(C.sm>=0?String(r[C.sm]||'').trim():''),alias_raw:String(r[C.al]||'').trim(),settle_amt:(C.se>=0?(parseFloat(String(r[C.se]||'').replace(/,/g,''))||0):null)};
