@@ -3614,6 +3614,8 @@ function _sikjaeVendorFromCode(code, pn){
   const c = String(code||'').trim().toLowerCase();
   if (c.startsWith('dongil3')) return '우리뜰';
   if (c.startsWith('dongil')) return '동일';
+  // 식자재코리아로 들어온 실비김치는 해담별이 아니라 늘푸른우리로 발주(사장님 요청, 11/26) — 쇼핑몰 실비김치는 그대로 해담별
+  { const p = String(pn||''); if (p.includes('실비') && p.includes('김치')) return '늘푸른우리'; }
   return (typeof detectVendor === 'function') ? detectVendor(code, pn) : null;
 }
 function _addSikjaeOrdersFromRows(rows, hr){
@@ -9190,6 +9192,8 @@ function rematchAllOrders(){
     }
     // 개별 주문 단위 직접수정 — 코드 단위 override보다 우선 적용. 같은 코드를 쓰는 다른
     // 주문에는 영향 없이 이 주문 한 건만 고칠 때 씀
+    // 실비김치는 들어오는 경로(식자재코리아·쇼핑몰)마다 상품명이 제각각이라 발주서 품목명을 "실비김치 포기김치 / Nkg"로 통일
+    { const _pn = String(o.product||''); if (_pn.includes('실비') && _pn.includes('김치')) { const _kg = _pn.match(/(\d+(?:\.\d+)?)\s*kg/i) || String(o.select_opt||'').match(/(\d+(?:\.\d+)?)\s*kg/i); o.item_name = '실비김치 포기김치'; o.option_name = _kg ? _kg[1] + 'kg' : ''; } }
     // 파일에 찍힌 원래 주문수량을 기억해뒀다가 매번 되돌린 뒤 수정값을 적용(수정을 지우면 원래 수량으로 돌아오게)
     if (o._qty0 == null) o._qty0 = o.qty; else o.qty = o._qty0;
     const oov = applyOrderOverride(o);
