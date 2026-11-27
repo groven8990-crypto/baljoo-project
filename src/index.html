@@ -19518,6 +19518,8 @@ function _srUseSettleAmt(o){
   if (!o || !(Number(o.settle_amt) > 0) || /^그린켐/.test(String(o.order_no||''))) return false;
   if (o.vendor_key === '마그네슘') return true;
   if (o.vendor_key === '참맛더드림' && /뻥튀기/.test(String(o.product||'') + String(o.item_name||''))) return true;
+  // 동일전선 UTP 랜케이블(사무실 직접발송 자사상품)도 정산예정금액 기준(사장님 요청, 11/27)
+  if (/UTP|랜케이블|랜선|동일전선|CAT\s*[5-7]/i.test(String(o.product||'') + ' ' + String(o.item_name||''))) return true;
   return false;
 }
 function _srSalesAmt(o){
