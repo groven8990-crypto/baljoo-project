@@ -2729,6 +2729,20 @@ function _silbiKimchiToHaedamV1(){
   }catch(e){}
 }
 // 만생종 양파 코드를 최고집 → 늘푸른우리로 한 번 옮김(원래 늘푸른] 코드로 들어오던 걸 최고집으로 돌려놨던 것 원복)
+// 전복 등록 코드를 늘푸른우리 → 해담별로 한 번 옮김
+function _abaloneToHaedamV1(){
+  try{
+    if (localStorage.getItem('yb_abalone_haedam_v1')) return;
+    const codes = loadCodes(); let changed = false;
+    for (const c of codes) {
+      if (c.vendor === '늘푸른우리' && /전복/.test([c.code, c.product, c.productKw].join(' '))) {
+        c.vendor = '해담별'; c.code = String(c.code||'').replace(/^늘푸른(우리)?\]/, '해담별]'); changed = true;
+      }
+    }
+    if (changed) saveCodes(codes);
+    localStorage.setItem('yb_abalone_haedam_v1', '1');
+  }catch(e){}
+}
 function _manseongOnionToNeulV1(){
   try{
     if (localStorage.getItem('yb_onion_neul_v1')) return;
@@ -2799,6 +2813,8 @@ function detectVendor(vc, productName, selectOpt) {
   if (pn.includes('꿀스틱') || c.includes('꿀스틱')) return '숲속양봉원';
   // 실비김치(전남 무안 매운 실비 포기김치)는 비셀러(발주 사이트) → 해담별 발주로 변경(사장님 요청, 11/23)
   if ((pn.includes('실비') && pn.includes('김치')) || (c.includes('실비') && c.includes('김치'))) return '해담별';
+  // 완도 활전복은 해담별 발주(사장님 요청, 11/27) — 예전에 늘푸른우리로 잘못 등록돼 있었음
+  if (pn.includes('전복') || c.includes('전복')) return '해담별';
   // 2026 만생종 햇양파(늘푸른]만생종양파…)는 최고집이 아니라 늘푸른우리(발주 사이트)로 발주(사장님 요청, 11/26)
   if ((pn.includes('만생종') && pn.includes('양파')) || /^늘푸른\]만생종양파/.test(c)) return '늘푸른우리';
   // 홍어(홍어회)는 전부 일해수산(목포) 제품 — 코드에 일해수산 접두사가 없이 들어와도 일해수산 발주서로
@@ -13748,6 +13764,7 @@ function _seedMacCompanyBankEntry(){
 _seedMacCompanyBankEntry();
 _silbiKimchiToHaedamV1();
 _manseongOnionToNeulV1();
+_abaloneToHaedamV1();
 // 엠에이씨컴퍼니 송금처를 "(주)엠에이씨컴퍼니" 하나로 정리 — 계좌 없는 'MAC컴퍼니' 빈 항목, '주식회사 엠에이씨컴퍼니'
 // 중복 항목을 없애고 계좌 있는 항목 하나만 "(주)엠에이씨컴퍼니" 이름으로 남김 (사장님 요청: 그 이름으로 입력하면 계좌까지 뜨게)
 function _macBankUnifyV1(){
