@@ -19515,17 +19515,29 @@ function srSaveSalesOverride(a){ a = (a||[]).filter(_srSalesOvAllowed); localSto
 // 정산금은 이미 수수료가 빠진 금액이라 이 주문들은 수수료를 따로 안 뺌(srFeeForOrder)
 // 현미 뻥튀기(참맛더드림)도 같은 방식(사장님 요청, 11/26) — 정산예정금액이 없는 주문만 세트 묶음가(_ppungtigiSetPrice)로
 function _srUseSettleAmt(o){
+  // 쿠폰 거는 상품(마그네슘·뻥튀기)은 샵마인 정산예정금액이 쿠폰 빼기 전 정상가 기준이라(뻥튀기 1세트 11,749원 vs
+  // 실제 쿠폰가 7,980원) 쓰면 안 됨 → 매출은 쿠폰 적용가 고정표 그대로, 수수료만 실제 비율로(srFeeForOrder).
+  // 쿠폰 안 거는 동일전선 랜케이블만 정산금 기준 유지(정산금+수수료 = 판매가라 결과 동일)
   if (!o || !(Number(o.settle_amt) > 0) || /^그린켐/.test(String(o.order_no||''))) return false;
-  if (o.vendor_key === '마그네슘') return true;
-  if (o.vendor_key === '참맛더드림' && /뻥튀기/.test(String(o.product||'') + String(o.item_name||''))) return true;
-  // 동일전선 UTP 랜케이블(사무실 직접발송 자사상품)도 정산예정금액 기준(사장님 요청, 11/27)
   if (/UTP|랜케이블|랜선|동일전선|CAT\s*[5-7]/i.test(String(o.product||'') + ' ' + String(o.item_name||''))) return true;
   return false;
+}
+// 샵마인 파일의 실제 마켓수수료율(마켓수수료 ÷ 수수료 떼기 전 판매가) — 없으면 null(기존 추정치 사용)
+function _srActualFeeRate(o){
+  const mf = Number(o && o.market_fee) || 0, st = Number(o && o.settle_amt) || 0;
+  return (mf > 0 && st > 0) ? mf / (st + mf) : null;
 }
 function _srSalesAmt(o){
   // 정산금 + 마켓수수료 = 수수료 떼기 전 금액을 매출로, 수수료는 파일의 실제 마켓수수료로 따로 보여줌(순이익은 정산금 기준 그대로)
   if (_srUseSettleAmt(o)) return Math.round(Number(o.settle_amt) + (Number(o.market_fee) || 0));
-  const base = Number(o.order_amt)||0;
+  let base = Number(o.order_amt)||0;
+  // 뻥튀기(자꾸가게 쿠팡)는 쿠폰 적용가로 — 업로드 때는 판매자상품코드가 비어 발주처를 못 정해서 고정가가 안 붙고
+  // 정상가(13,300원)로 남는 경우가 있어, 발주처가 정해진 뒤인 여기서 다시 계산
+  if (o.vendor_key === '참맛더드림' && /뻥튀기/.test(String(o.product||'')) && /자꾸가게/.test(String(o.alias_raw||o.alias||'')) && typeof _ppungtigiSetPrice === 'function') {
+    let sets = 1;
+    for (const t of [o.option_name, o.select_opt, o.disp_opt, o.product]) { const m = String(t||'').match(/(\d+)\s*세트/); if (m) { sets = parseInt(m[1]) || 1; break; } }
+    base = _ppungtigiSetPrice(sets) * (Number(o.qty)||1);
+  }
   const list = srLoadSalesOverride();
   if(!list.length) return base;
   const code = String(o.vendor_code||'').trim();
@@ -19589,8 +19601,6 @@ function srLoadFeeOverride(){ try{ return JSON.parse(localStorage.getItem(LS_FEE
 function srSaveFeeOverride(a){ localStorage.setItem(LS_FEE_OVERRIDE, JSON.stringify(a)); _sbSaveKV('fee_override', a).catch(()=>{}); }
 // 한 주문의 판매수수료율 — 지정 규칙이 있으면 그 값, 없으면 플랫폼 기본값(srFee)
 function srFeeForOrder(o){
-  // 정산금 기준 주문: 수수료율 = 실제 마켓수수료 ÷ (정산금+마켓수수료) → 수수료 칸에 파일의 마켓수수료가 그대로 찍힘
-  if (typeof _srUseSettleAmt === 'function' && _srUseSettleAmt(o)) { const mf = Number(o.market_fee)||0, st = Number(o.settle_amt)||0; return (mf > 0 && st + mf > 0) ? mf / (st + mf) : 0; }
   const list = srLoadFeeOverride();
   if (list.length) {
     const code = String(o.vendor_code||'').trim();
@@ -19602,6 +19612,10 @@ function srFeeForOrder(o){
       return Number(ov.pct)||0;
     }
   }
+  // 지정 수수료가 없으면 샵마인 파일의 실제 마켓수수료율을 씀(예전엔 쿠팡 12% 등 추정치 — 실제는 11.66% 등이라 조금씩 어긋났음).
+  // 쿠폰 상품은 매출(쿠폰가) × 이 비율로 수수료가 잡혀서, 매출은 안 부풀리고 수수료는 실제대로 빠짐
+  const _ar = (typeof _srActualFeeRate === 'function') ? _srActualFeeRate(o) : null;
+  if (_ar != null) return _ar;
   const plat = (typeof srPlatform==='function') ? srPlatform(o) : '';
   return srFee(plat);
 }
